@@ -8,14 +8,17 @@ import {
   ChevronLeft,
   ChevronRight,
   Info,
-  Eye
+  Eye,
+  Trophy,
+  Database
 } from "lucide-react"
 import { OnlineModDetailModal } from "./OnlineModDetailModal"
-import { NexusModsRanking } from "./NexusModsRanking"
+import { NexusModsRanking, type NexusRankedMod } from "./NexusModsRanking"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 
 // Type Definitions for compatibility mods
 export interface SmapiModPage {
@@ -152,6 +155,32 @@ export function OnlineMods() {
     setSelectedDetailMod(mod)
     setIsDetailOpen(true)
   }
+
+  const handleOpenNexusDetail = (nexusMod: NexusRankedMod) => {
+    // Try to find if there's a matching SMAPI mod in onlineMods
+    const matchingSmapiMod = onlineMods.find(m => {
+      const nexusPage = m.ModPages.find(p => p.Text === "Nexus" || p.Url.includes("nexusmods.com"))
+      if (!nexusPage) return false
+      const parts = nexusPage.Url.split("/")
+      const id = parts.pop() || ""
+      return id === nexusMod.nexusId
+    })
+
+    if (matchingSmapiMod) {
+      handleOpenDetail(matchingSmapiMod)
+    } else {
+      // Fallback: construct a SmapiMod lookalike with no compatibility summary but pointing to nexus url
+      const fallbackMod: SmapiMod = {
+        Id: [],
+        Name: nexusMod.name,
+        Author: nexusMod.author,
+        ModPages: [{ Url: nexusMod.nexusUrl, Text: "Nexus" }],
+        Slug: `nexus-${nexusMod.nexusId}`,
+        Compatibility: undefined // Undefined indicates it's not in the SMAPI database
+      }
+      handleOpenDetail(fallbackMod)
+    }
+  }
   
   // Filters & Search
   const [search, setSearch] = useState("")
@@ -273,259 +302,284 @@ export function OnlineMods() {
 
   return (
     <div className="space-y-6">
-      {/* NexusMods Download Ranking */}
-      <NexusModsRanking />
-
-      {/* Search and Filters */}
-      <div className="flex flex-col md:flex-row gap-4 justify-between items-center bg-card border border-border p-4 rounded-xl shadow-sm">
-        <div className="relative w-full md:max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="搜索模组名称、唯一ID、作者..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 bg-accent/10 border-border text-xs rounded-lg"
-          />
-        </div>
-        
-        <div className="flex flex-wrap gap-2 w-full md:w-auto">
-          {[
-            { value: "all", label: "全部" },
-            { value: "ok", label: "完美兼容" },
-            { value: "workaround", label: "有替代/方案" },
-            { value: "unofficial", label: "非官方更新" },
-            { value: "broken", label: "已损坏" },
-          ].map((status) => (
-            <Button
-              key={status.value}
-              variant={selectedStatus === status.value ? "default" : "outline"}
-              onClick={() => setSelectedStatus(status.value)}
-              className="h-8 text-[11px] rounded-lg px-3 hover:bg-accent cursor-pointer"
+      <Tabs defaultValue="nexus" className="w-full space-y-6">
+        <div className="flex justify-center border-b border-border/40 pb-4">
+          <TabsList className="grid w-full max-w-md grid-cols-2 bg-muted/65 p-1 rounded-xl h-11 border border-border/30 shadow-inner">
+            <TabsTrigger 
+              value="nexus" 
+              className="rounded-lg text-xs font-bold gap-2 data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-md transition-all duration-300 py-2 cursor-pointer"
             >
-              {status.label}
-            </Button>
-          ))}
-          
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={fetchOnlineModsList}
-            className="h-8 w-8 rounded-lg shrink-0 cursor-pointer"
-            disabled={loading}
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-          </Button>
+              <Trophy className="h-4 w-4 text-amber-500" />
+              NexusMods 排行榜
+            </TabsTrigger>
+            <TabsTrigger 
+              value="smapi" 
+              className="rounded-lg text-xs font-bold gap-2 data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-md transition-all duration-300 py-2 cursor-pointer"
+            >
+              <Database className="h-4 w-4 text-green-500" />
+              SMAPI.io 兼容库
+            </TabsTrigger>
+          </TabsList>
         </div>
-      </div>
 
-      {error && (
-        <div className="bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 p-3 rounded-xl text-xs flex items-center gap-2">
-          <AlertTriangle className="h-4 w-4 text-amber-500 flex-shrink-0" />
-          <span>{error}</span>
-        </div>
-      )}
+        <TabsContent value="nexus" className="space-y-4 outline-none focus-visible:ring-0 animate-in fade-in duration-300">
+          <NexusModsRanking onOpenDetail={handleOpenNexusDetail} />
+        </TabsContent>
 
-      {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Card key={i} className="animate-pulse border border-border bg-card">
-              <CardContent className="p-5 space-y-3">
-                <div className="h-4 bg-accent/40 rounded w-2/3"></div>
-                <div className="h-3 bg-accent/30 rounded w-1/3"></div>
-                <div className="h-10 bg-accent/20 rounded"></div>
-                <div className="flex gap-2 pt-2">
-                  <div className="h-8 bg-accent/30 rounded w-1/2"></div>
-                  <div className="h-8 bg-accent/30 rounded w-1/2"></div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      ) : (
-        <>
-          {/* Mods Grid */}
-          {paginatedMods.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-in fade-in duration-300">
-              {paginatedMods.map((mod) => {
-                return (
-                  <Card key={mod.Slug} className="border border-border/80 bg-card hover:border-primary/45 hover:shadow-md transition-all duration-300 flex flex-col justify-between overflow-hidden">
-                    <CardHeader className="p-4 pb-2 space-y-1.5">
-                      <div className="flex justify-between items-start gap-2">
-                        <CardTitle className="text-sm font-bold truncate pr-2 text-foreground" title={mod.Name}>
-                          {mod.Name}
-                        </CardTitle>
-                        {renderStatusBadge(mod.Compatibility?.Status || "ok")}
-                      </div>
-                      <CardDescription className="text-[11px] truncate text-muted-foreground font-medium">
-                        作者: {mod.Author} {mod.AlternateAuthors ? `(aka ${mod.AlternateAuthors})` : ""}
-                      </CardDescription>
-                    </CardHeader>
-                    
-                    <CardContent className="p-4 pt-1 flex-1 flex flex-col justify-between space-y-4">
-                      {/* Compatibility Summary */}
-                      <div className="bg-accent/20 dark:bg-accent/5 rounded-lg p-2.5 text-xs text-muted-foreground flex-1 flex flex-col justify-center min-h-[55px] border border-border/40 overflow-hidden text-ellipsis">
-                        {mod.Compatibility?.Summary ? (
-                          <div 
-                            className="leading-relaxed smapi-compat-summary max-h-[70px] overflow-y-auto"
-                            dangerouslySetInnerHTML={{ __html: mod.Compatibility.Summary }}
-                          />
-                        ) : (
-                          <div className="flex items-center gap-1.5 text-green-600 dark:text-green-400 font-medium text-[11px]">
-                            <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                            <span>完美兼容，目前没有任何已知问题</span>
-                          </div>
-                        )}
-                        {mod.Compatibility?.BrokeIn && (
-                          <p className="text-[10px] text-red-500 mt-1.5 font-semibold">
-                            损坏自: {mod.Compatibility.BrokeIn}
-                          </p>
-                        )}
-                      </div>
+        <TabsContent value="smapi" className="space-y-6 outline-none focus-visible:ring-0 animate-in fade-in duration-300">
+          {/* Search and Filters */}
+          <div className="flex flex-col md:flex-row gap-4 justify-between items-center bg-card border border-border p-4 rounded-xl shadow-sm">
+            <div className="relative w-full md:max-w-md">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="搜索模组名称、唯一ID、作者..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9 bg-accent/10 border-border text-xs rounded-lg"
+              />
+            </div>
+            
+            <div className="flex flex-wrap gap-2 w-full md:w-auto">
+              {[
+                { value: "all", label: "全部" },
+                { value: "ok", label: "完美兼容" },
+                { value: "workaround", label: "有替代/方案" },
+                { value: "unofficial", label: "非官方更新" },
+                { value: "broken", label: "已损坏" },
+              ].map((status) => (
+                <Button
+                  key={status.value}
+                  variant={selectedStatus === status.value ? "default" : "outline"}
+                  onClick={() => setSelectedStatus(status.value)}
+                  className="h-8 text-[11px] rounded-lg px-3 hover:bg-accent cursor-pointer"
+                >
+                  {status.label}
+                </Button>
+              ))}
+              
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={fetchOnlineModsList}
+                className="h-8 w-8 rounded-lg shrink-0 cursor-pointer"
+                disabled={loading}
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+              </Button>
+            </div>
+          </div>
 
-                      {/* Footer Actions */}
-                      <div className="flex gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="flex-1 text-[11px] h-8 rounded-lg gap-1 border-border/85 hover:bg-accent cursor-pointer font-semibold"
-                          onClick={() => handleOpenDetail(mod)}
-                        >
-                          <Eye className="h-3 w-3" />
-                          <span>模组详情</span>
-                        </Button>
+          {error && (
+            <div className="bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 p-3 rounded-xl text-xs flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-500 flex-shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
 
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          className="flex-grow text-[11px] h-8 rounded-lg gap-1 bg-accent/80 hover:bg-accent text-foreground cursor-not-allowed group relative"
-                          disabled
-                        >
-                          <Download className="h-3 w-3" />
-                          <span>一键安装</span>
-                          {/* Tooltip on hover */}
-                          <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-popover text-popover-foreground border text-[9px] px-2 py-1 rounded shadow-lg whitespace-nowrap z-50">
-                            一键下载安装功能将在下一阶段启用
-                          </span>
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )
-              })}
+          {loading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <Card key={i} className="animate-pulse border border-border bg-card">
+                  <CardContent className="p-5 space-y-3">
+                    <div className="h-4 bg-accent/40 rounded w-2/3"></div>
+                    <div className="h-3 bg-accent/30 rounded w-1/3"></div>
+                    <div className="h-10 bg-accent/20 rounded"></div>
+                    <div className="flex gap-2 pt-2">
+                      <div className="h-8 bg-accent/30 rounded w-1/2"></div>
+                      <div className="h-8 bg-accent/30 rounded w-1/2"></div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center py-12 text-muted-foreground border border-dashed border-border rounded-xl">
-              <Info className="h-8 w-8 text-muted-foreground/60 mb-2" />
-              <p className="text-xs">未找到符合条件的模组，请更换搜索词重新查询。</p>
-            </div>
-          )}
+            <>
+              {/* Mods Grid */}
+              {paginatedMods.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-in fade-in duration-300">
+                  {paginatedMods.map((mod) => {
+                    return (
+                      <Card key={mod.Slug} className="border border-border/80 bg-card hover:border-primary/45 hover:shadow-md transition-all duration-300 flex flex-col justify-between overflow-hidden">
+                        <CardHeader className="p-4 pb-2 space-y-1.5">
+                          <div className="flex justify-between items-start gap-2">
+                            <CardTitle className="text-sm font-bold truncate pr-2 text-foreground" title={mod.Name}>
+                              {mod.Name}
+                            </CardTitle>
+                            {renderStatusBadge(mod.Compatibility?.Status || "ok")}
+                          </div>
+                          <CardDescription className="text-[11px] truncate text-muted-foreground font-medium">
+                            作者: {mod.Author} {mod.AlternateAuthors ? `(aka ${mod.AlternateAuthors})` : ""}
+                          </CardDescription>
+                        </CardHeader>
+                        
+                        <CardContent className="p-4 pt-1 flex-1 flex flex-col justify-between space-y-4">
+                          {/* Compatibility Summary */}
+                          <div className="bg-accent/20 dark:bg-accent/5 rounded-lg p-2.5 text-xs text-muted-foreground flex-1 flex flex-col justify-center min-h-[55px] border border-border/40 overflow-hidden text-ellipsis">
+                            {mod.Compatibility?.Summary ? (
+                              <div 
+                                className="leading-relaxed smapi-compat-summary max-h-[70px] overflow-y-auto"
+                                dangerouslySetInnerHTML={{ __html: mod.Compatibility.Summary }}
+                              />
+                            ) : (
+                              <div className="flex items-center gap-1.5 text-green-600 dark:text-green-400 font-medium text-[11px]">
+                                <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                                <span>完美兼容，目前没有任何已知问题</span>
+                              </div>
+                            )}
+                            {mod.Compatibility?.BrokeIn && (
+                              <p className="text-[10px] text-red-500 mt-1.5 font-semibold">
+                                损坏自: {mod.Compatibility.BrokeIn}
+                              </p>
+                            )}
+                          </div>
 
-          {/* Pagination Controls */}
-          {totalPages > 1 && (
-            <div className="flex flex-col sm:flex-row justify-between items-center gap-3 bg-card border border-border p-3.5 rounded-xl text-xs shadow-sm">
-              <span className="text-muted-foreground font-medium">
-                当前第 {currentPage} 页 / 共 {totalPages} 页 (共 {filteredMods.length} 项)
-              </span>
-              
-              <div className="flex items-center gap-1.5">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                  disabled={currentPage === 1}
-                  className="h-8 text-[11px] rounded-lg gap-1 px-2 hover:bg-accent cursor-pointer"
-                >
-                  <ChevronLeft className="h-3.5 w-3.5" />
-                  <span>上一页</span>
-                </Button>
+                          {/* Footer Actions */}
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="flex-1 text-[11px] h-8 rounded-lg gap-1 border-border/85 hover:bg-accent cursor-pointer font-semibold"
+                              onClick={() => handleOpenDetail(mod)}
+                            >
+                              <Eye className="h-3 w-3" />
+                              <span>模组详情</span>
+                            </Button>
 
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentPage(1)}
-                  disabled={currentPage === 1}
-                  className="h-8 w-8 p-0 text-[11px] rounded-lg hover:bg-accent cursor-pointer"
-                >
-                  1
-                </Button>
-                {currentPage > 3 && <span className="text-muted-foreground px-1">...</span>}
-                {Array.from({ length: totalPages }, (_, i) => i + 1)
-                  .filter(p => p !== 1 && p !== totalPages && Math.abs(p - currentPage) <= 1)
-                  .map(p => (
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              className="flex-grow text-[11px] h-8 rounded-lg gap-1 bg-accent/80 hover:bg-accent text-foreground cursor-not-allowed group relative"
+                              disabled
+                            >
+                              <Download className="h-3 w-3" />
+                              <span>一键安装</span>
+                              {/* Tooltip on hover */}
+                              <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-popover text-popover-foreground border text-[9px] px-2 py-1 rounded shadow-lg whitespace-nowrap z-50">
+                                一键下载安装功能将在下一阶段启用
+                              </span>
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-12 text-muted-foreground border border-dashed border-border rounded-xl">
+                  <Info className="h-8 w-8 text-muted-foreground/60 mb-2" />
+                  <p className="text-xs">未找到符合条件的模组，请更换搜索词重新查询。</p>
+                </div>
+              )}
+
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="flex flex-col sm:flex-row justify-between items-center gap-3 bg-card border border-border p-3.5 rounded-xl text-xs shadow-sm">
+                  <span className="text-muted-foreground font-medium">
+                    当前第 {currentPage} 页 / 共 {totalPages} 页 (共 {filteredMods.length} 项)
+                  </span>
+                  
+                  <div className="flex items-center gap-1.5">
                     <Button
-                      key={p}
-                      variant={p === currentPage ? "default" : "outline"}
+                      variant="outline"
                       size="sm"
-                      onClick={() => setCurrentPage(p)}
-                      className={`h-8 w-8 p-0 text-[11px] rounded-lg cursor-pointer ${p === currentPage ? "" : "hover:bg-accent"}`}
+                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                      disabled={currentPage === 1}
+                      className="h-8 text-[11px] rounded-lg gap-1 px-2 hover:bg-accent cursor-pointer"
                     >
-                      {p}
+                      <ChevronLeft className="h-3.5 w-3.5" />
+                      <span>上一页</span>
                     </Button>
-                  ))
-                }
-                {currentPage < totalPages - 2 && <span className="text-muted-foreground px-1">...</span>}
-                {totalPages > 1 && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCurrentPage(totalPages)}
-                    disabled={currentPage === totalPages}
-                    className="h-8 w-8 p-0 text-[11px] rounded-lg hover:bg-accent cursor-pointer"
-                  >
-                    {totalPages}
-                  </Button>
-                )}
 
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                  disabled={currentPage === totalPages}
-                  className="h-8 text-[11px] rounded-lg gap-1 px-2 hover:bg-accent cursor-pointer"
-                >
-                  <span>下一页</span>
-                  <ChevronRight className="h-3.5 w-3.5" />
-                </Button>
-              </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(1)}
+                      disabled={currentPage === 1}
+                      className="h-8 w-8 p-0 text-[11px] rounded-lg hover:bg-accent cursor-pointer"
+                    >
+                      1
+                    </Button>
+                    {currentPage > 3 && <span className="text-muted-foreground px-1">...</span>}
+                    {Array.from({ length: totalPages }, (_, i) => i + 1)
+                      .filter(p => p !== 1 && p !== totalPages && Math.abs(p - currentPage) <= 1)
+                      .map(p => (
+                        <Button
+                          key={p}
+                          variant={p === currentPage ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setCurrentPage(p)}
+                          className={`h-8 w-8 p-0 text-[11px] rounded-lg cursor-pointer ${p === currentPage ? "" : "hover:bg-accent"}`}
+                        >
+                          {p}
+                        </Button>
+                      ))
+                    }
+                    {currentPage < totalPages - 2 && <span className="text-muted-foreground px-1">...</span>}
+                    {totalPages > 1 && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(totalPages)}
+                        disabled={currentPage === totalPages}
+                        className="h-8 w-8 p-0 text-[11px] rounded-lg hover:bg-accent cursor-pointer"
+                      >
+                        {totalPages}
+                      </Button>
+                    )}
 
-              <div className="flex items-center gap-2">
-                <span className="text-muted-foreground whitespace-nowrap">跳转到</span>
-                <Input
-                  type="text"
-                  inputMode="numeric"
-                  value={jumpPage}
-                  onChange={(e) => setJumpPage(e.target.value.replace(/\D/g, ""))}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      const page = parseInt(jumpPage)
-                      if (page >= 1 && page <= totalPages) {
-                        setCurrentPage(page)
-                        setJumpPage("")
-                      }
-                    }
-                  }}
-                  className="h-8 w-20 text-center text-[11px] rounded-lg bg-accent/10 border-border"
-                  placeholder="页码"
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    const page = parseInt(jumpPage)
-                    if (page >= 1 && page <= totalPages) {
-                      setCurrentPage(page)
-                      setJumpPage("")
-                    }
-                  }}
-                  className="h-8 text-[11px] rounded-lg px-3 hover:bg-accent cursor-pointer whitespace-nowrap"
-                >
-                  跳转
-                </Button>
-              </div>
-            </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                      disabled={currentPage === totalPages}
+                      className="h-8 text-[11px] rounded-lg gap-1 px-2 hover:bg-accent cursor-pointer"
+                    >
+                      <span>下一页</span>
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground whitespace-nowrap">跳转到</span>
+                    <Input
+                      type="text"
+                      inputMode="numeric"
+                      value={jumpPage}
+                      onChange={(e) => setJumpPage(e.target.value.replace(/\D/g, ""))}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          const page = parseInt(jumpPage)
+                          if (page >= 1 && page <= totalPages) {
+                            setCurrentPage(page)
+                            setJumpPage("")
+                          }
+                        }
+                      }}
+                      className="h-8 w-20 text-center text-[11px] rounded-lg bg-accent/10 border-border"
+                      placeholder="页码"
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const page = parseInt(jumpPage)
+                        if (page >= 1 && page <= totalPages) {
+                          setCurrentPage(page)
+                          setJumpPage("")
+                        }
+                      }}
+                      className="h-8 text-[11px] rounded-lg px-3 hover:bg-accent cursor-pointer whitespace-nowrap"
+                    >
+                      跳转
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
-        </>
-      )}
+        </TabsContent>
+      </Tabs>
+
       {/* Online Mod Detail Modal */}
       <OnlineModDetailModal
         isOpen={isDetailOpen}

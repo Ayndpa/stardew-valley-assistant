@@ -1,4 +1,5 @@
 use std::fs;
+use tauri::Manager;
 
 fn create_nexus_webview(
     app: &tauri::AppHandle,
@@ -75,8 +76,13 @@ fn eval_js_timeout(win: &tauri::WebviewWindow, js: &str, timeout_secs: u64) -> O
     }
     match rx.recv_timeout(std::time::Duration::from_secs(timeout_secs)) {
         Ok(res) => Some(res),
-        Err(e) => {
-            println!("[eval_js_timeout] ({}) recv_timeout error (timeout): {:?}", win.label(), e);
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            println!("[eval_js_timeout] ({}) JS evaluation timed out after {} seconds", win.label(), timeout_secs);
+            None
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            // Channel disconnected, usually because the window was closed/destroyed.
+            // No need to spam error logs for this normal shutdown scenario.
             None
         }
     }
@@ -160,7 +166,13 @@ fn update_window_visibility_for_cf(
 }
 
 #[tauri::command]
-pub async fn open_nexus_ranking_scraper(app: tauri::AppHandle) -> Result<(), String> {
+pub async fn open_nexus_ranking_scraper(
+    app: tauri::AppHandle,
+    offset: i32,
+    sort_field: String,
+    sort_direction: String,
+    search_query: String,
+) -> Result<(), String> {
     // Lightweight page just to pass Cloudflare and obtain session cookies
     let url_str = "https://www.nexusmods.com/robots.txt".to_string();
     let url = url_str.parse::<tauri::Url>().map_err(|e| e.to_string())?;
@@ -170,7 +182,7 @@ pub async fn open_nexus_ranking_scraper(app: tauri::AppHandle) -> Result<(), Str
     tauri::async_runtime::spawn(async move {
         use tauri::Emitter;
 
-        let window = match create_nexus_webview(&handle, "nexus-ranking-scraper", "Nexus 排行榜加载中...", url, false) {
+        let window = match create_nexus_webview(&handle, "nexus-ranking-scraper", "Nexus 模组加载中...", url, false) {
             Ok(w) => w,
             Err(e) => {
                 println!("[RankingScraper] Failed to build ranking scraper window: {:?}", e);
@@ -186,60 +198,83 @@ pub async fn open_nexus_ranking_scraper(app: tauri::AppHandle) -> Result<(), Str
             let mut cf_shown = false;
             let mut graphql_requested = false;
 
+            let emit_event = |payload: serde_json::Value| {
+                let mut full_payload = payload;
+                if let Some(obj) = full_payload.as_object_mut() {
+                    obj.insert("offset".to_string(), serde_json::json!(offset));
+                    obj.insert("sort_field".to_string(), serde_json::json!(sort_field));
+                    obj.insert("sort_direction".to_string(), serde_json::json!(sort_direction));
+                    obj.insert("search_query".to_string(), serde_json::json!(search_query));
+                }
+                let _ = poll_handle.emit("respond-nexus-ranking-html", full_payload);
+            };
+
             let eval_js = |win: &tauri::WebviewWindow, js: &str| -> Option<String> {
                 eval_js_timeout(win, js, 10)
             };
 
+            let escaped_search = search_query.replace('\\', "\\\\").replace('"', "\\\"");
+            let name_filter = if escaped_search.is_empty() {
+                "[]".to_string()
+            } else {
+                format!(r#"[{{ op: "CONTAINS", value: "{}" }}]"#, escaped_search)
+            };
+
+            let variables_json = format!(
+                r#"{{
+                                    count: 20,
+                                    facets: {{ categoryName: [], languageName: [], tag: [] }},
+                                    filter: {{ adultContent: [{{ op: "EQUALS", value: false }}], filter: [], gameDomainName: [{{ op: "EQUALS", value: "stardewvalley" }}], name: {} }},
+                                    offset: {},
+                                    postFilter: {{}},
+                                    sort: [{{ {}: {{ direction: "{}" }} }}]
+                                }}"#,
+                name_filter, offset, sort_field, sort_direction
+            );
+
             // JS #1: fire the GraphQL fetch, store result in window variable
-            let mut graphql_fire_js = r##"
-                (() => {
-                    try {
+            let mut graphql_fire_js = format!(r##"
+                (() => {{
+                    try {{
                         if (window.__nexusGraphQLDone || window.__nexusGraphQLFetching) return 'skip';
                         window.__nexusGraphQLFetching = true;
-                        fetch('https://api-router.nexusmods.com/graphql', {
+                        fetch('https://api-router.nexusmods.com/graphql', {{
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'X-GraphQL-OperationName': 'ModsListing' },
-                            body: JSON.stringify({
+                            headers: {{ 'Content-Type': 'application/json', 'X-GraphQL-OperationName': 'ModsListing' }},
+                            body: JSON.stringify({{
                                 query: `
-                                    query ModsListing($count: Int = 0, $facets: ModsFacet, $filter: ModsFilter, $offset: Int, $postFilter: ModsFilter, $sort: [ModsSort!]) {
-                                      mods(count: $count, facets: $facets, filter: $filter, offset: $offset, postFilter: $postFilter, sort: $sort, viewUserBlockedContent: false) {
+                                    query ModsListing($count: Int = 0, $facets: ModsFacet, $filter: ModsFilter, $offset: Int, $postFilter: ModsFilter, $sort: [ModsSort!]) {{
+                                      mods(count: $count, facets: $facets, filter: $filter, offset: $offset, postFilter: $postFilter, sort: $sort, viewUserBlockedContent: false) {{
                                         facetsData
-                                        nodes { ...ModTileFragment }
+                                        nodes {{ ...ModTileFragment }}
                                         totalCount
-                                      }
-                                    }
-                                    fragment ModTileFragment on Mod {
+                                      }}
+                                    }}
+                                    fragment ModTileFragment on Mod {{
                                       adultContent createdAt downloads endorsements fileSize
-                                      game { domainName id name }
-                                      modCategory { categoryId name }
+                                      game {{ domainName id name }}
+                                      modCategory {{ categoryId name }}
                                       modId name status summary
                                       thumbnailUrl thumbnailBlurredUrl uid updatedAt
-                                      uploader { avatar memberId name }
+                                      uploader {{ avatar memberId name }}
                                       viewerDownloaded viewerEndorsed viewerTracked viewerUpdateAvailable viewerIsBlocked
-                                    }
+                                    }}
                                 `,
-                                variables: {
-                                    count: 20,
-                                    facets: { categoryName: [], languageName: [], tag: [] },
-                                    filter: { adultContent: [{ op: "EQUALS", value: false }], filter: [], gameDomainName: [{ op: "EQUALS", value: "stardewvalley" }], name: [] },
-                                    offset: 0,
-                                    postFilter: {},
-                                    sort: { downloads: { direction: "DESC" } }
-                                },
+                                variables: {},
                                 operationName: 'ModsListing'
-                            }),
+                            }}),
                             credentials: 'include'
-                        }).then(r => r.json()).then(json => {
+                        }}).then(r => r.json()).then(json => {{
                             window.__nexusGraphQLData = JSON.stringify(json);
                             window.__nexusGraphQLDone = true;
                             //PLACEHOLDER_DEV_ALERT
-                        }).catch(e => {
+                        }}).catch(e => {{
                             window.__nexusGraphQLError = String(e);
-                        });
+                        }});
                         return 'started';
-                    } catch(e) { return 'error:' + String(e); }
-                })()
-            "##.to_string();
+                    }} catch(e) {{ return 'error:' + String(e); }}
+                }})()
+            "##, variables_json);
 
             if cfg!(debug_assertions) {
                 graphql_fire_js = graphql_fire_js.replace(
@@ -264,9 +299,15 @@ pub async fn open_nexus_ranking_scraper(app: tauri::AppHandle) -> Result<(), Str
             "##;
 
             loop {
+                // Check if window still exists
+                if poll_handle.get_webview_window("nexus-ranking-scraper").is_none() {
+                    println!("[RankingScraper] Window was destroyed, exiting loop");
+                    break;
+                }
+
                 // Timeout check
                 if std::time::Instant::now() > timeout {
-                    let _ = poll_handle.emit("respond-nexus-ranking-html", serde_json::json!({ "error": "加载超时，请重试" }));
+                    emit_event(serde_json::json!({ "error": "加载超时，请重试" }));
                     let _ = poll_window.destroy();
                     return;
                 }
@@ -287,12 +328,12 @@ pub async fn open_nexus_ranking_scraper(app: tauri::AppHandle) -> Result<(), Str
                                         if let Ok(data) = serde_json::from_str::<serde_json::Value>(&data_str) {
                                             let _ = poll_window.set_title("Nexus 排行榜已获取");
                                             println!("[RankingScraper] GraphQL data retrieved!");
-                                            let _ = poll_handle.emit("respond-nexus-ranking-html", serde_json::json!({ "mods": data }));
+                                            emit_event(serde_json::json!({ "mods": data }));
                                         } else {
-                                            let _ = poll_handle.emit("respond-nexus-ranking-html", serde_json::json!({ "error": "GraphQL 数据解析失败" }));
+                                            emit_event(serde_json::json!({ "error": "GraphQL 数据解析失败" }));
                                         }
                                     } else {
-                                        let _ = poll_handle.emit("respond-nexus-ranking-html", serde_json::json!({ "error": "无法从 WebView 获取数据" }));
+                                        emit_event(serde_json::json!({ "error": "无法从 WebView 获取数据" }));
                                     }
                                     let _ = poll_window.destroy();
                                     return;
@@ -300,7 +341,7 @@ pub async fn open_nexus_ranking_scraper(app: tauri::AppHandle) -> Result<(), Str
                                 "error" => {
                                     let err = status.get("e").and_then(|v| v.as_str()).unwrap_or("unknown");
                                     println!("[RankingScraper] GraphQL error: {}", err);
-                                    let _ = poll_handle.emit("respond-nexus-ranking-html", serde_json::json!({ "error": format!("GraphQL 请求失败: {}", err) }));
+                                    emit_event(serde_json::json!({ "error": format!("GraphQL 请求失败: {}", err) }));
                                     let _ = poll_window.destroy();
                                     return;
                                 }
@@ -315,10 +356,10 @@ pub async fn open_nexus_ranking_scraper(app: tauri::AppHandle) -> Result<(), Str
                 // CF challenge detection via unified helper
                 let is_cf = check_cloudflare_challenge(&poll_window);
                 if is_cf && !cf_shown {
-                    let _ = poll_handle.emit("respond-nexus-ranking-html", serde_json::json!({ "status": "challenge" }));
+                    emit_event(serde_json::json!({ "status": "challenge" }));
                 }
                 if !is_cf && cf_shown {
-                    let _ = poll_handle.emit("respond-nexus-ranking-html", serde_json::json!({ "status": "loading" }));
+                    emit_event(serde_json::json!({ "status": "loading" }));
                 }
                 update_window_visibility_for_cf(
                     &poll_window,
@@ -460,6 +501,12 @@ pub async fn open_nexus_login_window(app: tauri::AppHandle) -> Result<(), String
             };
 
             loop {
+                // Check if window still exists
+                if poll_handle.get_webview_window("nexus-login").is_none() {
+                    println!("[NexusLogin] Window was destroyed, exiting loop");
+                    break;
+                }
+
                 if std::time::Instant::now() > timeout {
                     println!("[NexusLogin] Timeout reached, destroying window");
                     let _ = poll_handle.emit("nexus-login-result", serde_json::json!({
@@ -661,6 +708,12 @@ pub async fn check_nexus_login_status(app: tauri::AppHandle) -> Result<serde_jso
         let mut cf_shown = false;
 
         loop {
+            // Check if window still exists
+            if poll_handle.get_webview_window("nexus-login-check").is_none() {
+                println!("[NexusLoginCheck] Window was destroyed, exiting loop");
+                return serde_json::json!({ "loggedIn": false, "username": "" });
+            }
+
             // Check Cloudflare challenge
             let is_cf = check_cloudflare_challenge(&poll_window);
             update_window_visibility_for_cf(
@@ -906,6 +959,12 @@ pub async fn fetch_nexus_api_key(app: tauri::AppHandle, force: Option<bool>) -> 
         "##;
 
         loop {
+            // Check if window still exists
+            if poll_handle.get_webview_window("nexus-apikey-fetch").is_none() {
+                println!("[NexusApiKey] Window was destroyed, exiting loop");
+                return serde_json::json!({ "apiKey": "", "error": "窗口已关闭" });
+            }
+
             // If GraphQL was requested, poll for its completion
             if graphql_requested {
                 if let Some(status_res) = eval_js(&poll_window, graphql_status_js) {
@@ -1038,6 +1097,12 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
             };
 
             loop {
+                // Check if window still exists
+                if poll_handle.get_webview_window("nexus-scraper").is_none() {
+                    println!("[Scraper] Window was destroyed, exiting loop");
+                    break;
+                }
+
                 // Timeout: destroy window and notify frontend
                 if std::time::Instant::now() > timeout {
                     println!("[Scraper] Timeout reached, destroying window");

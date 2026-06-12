@@ -392,7 +392,7 @@ export function OnlineModDetailModal({ isOpen, onClose, mod }: OnlineModDetailMo
                 {translate.titleLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Languages className="h-3.5 w-3.5" />}
               </button>
             )}
-            {!loading && details && renderStatusBadge(mod.Compatibility?.Status || "ok")}
+            {!loading && details && mod.Compatibility && renderStatusBadge(mod.Compatibility.Status)}
           </div>
           <button 
             onClick={onClose} 
@@ -485,10 +485,12 @@ export function OnlineModDetailModal({ isOpen, onClose, mod }: OnlineModDetailMo
               <div className="bg-card border border-border/60 rounded-xl p-3 text-xs leading-relaxed space-y-1">
                 <p className="font-bold text-foreground flex items-center gap-1">
                   <Info className="h-3.5 w-3.5 text-primary shrink-0" />
-                  <span>兼容性报告</span>
+                  <span>{mod.Compatibility ? "兼容性报告" : "兼容性说明"}</span>
                 </p>
                 <p className="text-muted-foreground text-[11px]">
-                  此处的报告是经 SMAPI 社区及作者核验后的准确记录，用以替代落后的游戏日志检查。
+                  {mod.Compatibility
+                    ? "此处的报告是经 SMAPI 社区及作者核验后的准确记录，用以替代落后的游戏日志检查。"
+                    : "该模组暂未收录在 SMAPI 兼容列表中，通常适用于不需要 SMAPI 兼容特殊报告的模组。"}
                 </p>
               </div>
             </div>
