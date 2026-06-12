@@ -14,6 +14,7 @@ import {
   TreePine,
   Clock,
   User,
+  FileQuestion,
 } from "lucide-react"
 
 // Dynamic imports will be done inline inside useEffect/handlers for reliability
@@ -49,48 +50,6 @@ interface SaveDetail {
   weatherTomorrow: string
   museumPiecesCount: number
   friendships: FriendshipInfo[]
-}
-
-const MOCK_SAVE_SUMMARY: SaveSummary = {
-  id: "MockCharacter_123456789",
-  playerName: "农夫阿星",
-  farmName: "桃源",
-  money: 125840,
-  totalMoneyEarned: 245000,
-  dayOfMonth: 15,
-  season: 0, // Spring
-  year: 2,
-  farmingLevel: 10,
-  miningLevel: 8,
-  combatLevel: 7,
-  foragingLevel: 8,
-  fishingLevel: 6,
-  deepestMineLevel: 120,
-  millisecondsPlayed: 45 * 3600 * 1000, // 45 hours
-  lastSaveTime: Date.now() / 1000,
-}
-
-const MOCK_SAVE_DETAIL: SaveDetail = {
-  summary: MOCK_SAVE_SUMMARY,
-  weatherToday: "Sun",
-  weatherTomorrow: "Rain",
-  museumPiecesCount: 62,
-  friendships: [
-    { npcName: "Abigail", points: 2500 }, // 10 hearts
-    { npcName: "Leah", points: 2000 },    // 8 hearts
-    { npcName: "Sebastian", points: 1500 },
-    { npcName: "Haley", points: 1200 },
-    { npcName: "Lewis", points: 800 },
-    { npcName: "Penny", points: 2500 },
-    { npcName: "Shane", points: 2500 },
-    { npcName: "Elliott", points: 2000 },
-    { npcName: "Emily", points: 2000 },
-    { npcName: "Harvey", points: 2500 },
-    { npcName: "Sam", points: 1800 },
-    { npcName: "Maru", points: 2000 },
-    { npcName: "Alex", points: 2000 },
-    { npcName: "Robin", points: 2500 },
-  ]
 }
 
 const SEASONS = ["春季", "夏季", "秋季", "冬季"]
@@ -175,25 +134,26 @@ export function Dashboard({ selectedSaveId }: DashboardProps) {
   // Fetch details for the selected save
   useEffect(() => {
     async function fetchDetail() {
-      if (!selectedSaveId) return
+      if (!selectedSaveId) {
+        setLoading(false)
+        return
+      }
       
       setLoading(true)
       const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__;
-      const isMock = selectedSaveId === MOCK_SAVE_SUMMARY.id;
       
-      if (isTauri && !isMock) {
+      if (isTauri) {
         try {
           const { invoke } = await import("@tauri-apps/api/core");
           const d: SaveDetail = await invoke("get_save_detail", { id: selectedSaveId })
           setDetail(d)
         } catch (err) {
           console.error("Error loading save detail:", err)
-          setDetail(MOCK_SAVE_DETAIL)
+          setDetail(null)
         } finally {
           setLoading(false)
         }
       } else {
-        setDetail(MOCK_SAVE_DETAIL)
         setLoading(false)
       }
     }
@@ -201,7 +161,7 @@ export function Dashboard({ selectedSaveId }: DashboardProps) {
   }, [selectedSaveId])
 
 
-  if (loading && !detail) {
+  if (loading) {
     return (
       <div className="p-8 flex items-center justify-center h-[50vh]">
         <div className="text-center space-y-2">
@@ -212,9 +172,22 @@ export function Dashboard({ selectedSaveId }: DashboardProps) {
     )
   }
 
-  const activeDetail = detail || MOCK_SAVE_DETAIL
-  const summary = activeDetail.summary
-  const isMockData = selectedSaveId === MOCK_SAVE_SUMMARY.id
+  // No save selected or no save data
+  if (!selectedSaveId || !detail) {
+    return (
+      <div className="p-8 flex items-center justify-center h-[70vh]">
+        <div className="text-center space-y-4 max-w-md">
+          <FileQuestion className="h-16 w-16 text-muted-foreground/30 mx-auto" />
+          <h3 className="text-xl font-bold text-muted-foreground">暂无存档数据</h3>
+          <p className="text-sm text-muted-foreground/70">
+            您尚未选择游戏存档，或本地未检测到任何星露谷物语存档文件。请在游戏中创建存档后，通过侧边栏选择对应的存档文件以查看仪表盘数据。
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  const summary = detail.summary
 
   const seasonName = SEASONS[summary.season] || "春季"
   const dayOfMonth = summary.dayOfMonth
@@ -223,7 +196,7 @@ export function Dashboard({ selectedSaveId }: DashboardProps) {
   const playHours = Math.floor(summary.millisecondsPlayed / 3600000)
   const playTimeStr = `累计玩了 ${playHours} 小时`
 
-  const weatherConfig = getWeatherConfig(activeDetail.weatherToday)
+  const weatherConfig = getWeatherConfig(detail.weatherToday)
   const WeatherIcon = weatherConfig.icon
 
   const VILLAGERS = new Set([
@@ -236,7 +209,7 @@ export function Dashboard({ selectedSaveId }: DashboardProps) {
   // Calculate relationships
   let maxHeartsCount = 0
   let totalTracked = 0
-  activeDetail.friendships.forEach((f) => {
+  detail.friendships.forEach((f) => {
     if (VILLAGERS.has(f.npcName)) {
       totalTracked++
       const hearts = Math.floor(f.points / 250)
@@ -272,9 +245,9 @@ export function Dashboard({ selectedSaveId }: DashboardProps) {
     },
     {
       title: "收集进度",
-      value: `${Math.round((activeDetail.museumPiecesCount / 95) * 100)}%`,
+      value: `${Math.round((detail.museumPiecesCount / 95) * 100)}%`,
       icon: <Pickaxe className="h-5 w-5" />,
-      description: `博物馆捐赠 ${activeDetail.museumPiecesCount}/95`,
+      description: `博物馆捐赠 ${detail.museumPiecesCount}/95`,
       color: "text-blue-500",
     },
   ]
@@ -289,7 +262,7 @@ export function Dashboard({ selectedSaveId }: DashboardProps) {
   if (birthdayNPC) {
     tasksList.push({ task: `🎉 送生日礼物给 ${birthdayNPC}!`, done: false })
   }
-  if (activeDetail.weatherToday === "Rain" || activeDetail.weatherToday === "Storm" || activeDetail.weatherToday === "GreenRain") {
+  if (detail.weatherToday === "Rain" || detail.weatherToday === "Storm" || detail.weatherToday === "GreenRain") {
     tasksList.push({ task: "今天下雨，不用给作物浇水 🌧️", done: true })
   } else {
     tasksList.push({ task: "给全部农作物浇水 💦", done: false })
@@ -331,7 +304,7 @@ export function Dashboard({ selectedSaveId }: DashboardProps) {
     Sebastian: "塞巴斯蒂安", Shane: "谢恩", Vincent: "文森特", Willy: "威利",
     Wizard: "法师", Dwarf: "矮人"
   }
-  const bestFriend = activeDetail.friendships.reduce((best, current) => {
+  const bestFriend = detail.friendships.reduce((best, current) => {
     if (VILLAGERS.has(current.npcName) && current.points > (best?.points || 0)) {
       return current
     }
@@ -347,10 +320,10 @@ export function Dashboard({ selectedSaveId }: DashboardProps) {
       time: "本周",
     })
   }
-  if (activeDetail.museumPiecesCount > 0) {
+  if (detail.museumPiecesCount > 0) {
     recentActivitiesList.push({
       icon: <User className="h-4 w-4 text-purple-400" />,
-      text: `向鹈鹕镇博物馆捐赠了共 ${activeDetail.museumPiecesCount} 件文物与矿石`,
+      text: `向鹈鹕镇博物馆捐赠了共 ${detail.museumPiecesCount} 件文物与矿石`,
       time: "最近",
     })
   }
@@ -361,8 +334,8 @@ export function Dashboard({ selectedSaveId }: DashboardProps) {
   })
 
   // 7-day forecast generation
-  const forecastRaw = generateForecast(dayOfMonth, summary.season, summary.id, activeDetail.weatherTomorrow)
-  forecastRaw[0].weather = activeDetail.weatherToday // override today with actual
+  const forecastRaw = generateForecast(dayOfMonth, summary.season, summary.id, detail.weatherTomorrow)
+  forecastRaw[0].weather = detail.weatherToday // override today with actual
 
   const getForecastDayLabel = (offset: number, currentDay: number) => {
     if (offset === 0) return "今天"
@@ -398,16 +371,6 @@ export function Dashboard({ selectedSaveId }: DashboardProps) {
 
   return (
     <div className="p-8 space-y-8">
-      {/* Fallback Warning */}
-      {isMockData && (
-        <div className="bg-amber-500/10 border border-amber-500/20 text-amber-500 rounded-lg p-3 text-sm flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="font-semibold">💡 提示:</span>
-            <span>未检测到本地游戏存档，当前展示的是演示数据。在游戏中创建存档后，系统将自动关联并显示真实数据。</span>
-          </div>
-        </div>
-      )}
-
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>

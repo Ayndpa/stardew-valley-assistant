@@ -130,17 +130,6 @@ interface PlantedCrop {
   phaseDays: number[]
 }
 
-const MOCK_PLANTED_CROPS: PlantedCrop[] = [
-  { location: "Farm", x: 12, y: 15, seedId: "745", harvestId: "400", currentPhase: 2, dayOfCurrentPhase: 1, fullyGrown: false, dead: false, isWatered: true, phaseDays: [1, 2, 3, 2, 99999] },
-  { location: "Farm", x: 12, y: 16, seedId: "745", harvestId: "400", currentPhase: 4, dayOfCurrentPhase: 0, fullyGrown: true, dead: false, isWatered: true, phaseDays: [1, 2, 3, 2, 99999] },
-  { location: "Farm", x: 13, y: 15, seedId: "472", harvestId: "24", currentPhase: 1, dayOfCurrentPhase: 0, fullyGrown: false, dead: false, isWatered: false, phaseDays: [1, 1, 1, 1, 99999] },
-  { location: "Farm", x: 13, y: 16, seedId: "472", harvestId: "24", currentPhase: 4, dayOfCurrentPhase: 0, fullyGrown: false, dead: true, isWatered: false, phaseDays: [1, 1, 1, 1, 99999] },
-  { location: "Greenhouse", x: 5, y: 8, seedId: "495", harvestId: "300", currentPhase: 3, dayOfCurrentPhase: 4, fullyGrown: false, dead: false, isWatered: true, phaseDays: [2, 7, 7, 7, 5, 99999] },
-  { location: "Greenhouse", x: 5, y: 9, seedId: "495", harvestId: "300", currentPhase: 3, dayOfCurrentPhase: 4, fullyGrown: false, dead: false, isWatered: true, phaseDays: [2, 7, 7, 7, 5, 99999] },
-  { location: "IslandWest", x: 20, y: 22, seedId: "833", harvestId: "834", currentPhase: 4, dayOfCurrentPhase: 2, fullyGrown: true, dead: false, isWatered: true, phaseDays: [1, 2, 3, 4, 4, 99999] },
-  { location: "IslandWest", x: 20, y: 23, seedId: "833", harvestId: "834", currentPhase: 4, dayOfCurrentPhase: 2, fullyGrown: true, dead: false, isWatered: true, phaseDays: [1, 2, 3, 4, 4, 99999] },
-]
-
 interface Crop {
   name: string
   season: string
@@ -198,24 +187,25 @@ export function Crops({ selectedSaveId }: CropsProps) {
   // Fetch real crops
   useEffect(() => {
     async function loadCrops() {
-      if (!selectedSaveId) return
+      if (!selectedSaveId) {
+        setLoadingCrops(false)
+        return
+      }
       setLoadingCrops(true)
       
       const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__;
-      const isMock = selectedSaveId.startsWith("MockCharacter")
-      if (isTauri && !isMock) {
+      if (isTauri) {
         try {
           const { invoke } = await import("@tauri-apps/api/core");
           const crops: PlantedCrop[] = await invoke("get_planted_crops", { id: selectedSaveId })
           setPlantedCrops(crops)
         } catch (err) {
           console.error("Error loading planted crops:", err)
-          setPlantedCrops(MOCK_PLANTED_CROPS)
+          setPlantedCrops([])
         } finally {
           setLoadingCrops(false)
         }
       } else {
-        setPlantedCrops(MOCK_PLANTED_CROPS)
         setLoadingCrops(false)
       }
     }
@@ -302,7 +292,17 @@ export function Crops({ selectedSaveId }: CropsProps) {
         </TabsList>
 
         <TabsContent value="my-farm" className="space-y-6">
-          {loadingCrops ? (
+          {!selectedSaveId ? (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+                <Sprout className="h-12 w-12 text-muted-foreground/40 mb-4" />
+                <p className="font-semibold text-lg">未选择游戏存档</p>
+                <p className="text-sm text-muted-foreground mt-1 max-w-sm">
+                  请先通过侧边栏选择一个游戏存档文件，系统将读取您农场中种植的作物信息并在此处实时显示。
+                </p>
+              </CardContent>
+            </Card>
+          ) : loadingCrops ? (
             <div className="flex flex-col items-center justify-center py-20 space-y-2">
               <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
               <p className="text-sm text-muted-foreground">正在加载农田作物...</p>

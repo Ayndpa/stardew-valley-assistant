@@ -358,6 +358,9 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
             tauri::WebviewUrl::External(url)
         )
         .title("Nexus 验证中...")
+        .inner_size(960.0, 720.0)
+        .min_inner_size(760.0, 560.0)
+        .center()
         .visible(tauri::is_dev());
 
         // Set persistent data directory for cookie/localStorage support
@@ -372,6 +375,24 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
                 return;
             }
         };
+
+        let center_over_main = |win: &tauri::WebviewWindow, app_handle: &tauri::AppHandle| {
+            if let Some(main_window) = app_handle.get_webview_window("main") {
+                if let (Ok(main_pos), Ok(main_size), Ok(win_size)) = (
+                    main_window.outer_position(),
+                    main_window.inner_size(),
+                    win.inner_size(),
+                ) {
+                    let x = main_pos.x + ((main_size.width as i32 - win_size.width as i32) / 2);
+                    let y = main_pos.y + ((main_size.height as i32 - win_size.height as i32) / 2);
+                    let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
+                    return;
+                }
+            }
+            let _ = win.center();
+        };
+
+        center_over_main(&window, &handle);
 
         // Poll from Rust side via eval() — no need for __TAURI__ in the webview
         let poll_window = window.clone();
@@ -411,7 +432,22 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
                             const lowerHtml = html.toLowerCase();
                             const lowerTitle = (document.title || "").toLowerCase();
                             const lowerHref = location.href.toLowerCase();
-                            const isChallenge =
+                            const ogTitle = document.querySelector("meta[property='og:title']")?.getAttribute("content") || "";
+                            const ogDescription = document.querySelector("meta[property='og:description']")?.getAttribute("content") || "";
+                            const hasNexusDetailMarker =
+                                !!document.querySelector("#description-content, #section-mod-description, .mod-description, .tab-description, #pagetitle h1, meta[property='og:title'], meta[property='og:description']");
+                            const hasNexusPageMarker =
+                                location.hostname.endsWith("nexusmods.com") &&
+                                hasNexusDetailMarker &&
+                                !lowerTitle.includes("just a moment") &&
+                                !lowerTitle.includes("checking your browser") &&
+                                !lowerTitle.includes("attention required") &&
+                                (
+                                    ogTitle.toLowerCase().includes("nexus") ||
+                                    ogDescription.length > 0 ||
+                                    !!document.querySelector("a[href*='/stardewvalley/mods/'], a[href*='/mods/']")
+                                );
+                            const hasChallengeMarker =
                                 lowerTitle.includes("just a moment") ||
                                 lowerTitle.includes("checking your browser") ||
                                 lowerTitle.includes("attention required") ||
@@ -424,10 +460,7 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
                                 lowerHtml.includes("cloudflare ray id") ||
                                 text.includes("Checking if the site connection is secure") ||
                                 text.includes("Verify you are human");
-                            const hasNexusPageMarker =
-                                location.hostname.endsWith("nexusmods.com") &&
-                                !isChallenge &&
-                                !!document.querySelector("#description-content, #section-mod-description, .mod-description, .tab-description, #pagetitle h1, meta[property='og:title'], meta[property='og:description']");
+                            const isChallenge = !hasNexusPageMarker && hasChallengeMarker;
                             return {
                                 readyState: document.readyState,
                                 title: document.title || "",
@@ -486,10 +519,20 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
                     cf_shown = true;
                     last_title = "Nexus 需要验证".to_string();
                     let _ = poll_window.set_title(&last_title);
+                    center_over_main(&poll_window, &poll_handle);
                     let _ = poll_window.show();
+                    let _ = poll_window.unminimize();
                     let _ = poll_window.set_focus();
                     let _ = poll_handle.emit("respond-nexus-html", serde_json::json!({
                         "status": "challenge"
+                    }));
+                }
+
+                if !is_challenge && cf_shown && last_title == "Nexus 需要验证" {
+                    last_title = "Nexus 页面加载中...".to_string();
+                    let _ = poll_window.set_title(&last_title);
+                    let _ = poll_handle.emit("respond-nexus-html", serde_json::json!({
+                        "status": "loading"
                     }));
                 }
 

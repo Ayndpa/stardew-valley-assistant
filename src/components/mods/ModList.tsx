@@ -10,7 +10,9 @@ import {
   Plus,
   Trash2,
   Loader2,
-  X
+  X,
+  Download,
+  PackageOpen
 } from "lucide-react"
 
 export interface ModConfigField {
@@ -56,6 +58,8 @@ interface ModListProps {
   isCheckingUpdates: boolean
   onOpenFolder: () => void
   onOpenAddModal: () => void
+  isLoading?: boolean
+  onGoOnline?: () => void
 }
 
 export function ModList({
@@ -76,6 +80,8 @@ export function ModList({
   isCheckingUpdates,
   onOpenFolder,
   onOpenAddModal,
+  isLoading = false,
+  onGoOnline,
 }: ModListProps) {
   return (
     <div className="space-y-4">
@@ -174,7 +180,45 @@ export function ModList({
 
       {/* List of Mod Cards */}
       <div className="space-y-3 max-h-[640px] overflow-y-auto pr-1">
-        {filteredMods.length === 0 ? (
+        {isLoading ? (
+          <Card className="border border-dashed border-border py-16 flex flex-col items-center justify-center text-center">
+            <Loader2 className="h-10 w-10 text-primary/50 animate-spin mb-4" />
+            <h3 className="text-lg font-bold text-muted-foreground">正在扫描模组目录...</h3>
+            <p className="text-sm text-muted-foreground/70 max-w-xs mt-1">
+              正在读取本地 Mods 文件夹中的模组信息，请稍候。
+            </p>
+          </Card>
+        ) : mods.length === 0 ? (
+          <Card className="border border-dashed border-border py-16 flex flex-col items-center justify-center text-center">
+            <PackageOpen className="h-12 w-12 text-muted-foreground/40 mb-3" />
+            <h3 className="text-lg font-bold text-muted-foreground">尚未安装任何模组</h3>
+            <p className="text-sm text-muted-foreground/70 max-w-xs mt-1">
+              您的 Mods 目录目前是空的。您可以前往 Nexus Mods 浏览并下载热门的星露谷物语模组，或者手动导入本地模组文件。
+            </p>
+            <div className="flex gap-2 mt-4">
+              {onGoOnline && (
+                <Button
+                  variant="default"
+                  size="sm"
+                  className="gap-2 rounded-xl"
+                  onClick={onGoOnline}
+                >
+                  <Download className="h-4 w-4" />
+                  前往 Nexus 下载模组
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 rounded-xl"
+                onClick={onOpenAddModal}
+              >
+                <Plus className="h-4 w-4" />
+                手动导入模组
+              </Button>
+            </div>
+          </Card>
+        ) : filteredMods.length === 0 ? (
           <Card className="border border-dashed border-border py-16 flex flex-col items-center justify-center text-center">
             <Puzzle className="h-12 w-12 text-muted-foreground/40 mb-3" />
             <h3 className="text-lg font-bold text-muted-foreground">没有检索到模组</h3>

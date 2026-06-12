@@ -10,6 +10,7 @@ import {
   Star,
   Sparkles,
   Info,
+  Users,
 } from "lucide-react"
 
 // Dynamic imports will be done inline inside useEffect/handlers for reliability
@@ -90,14 +91,6 @@ const relationshipStatusMap: Record<string, string> = {
   "Divorced": "离异 💔",
 }
 
-const MOCK_FRIENDSHIPS: FriendshipInfo[] = [
-  { npcName: "Abigail", points: 2000, giftsThisWeek: 1, giftsToday: 0, talkedToToday: true, status: "Dating" },
-  { npcName: "Sebastian", points: 1500, giftsThisWeek: 0, giftsToday: 0, talkedToToday: false, status: "Friendly" },
-  { npcName: "Leah", points: 2500, giftsThisWeek: 2, giftsToday: 1, talkedToToday: true, status: "Married" },
-  { npcName: "Harvey", points: 1000, giftsThisWeek: 0, giftsToday: 0, talkedToToday: false, status: "Friendly" },
-  { npcName: "Robin", points: 1250, giftsThisWeek: 2, giftsToday: 0, talkedToToday: true, status: "Friendly" },
-]
-
 function HeartBar({ hearts, maxHearts }: { hearts: number; maxHearts: number }) {
   return (
     <div className="flex items-center gap-0.5 flex-wrap">
@@ -126,12 +119,14 @@ export function NPCs({ selectedSaveId }: NPCsProps) {
   // Fetch real relationships
   useEffect(() => {
     async function loadFriendships() {
-      if (!selectedSaveId) return
+      if (!selectedSaveId) {
+        setLoading(false)
+        return
+      }
       setLoading(true)
 
       const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__;
-      const isMock = selectedSaveId.startsWith("MockCharacter")
-      if (isTauri && !isMock) {
+      if (isTauri) {
         try {
           const { invoke } = await import("@tauri-apps/api/core");
           const detail: SaveDetail = await invoke("get_save_detail", { id: selectedSaveId })
@@ -142,16 +137,11 @@ export function NPCs({ selectedSaveId }: NPCsProps) {
           setFriendships(map)
         } catch (err) {
           console.error("Error loading friendships:", err)
-          const map: Record<string, FriendshipInfo> = {}
-          MOCK_FRIENDSHIPS.forEach(f => { map[f.npcName] = f })
-          setFriendships(map)
+          setFriendships({})
         } finally {
           setLoading(false)
         }
       } else {
-        const map: Record<string, FriendshipInfo> = {}
-        MOCK_FRIENDSHIPS.forEach(f => { map[f.npcName] = f })
-        setFriendships(map)
         setLoading(false)
       }
     }
@@ -224,7 +214,15 @@ export function NPCs({ selectedSaveId }: NPCsProps) {
           </div>
 
           <div className="h-[60vh] overflow-y-auto border rounded-lg p-2 space-y-1 bg-accent/10">
-            {loading ? (
+            {!selectedSaveId ? (
+              <div className="flex flex-col items-center justify-center h-full space-y-3 text-center px-4">
+                <Users className="h-10 w-10 text-muted-foreground/30" />
+                <p className="text-sm font-semibold text-muted-foreground">未选择游戏存档</p>
+                <p className="text-xs text-muted-foreground/70">
+                  请先通过侧边栏选择存档文件，系统将加载您与村民的好感度数据。
+                </p>
+              </div>
+            ) : loading ? (
               <div className="flex flex-col items-center justify-center h-full space-y-2">
                 <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
                 <p className="text-xs text-muted-foreground">正在加载好感度...</p>

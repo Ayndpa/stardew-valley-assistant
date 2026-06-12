@@ -2,6 +2,7 @@ import { useState, useEffect } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Sliders, CheckCircle2, AlertTriangle, Info, X } from "lucide-react"
+import type { Page } from "@/App"
 
 // Import subcomponents
 import { SmapiInstaller } from "@/components/mods/SmapiInstaller"
@@ -9,149 +10,6 @@ import { SmapiManager } from "@/components/mods/SmapiManager"
 import { ModList, Mod } from "@/components/mods/ModList"
 import { ModDetail } from "@/components/mods/ModDetail"
 import { AddModModal } from "@/components/mods/AddModModal"
-
-// Initial Mock Mods Data
-const INITIAL_MODS: Mod[] = [
-  {
-    id: "content-patcher",
-    name: "内容补丁",
-    englishName: "Content Patcher",
-    version: "2.3.0",
-    latestVersion: "2.3.0",
-    author: "Pathoschild",
-    description: "允许载入内容包来自定义游戏（如重绘贴图、替换NPC台词、调整地图数据），而不需要直接修改游戏的原版可执行文件。是绝大多数视觉类与数据类模组的运行基石。",
-    category: "core",
-    isEnabled: true,
-    nexusId: 1915,
-    localPath: "Mods/ContentPatcher",
-    folderName: "ContentPatcher",
-    dependencies: [],
-    config: [
-      { key: "Enabled", label: "启用该补丁引擎", type: "boolean", value: true, description: "是否整体激活 Content Patcher 对游戏内容的干预" },
-      { key: "DebugMode", label: "开启调试模式", type: "boolean", value: false, description: "输出更多详细加载日志在控制台，有助于模组制作者调试" },
-      { key: "Locale", label: "默认语言代码", type: "string", value: "zh", description: "模组识别并优先加载的系统语言区域代码" }
-    ]
-  },
-  {
-    id: "ui-info-suite-2",
-    name: "游戏信息增强套件 2",
-    englishName: "UI Info Suite 2",
-    version: "2.3.0",
-    latestVersion: "2.3.2",
-    author: "Annosz",
-    description: "在游戏中显示各种非常实用的UI信息和悬浮提示。包括今日运气详情、广告看板上的天气预报、作物成熟的剩余天数、当前NPC在地图上的精准头像位置、洒水器和稻草人作用范围等。",
-    category: "utility",
-    isEnabled: true,
-    nexusId: 1150,
-    localPath: "Mods/UIInfoSuite2",
-    folderName: "UIInfoSuite2",
-    dependencies: ["content-patcher"],
-    config: [
-      { key: "ShowLuckMinigame", label: "显示每日运气图标", type: "boolean", value: true, description: "在右上角时钟下侧直接显示今天运气的拟物图标" },
-      { key: "ShowCalendarEverywhere", label: "随时打开日历看板", type: "boolean", value: true, description: "允许玩家点击游戏UI右上角的时钟图标，直接呼出日历看板" },
-      { key: "ShowExperienceBar", label: "显示即时经验条", type: "boolean", value: true, description: "当获得耕种、采矿等技能经验时，在屏幕边侧弹出经验进度条" },
-      { key: "IconSize", label: "图标显示比例", type: "number", value: 10, description: "通知面板与悬浮标志的缩放百分比 (推荐范围: 8 - 14)" }
-    ]
-  },
-  {
-    id: "stardew-valley-expanded",
-    name: "星露谷物语拓展版 (SVE)",
-    englishName: "Stardew Valley Expanded",
-    version: "1.14.24",
-    latestVersion: "1.14.24",
-    author: "FlashShifter",
-    description: "星露谷物语最著名的超大型社区扩展模组。向原版游戏中追加了超过 20 个新NPC角色、25 个宏大开阔的新地图区域、全新的大型节日、长达数十万字的角色剧情、以及全新的鱼类、农作物与装备武器。",
-    category: "expansion",
-    isEnabled: true,
-    nexusId: 3753,
-    localPath: "Mods/StardewValleyExpanded",
-    folderName: "StardewValleyExpanded",
-    dependencies: ["content-patcher"],
-    config: [
-      { key: "OlderSophiaSprite", label: "使用索菲亚成熟头像", type: "boolean", value: false, description: "启用后，NPC索菲亚的立绘与行走图将切换为稍大年龄的风格版本" },
-      { key: "ReplaceChimney", label: "重构农庄烟囱", type: "boolean", value: true, description: "将农舍的传统老式烟囱替换为更符合SVE自然唯美主题风格的设计" },
-      { key: "ImmersiveFarm2", label: "沉浸式农场适配", type: "boolean", value: true, description: "配合加载 IF2R 大型农场地图 of 专属环境物件渲染" }
-    ]
-  },
-  {
-    id: "automate",
-    name: "自动化机器",
-    englishName: "Automate",
-    version: "2.0.2",
-    latestVersion: "2.0.4",
-    author: "Pathoschild",
-    description: "极其好用的便利性功能模组。只需将存储箱放置在任何加工机器（如熔炉、酿酒桶、果酱罐、蛋黄酱机等）的相邻位置，即可自动吸取原材料进行加工，并把产出的成品自动收回箱子中。支持通过道路连成网络。",
-    category: "utility",
-    isEnabled: true,
-    nexusId: 1063,
-    localPath: "Mods/Automate",
-    folderName: "Automate",
-    dependencies: [],
-    config: [
-      { key: "ConnectorWidth", label: "连接件传输跨度", type: "number", value: 1, description: "自定义石路、木地板等充当数据线连接机器时的最长跨越格数" },
-      { key: "AutomationInterval", label: "自动化检测帧间隔", type: "number", value: 60, description: "机器搜索和加工周期的检测频率（数值越小越及时，但可能对配置较低的电脑造成负担）" },
-      { key: "PullItemsFirst", label: "箱子按旧物优先提取", type: "boolean", value: false, description: "如果箱内有同种物品的多个堆叠，是否强制从最早入箱的物品序列开始取料" }
-    ]
-  },
-  {
-    id: "tractor-mod",
-    name: "现代化拖拉机",
-    englishName: "Tractor Mod",
-    version: "4.1.2",
-    latestVersion: "4.1.2",
-    author: "Pathoschild",
-    description: "向农场中加入了一台可购买的多功能拖拉机。玩家可以骑上拖拉机，搭配不同的工具在瞬间完成大范围作物的收割、浇水、施肥、除草、碎石以及木材砍伐等繁重作业。",
-    category: "utility",
-    isEnabled: true,
-    nexusId: 1401,
-    localPath: "Mods/TractorMod",
-    folderName: "TractorMod",
-    dependencies: [],
-    config: [
-      { key: "TractorSpeed", label: "拖拉机行驶时速", type: "number", value: 8, description: "驾车时的基础移动速度增量（默认 8，调整过高可能会产生地图穿模问题）" },
-      { key: "HarvestRadius", label: "工具作业覆盖半径", type: "number", value: 2, description: "以拖拉机为圆心，向外延伸的工具生效半径范围（格数）" },
-      { key: "BuildPrice", label: "车库建造耗费金币", type: "number", value: 150000, description: "在木匠罗宾处购买并建造拖拉机车库所对应的金币数额" }
-    ]
-  },
-  {
-    id: "earthy-recolor",
-    name: "泥土色调温润重绘",
-    englishName: "DaisyNiko's Earthy Recolor",
-    version: "1.4.0",
-    latestVersion: "1.4.0",
-    author: "DaisyNiko",
-    description: "全局色彩美化模组。将星露谷原版过于明亮鲜艳甚至在长时间游玩后导致眼疲劳的高饱和绿色与黄色泥土，重绘为柔和、舒适、具有浓郁手绘泥土质感的温和配色方案。",
-    category: "content",
-    isEnabled: false,
-    nexusId: 5255,
-    localPath: "Mods/EarthyRecolor",
-    folderName: "EarthyRecolor",
-    dependencies: ["content-patcher"],
-    config: [
-      { key: "RecolorWater", label: "重绘游戏水体颜色", type: "boolean", value: true, description: "是否将江河湖海也重绘为契合森林泥土色调的蓝绿色调" },
-      { key: "RecolorBuildings", label: "原版温室大棚重绘", type: "boolean", value: false, description: "是否让农场本身的自带建筑立面也套用本温和配色" }
-    ]
-  },
-  {
-    id: "npc-map-locations",
-    name: "村民地图定位",
-    englishName: "NPC Map Locations",
-    version: "3.0.1",
-    latestVersion: "3.0.1",
-    author: "Bouhm",
-    description: "实时地图辅助模组。在游戏的大地图与悬浮HUD小地图上，直接实时显示每名村民当前的行走轨迹与坐标头像。同时还会显示当日是否有剧情触发、是否可送礼等快捷标识。",
-    category: "utility",
-    isEnabled: true,
-    nexusId: 239,
-    localPath: "Mods/NPCMapLocations",
-    folderName: "NPCMapLocations",
-    dependencies: [],
-    config: [
-      { key: "ShowMinimap", label: "启用HUD小地图", type: "boolean", value: true, description: "是否在游玩画面的右上角显示一块轻量级的雷达小地图" },
-      { key: "ShowHiddenNPCs", label: "显示隐藏未结识人物", type: "boolean", value: false, description: "是否在地图上标出沙漏、保镖等尚未正式触发见面的隐藏NPC" }
-    ]
-  }
-]
 
 // Category Translations
 const CATEGORY_MAP = {
@@ -187,11 +45,12 @@ async function getTauriOpen() {
   return null;
 }
 
-export function Mods() {
-  const [mods, setMods] = useState<Mod[]>(INITIAL_MODS)
+export function Mods({ onNavigate }: { onNavigate?: (page: Page) => void }) {
+  const [mods, setMods] = useState<Mod[]>([])
+  const [isLoadingMods, setIsLoadingMods] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedCategory, setSelectedCategory] = useState<string>("all")
-  const [selectedModId, setSelectedModId] = useState<string>(INITIAL_MODS[0]?.id || "")
+  const [selectedModId, setSelectedModId] = useState<string>("")
   const [activeDetailTab, setActiveDetailTab] = useState<string>("info")
   const [smapiStatus, setSmapiStatus] = useState<{
     installed: boolean
@@ -310,6 +169,7 @@ export function Mods() {
 
         // Load installed mods
         setIsScanning(true)
+        setIsLoadingMods(true)
         invoke("list_installed_mods", { gameDir })
           .then(async (loadedMods: any) => {
             // Fetch SMAPI compatibility data to resolve latest versions
@@ -348,9 +208,11 @@ export function Mods() {
           })
           .finally(() => {
             setIsScanning(false)
+            setIsLoadingMods(false)
           })
       } else {
         // In Web/Mock environment or if gameDir is empty
+        setIsLoadingMods(false)
         setSmapiStatus({
           installed: true,
           version: "4.0.8",
@@ -916,6 +778,8 @@ export function Mods() {
                 isCheckingUpdates={isCheckingUpdates}
                 onOpenFolder={handleOpenFolder}
                 onOpenAddModal={() => setIsAddModalOpen(true)}
+                isLoading={isLoadingMods}
+                onGoOnline={() => onNavigate?.("onlineMods")}
               />
             </div>
 

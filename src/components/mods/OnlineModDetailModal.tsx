@@ -143,6 +143,7 @@ export function OnlineModDetailModal({ isOpen, onClose, mod }: OnlineModDetailMo
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [details, setDetails] = useState<ParsedModDetails | null>(null)
+  const [scrapeStatus, setScrapeStatus] = useState<"loading" | "challenge">("loading")
   const unlistenRef = useRef<(() => void) | null>(null)
   const [translate, setTranslate] = useState<TranslateState>({
     titleTranslated: null,
@@ -300,6 +301,7 @@ export function OnlineModDetailModal({ isOpen, onClose, mod }: OnlineModDetailMo
     setLoading(true)
     setError(null)
     setDetails(null)
+    setScrapeStatus("loading")
 
     const nexusId = getNexusId(mod)
     if (!nexusId) {
@@ -323,7 +325,16 @@ export function OnlineModDetailModal({ isOpen, onClose, mod }: OnlineModDetailMo
     if (invoke && listen) {
       try {
         // 1. Listen for the HTML response
-        const unlisten = await listen<{ html?: string; error?: string }>("respond-nexus-html", (event) => {
+        const unlisten = await listen<{ html?: string; error?: string; status?: "loading" | "challenge" }>("respond-nexus-html", (event) => {
+          if (event.payload.status === "challenge") {
+            setScrapeStatus("challenge")
+            return
+          }
+          if (event.payload.status === "loading") {
+            setScrapeStatus("loading")
+            return
+          }
+
           if (event.payload.error) {
             setError(event.payload.error)
             setLoading(false)
@@ -348,6 +359,7 @@ export function OnlineModDetailModal({ isOpen, onClose, mod }: OnlineModDetailMo
           const parsed = parseHtml(event.payload.html)
           setDetails(parsed)
           setLoading(false)
+          setScrapeStatus("loading")
           
           if (unlistenRef.current) {
             unlistenRef.current()
@@ -468,9 +480,13 @@ export function OnlineModDetailModal({ isOpen, onClose, mod }: OnlineModDetailMo
           <div className="flex-1 flex flex-col items-center justify-center p-8 space-y-4 min-h-[300px]">
             <Loader2 className="h-8 w-8 text-primary animate-spin" />
             <div className="text-center space-y-2 max-w-md">
-              <p className="text-xs font-bold text-foreground">正在启动后台安全解析通道...</p>
+              <p className="text-xs font-bold text-foreground">
+                {scrapeStatus === "challenge" ? "需要完成 Cloudflare 验证" : "正在启动后台安全解析通道..."}
+              </p>
               <p className="text-[11px] text-muted-foreground leading-relaxed">
-                正在通过 WebView 静默加载网页并同步 IPC 事件。如果浏览器弹出了 Cloudflare 验证盾，请在弹窗中点按验证码以继续。
+                {scrapeStatus === "challenge"
+                  ? "Nexus 的验证页面已在独立窗口显示。请在该窗口中点击验证框，验证通过后这里会自动继续加载模组详情。"
+                  : "正在通过 WebView 加载 Nexus 页面并同步解析结果。遇到 Cloudflare 人机验证时，验证窗口会自动显示。"}
               </p>
             </div>
           </div>

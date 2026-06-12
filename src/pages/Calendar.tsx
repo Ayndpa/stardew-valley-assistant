@@ -11,6 +11,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Info,
+  FileQuestion,
 } from "lucide-react"
 
 // Dynamic imports will be done inline inside useEffect/handlers for reliability
@@ -27,17 +28,6 @@ interface SaveSummary {
 
 interface SaveDetail {
   summary: SaveSummary
-}
-
-const MOCK_SAVE_DETAIL: SaveDetail = {
-  summary: {
-    id: "MockCharacter_123456789",
-    playerName: "农夫阿星",
-    farmName: "桃源",
-    dayOfMonth: 15,
-    season: 0, // Spring
-    year: 2,
-  }
 }
 
 interface Festival {
@@ -225,8 +215,7 @@ export function Calendar({ selectedSaveId }: CalendarProps) {
       if (!selectedSaveId) return
 
       const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__;
-      const isMock = selectedSaveId.startsWith("MockCharacter")
-      if (isTauri && !isMock) {
+      if (isTauri) {
         try {
           const { invoke } = await import("@tauri-apps/api/core");
           const d: SaveDetail = await invoke("get_save_detail", { id: selectedSaveId })
@@ -234,23 +223,20 @@ export function Calendar({ selectedSaveId }: CalendarProps) {
           setViewSeason(d.summary.season)
         } catch (err) {
           console.error("Error loading save detail:", err)
-          setDetail(MOCK_SAVE_DETAIL)
-          setViewSeason(MOCK_SAVE_DETAIL.summary.season)
+          setDetail(null)
         }
-      } else {
-        setDetail(MOCK_SAVE_DETAIL)
-        setViewSeason(MOCK_SAVE_DETAIL.summary.season)
       }
     }
     loadDetail()
   }, [selectedSaveId])
 
 
-  const activeDetail = detail || MOCK_SAVE_DETAIL
-  const summary = activeDetail.summary
+  // For grid view: need save data for current day/season
+  const hasSaveData = !!selectedSaveId && !!detail
+  const summary = detail?.summary
 
   // Dynamic bookseller days
-  const booksellerDays = getBooksellerDays(summary.year, summary.id, viewSeason)
+  const booksellerDays = summary ? getBooksellerDays(summary.year, summary.id, viewSeason) : []
 
   const activeSeasonName = SEASONS_LIST[viewSeason]
 
@@ -285,7 +271,9 @@ export function Calendar({ selectedSaveId }: CalendarProps) {
       <div>
         <h2 className="text-3xl font-bold tracking-tight">节日日历</h2>
         <p className="text-muted-foreground mt-1">
-          当前进度：第 {summary.year} 年 · {SEASONS_LIST[summary.season]} 第 {summary.dayOfMonth} 天
+          {summary
+            ? `当前进度：第 ${summary.year} 年 · ${SEASONS_LIST[summary.season]} 第 ${summary.dayOfMonth} 天`
+            : "浏览星露谷全年的节日、生日和特殊事件"}
         </p>
       </div>
 
@@ -296,6 +284,20 @@ export function Calendar({ selectedSaveId }: CalendarProps) {
         </TabsList>
 
         <TabsContent value="grid-view" className="space-y-6">
+          {!hasSaveData ? (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-20 text-center">
+                <FileQuestion className="h-12 w-12 text-muted-foreground/30 mb-4" />
+                <p className="font-semibold text-lg">未选择游戏存档</p>
+                <p className="text-sm text-muted-foreground mt-1 max-w-sm">
+                  请先通过侧边栏选择一个游戏存档文件，日历视图将根据您的游戏进度显示当天的高亮标记和书商来访日期。
+                </p>
+                <p className="text-xs text-muted-foreground/70 mt-3">
+                  您也可以切换到“节日与生日表”查看完整的静态事件列表。
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
           <div className="flex flex-col xl:flex-row gap-6">
             {/* Interactive Calendar Grid */}
             <Card className="flex-1">
@@ -329,7 +331,7 @@ export function Calendar({ selectedSaveId }: CalendarProps) {
                 <div className="grid grid-cols-7 gap-2">
                   {Array.from({ length: 28 }).map((_, i) => {
                     const day = i + 1
-                    const isToday = summary.season === viewSeason && summary.dayOfMonth === day
+                    const isToday = summary && summary.season === viewSeason && summary.dayOfMonth === day
                     const events = getDayEvents(day)
                     const isSelected = selectedDay === day
 
@@ -464,6 +466,7 @@ export function Calendar({ selectedSaveId }: CalendarProps) {
               </CardContent>
             </Card>
           </div>
+          )}
         </TabsContent>
 
         <TabsContent value="list-view">

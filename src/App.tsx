@@ -31,25 +31,6 @@ export interface SaveSummary {
   lastSaveTime: number
 }
 
-const MOCK_SAVE_SUMMARY: SaveSummary = {
-  id: "MockCharacter_123456789",
-  playerName: "农夫阿星",
-  farmName: "桃源",
-  money: 125840,
-  totalMoneyEarned: 245000,
-  dayOfMonth: 15,
-  season: 0, // Spring
-  year: 2,
-  farmingLevel: 10,
-  miningLevel: 8,
-  combatLevel: 7,
-  foragingLevel: 8,
-  fishingLevel: 6,
-  deepestMineLevel: 120,
-  millisecondsPlayed: 45 * 3600 * 1000,
-  lastSaveTime: Date.now() / 1000,
-}
-
 function App() {
   const [currentPage, setCurrentPage] = useState<Page>("dashboard")
   const [showOnboarding, setShowOnboarding] = useState(() => {
@@ -123,20 +104,15 @@ function App() {
               localStorage.setItem("selectedSaveId", list[0].id)
             }
           } else {
-            setSaves([MOCK_SAVE_SUMMARY])
-            setSelectedSaveId(MOCK_SAVE_SUMMARY.id)
-            localStorage.setItem("selectedSaveId", MOCK_SAVE_SUMMARY.id)
+            setSelectedSaveId("")
           }
         } catch (err) {
           console.error("Error listing saves:", err)
-          setSaves([MOCK_SAVE_SUMMARY])
-          setSelectedSaveId(MOCK_SAVE_SUMMARY.id)
-          localStorage.setItem("selectedSaveId", MOCK_SAVE_SUMMARY.id)
+          setSelectedSaveId("")
         }
       } else {
-        setSaves([MOCK_SAVE_SUMMARY])
-        setSelectedSaveId(MOCK_SAVE_SUMMARY.id)
-        localStorage.setItem("selectedSaveId", MOCK_SAVE_SUMMARY.id)
+        // Web preview: no saves available
+        setSelectedSaveId("")
       }
     }
     fetchSavesList()
@@ -165,7 +141,7 @@ function App() {
       case "settings":
         return <Settings selectedSaveId={selectedSaveId} />
       case "mods":
-        return <Mods />
+        return <Mods onNavigate={setCurrentPage} />
       case "onlineMods":
         return (
           <div className="p-8 space-y-6">
