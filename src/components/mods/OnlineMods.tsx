@@ -158,6 +158,7 @@ export function OnlineMods() {
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(1)
+  const [jumpPage, setJumpPage] = useState("")
   const itemsPerPage = 24
 
   const fetchOnlineModsList = async () => {
@@ -236,6 +237,7 @@ export function OnlineMods() {
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1)
+    setJumpPage("")
   }, [search, selectedStatus])
 
   // Paginated Mods
@@ -248,21 +250,22 @@ export function OnlineMods() {
 
   // Render Status Badge
   const renderStatusBadge = (status: string) => {
+    const base = "whitespace-nowrap shrink-0 font-semibold px-2 py-0.5 text-[10px] rounded-full"
     switch (status) {
       case "ok":
-        return <Badge className="bg-green-500/10 text-green-500 border border-green-500/20 rounded-full font-semibold px-2 py-0.5 text-[10px]">完美兼容</Badge>
+        return <Badge className={`bg-green-500/10 text-green-500 border border-green-500/20 ${base}`}>完美兼容</Badge>
       case "workaround":
-        return <Badge className="bg-amber-500/10 text-amber-500 border border-amber-500/20 rounded-full font-semibold px-2 py-0.5 text-[10px]">有解决方法</Badge>
+        return <Badge className={`bg-amber-500/10 text-amber-500 border border-amber-500/20 ${base}`}>有解决方法</Badge>
       case "broken":
-        return <Badge className="bg-red-500/10 text-red-500 border border-red-500/20 rounded-full font-semibold px-2 py-0.5 text-[10px]">已损坏</Badge>
+        return <Badge className={`bg-red-500/10 text-red-500 border border-red-500/20 ${base}`}>已损坏</Badge>
       case "unofficial":
-        return <Badge className="bg-blue-500/10 text-blue-500 border border-blue-500/20 rounded-full font-semibold px-2 py-0.5 text-[10px]">非官方更新</Badge>
+        return <Badge className={`bg-blue-500/10 text-blue-500 border border-blue-500/20 ${base}`}>非官方更新</Badge>
       case "abandoned":
-        return <Badge className="bg-gray-500/10 text-gray-500 border border-gray-500/20 rounded-full font-semibold px-2 py-0.5 text-[10px]">已弃用</Badge>
+        return <Badge className={`bg-gray-500/10 text-gray-500 border border-gray-500/20 ${base}`}>已弃用</Badge>
       case "obsolete":
-        return <Badge className="bg-slate-500/10 text-slate-500 border border-slate-500/20 rounded-full font-semibold px-2 py-0.5 text-[10px]">已过时</Badge>
+        return <Badge className={`bg-slate-500/10 text-slate-500 border border-slate-500/20 ${base}`}>已过时</Badge>
       default:
-        return <Badge className="bg-green-500/10 text-green-500 border border-green-500/20 rounded-full font-semibold px-2 py-0.5 text-[10px]">兼容</Badge>
+        return <Badge className={`bg-green-500/10 text-green-500 border border-green-500/20 ${base}`}>兼容</Badge>
     }
   }
 
@@ -415,32 +418,104 @@ export function OnlineMods() {
 
           {/* Pagination Controls */}
           {totalPages > 1 && (
-            <div className="flex justify-between items-center bg-card border border-border p-3.5 rounded-xl text-xs shadow-sm">
+            <div className="flex flex-col sm:flex-row justify-between items-center gap-3 bg-card border border-border p-3.5 rounded-xl text-xs shadow-sm">
               <span className="text-muted-foreground font-medium">
                 当前第 {currentPage} 页 / 共 {totalPages} 页 (共 {filteredMods.length} 项)
               </span>
               
-              <div className="flex gap-2">
+              <div className="flex items-center gap-1.5">
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                   disabled={currentPage === 1}
-                  className="h-8 text-[11px] rounded-lg gap-1 hover:bg-accent cursor-pointer"
+                  className="h-8 text-[11px] rounded-lg gap-1 px-2 hover:bg-accent cursor-pointer"
                 >
                   <ChevronLeft className="h-3.5 w-3.5" />
                   <span>上一页</span>
                 </Button>
-                
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(1)}
+                  disabled={currentPage === 1}
+                  className="h-8 w-8 p-0 text-[11px] rounded-lg hover:bg-accent cursor-pointer"
+                >
+                  1
+                </Button>
+                {currentPage > 3 && <span className="text-muted-foreground px-1">...</span>}
+                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                  .filter(p => p !== 1 && p !== totalPages && Math.abs(p - currentPage) <= 1)
+                  .map(p => (
+                    <Button
+                      key={p}
+                      variant={p === currentPage ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setCurrentPage(p)}
+                      className={`h-8 w-8 p-0 text-[11px] rounded-lg cursor-pointer ${p === currentPage ? "" : "hover:bg-accent"}`}
+                    >
+                      {p}
+                    </Button>
+                  ))
+                }
+                {currentPage < totalPages - 2 && <span className="text-muted-foreground px-1">...</span>}
+                {totalPages > 1 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(totalPages)}
+                    disabled={currentPage === totalPages}
+                    className="h-8 w-8 p-0 text-[11px] rounded-lg hover:bg-accent cursor-pointer"
+                  >
+                    {totalPages}
+                  </Button>
+                )}
+
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
                   disabled={currentPage === totalPages}
-                  className="h-8 text-[11px] rounded-lg gap-1 hover:bg-accent cursor-pointer"
+                  className="h-8 text-[11px] rounded-lg gap-1 px-2 hover:bg-accent cursor-pointer"
                 >
                   <span>下一页</span>
                   <ChevronRight className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground whitespace-nowrap">跳转到</span>
+                <Input
+                  type="text"
+                  inputMode="numeric"
+                  value={jumpPage}
+                  onChange={(e) => setJumpPage(e.target.value.replace(/\D/g, ""))}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      const page = parseInt(jumpPage)
+                      if (page >= 1 && page <= totalPages) {
+                        setCurrentPage(page)
+                        setJumpPage("")
+                      }
+                    }
+                  }}
+                  className="h-8 w-20 text-center text-[11px] rounded-lg bg-accent/10 border-border"
+                  placeholder="页码"
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const page = parseInt(jumpPage)
+                    if (page >= 1 && page <= totalPages) {
+                      setCurrentPage(page)
+                      setJumpPage("")
+                    }
+                  }}
+                  className="h-8 text-[11px] rounded-lg px-3 hover:bg-accent cursor-pointer whitespace-nowrap"
+                >
+                  跳转
                 </Button>
               </div>
             </div>
