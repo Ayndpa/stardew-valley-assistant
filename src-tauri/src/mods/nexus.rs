@@ -1,5 +1,8 @@
 use std::fs;
+use std::path::PathBuf;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::Manager;
+use serde_json::Value;
 
 struct LoginStatusCache {
     result: serde_json::Value,
@@ -1367,4 +1370,357 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
     });
 
     Ok(())
+}
+
+fn parse_query_param(url: &str, key: &str) -> Option<String> {
+    let base = if let Some(pos) = url.find('?') {
+        &url[pos + 1..]
+    } else {
+        return None;
+    };
+
+    let query = base.split('#').next().unwrap_or(base);
+    for pair in query.split('&') {
+        let mut parts = pair.splitn(2, '=');
+        let pair_key = parts.next()?;
+        if pair_key.eq_ignore_ascii_case(key) {
+            return Some(parts.next().unwrap_or("").to_string());
+        }
+    }
+    None
+}
+
+fn extract_game_domain(url: &str) -> Option<String> {
+    let path = url.split('#').next()?.split('?').next()?;
+    let segments: Vec<&str> = path.split('/').filter(|seg| !seg.is_empty()).collect();
+    for i in 0..segments.len() {
+        if segments[i] == "mods" && i >= 1 {
+            return Some(segments[i - 1].to_string());
+        }
+    }
+    None
+}
+
+fn game_id_from_domain(game_domain: &str) -> Option<String> {
+    match game_domain {
+        "stardewvalley" => Some("1303".to_string()),
+        _ => None,
+    }
+}
+
+fn extract_nexus_download_params(url: &str) -> Option<(String, String, String)> {
+    let file_id = parse_query_param(url, "file_id").or_else(|| parse_query_param(url, "fid"))?;
+    let game_domain = extract_game_domain(url).unwrap_or_else(|| "stardewvalley".to_string());
+    let game_id = game_id_from_domain(&game_domain)?;
+    Some((game_id, file_id, game_domain))
+}
+
+fn parse_download_url_from_payload(payload: &serde_json::Value) -> Option<String> {
+    const KEYS: [&str; 6] = ["url", "download_url", "URI", "uri", "download", "link"];
+    for key in KEYS {
+        if let Some(url) = payload.get(key).and_then(|v| v.as_str()) {
+            return Some(url.to_string());
+        }
+    }
+    for key in ["/data/url", "/data/download_url", "/data/uri", "/data/URI", "/data/download", "/data/link", "/result/url", "/result/download_url", "/result/download", "/result/link", "/response/url"] {
+        if let Some(url) = payload.pointer(key).and_then(|v| v.as_str()) {
+            return Some(url.to_string());
+        }
+    }
+
+    payload
+        .get("data")
+        .and_then(|node| parse_download_url_from_payload(node))
+        .or_else(|| payload.get("result").and_then(|node| parse_download_url_from_payload(node)))
+        .or_else(|| payload.get("response").and_then(|node| parse_download_url_from_payload(node)))
+}
+
+fn parse_download_url_from_text(text: &str) -> Option<String> {
+    let text = text.trim();
+    for keyword in ["https://", "http://"].iter() {
+        if let Some(start) = text.find(keyword) {
+            let suffix = &text[start..];
+            let mut end = suffix.len();
+            for (i, ch) in suffix.char_indices() {
+                if ch.is_whitespace() || ch == '"' || ch == '\'' || ch == '<' || ch == '>' || ch == '`' || ch == ')' || ch == ']' || ch == '}' {
+                    end = i;
+                    break;
+                }
+            }
+            let candidate = suffix[..end].trim_end_matches(&[';',',','.'][..]).to_string();
+            if !candidate.is_empty() {
+                return Some(candidate);
+            }
+        }
+    }
+    None
+}
+
+fn parse_download_url_from_body(text: &str) -> Option<String> {
+    let text = text.trim();
+    if text.starts_with("http") {
+        return Some(text.to_string());
+    }
+
+    let value: serde_json::Value = serde_json::from_str(text).ok()?;
+    if let Some(url) = value.as_str() {
+        return Some(url.to_string());
+    }
+
+    parse_download_url_from_payload(&value).or_else(|| parse_download_url_from_text(text))
+}
+
+async fn fetch_nexus_download_url_via_browser(
+    app: tauri::AppHandle,
+    game_id: &str,
+    file_id: &str,
+    referer_url: &str,
+) -> Result<String, String> {
+    let parse_url = referer_url.parse::<tauri::Url>().map_err(|e| format!("解析页面 URL 失败: {}", e))?;
+    let handle = app.clone();
+
+    let window = create_nexus_webview(
+        &handle,
+        "nexus-generate-download-url",
+        "Nexus 下载链接获取中...",
+        parse_url,
+        false,
+    )
+    .map_err(|e| format!("创建下载器窗口失败: {}", e))?;
+
+    let poll_window = window.clone();
+    let poll_handle = handle.clone();
+    let fetch_js_template = r##"
+        (() => {
+            try {
+                if (window.__nexusDownloadUrlStarted) return 'skip';
+                window.__nexusDownloadUrlStarted = true;
+                window.__nexusDownloadUrlDone = false;
+                window.__nexusDownloadUrlError = null;
+                window.__nexusDownloadUrlPayload = null;
+
+                const body = new URLSearchParams();
+                body.append('game_id', '{game_id}');
+                body.append('fid', '{file_id}');
+                body.append('collection_id', '0');
+
+                fetch('/Core/Libs/Common/Managers/Downloads?GenerateDownloadUrl', {
+                    method: 'POST',
+                    headers: {
+                        'accept': '*/*',
+                        'accept-language': 'en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7',
+                        'content-type': 'application/x-www-form-urlencoded'
+                    },
+                    mode: 'same-origin',
+                    cache: 'no-cache',
+                    body: body.toString(),
+                    credentials: 'include'
+                })
+                .then(async response => {
+                    const text = await response.text();
+                    if (!response.ok) {
+                        window.__nexusDownloadUrlDone = true;
+                        window.__nexusDownloadUrlError = `HTTP ${response.status}: ${text}`;
+                        return;
+                    }
+                    window.__nexusDownloadUrlDone = true;
+                    window.__nexusDownloadUrlPayload = text;
+                })
+                .catch(error => {
+                    window.__nexusDownloadUrlDone = true;
+                    window.__nexusDownloadUrlError = String(error);
+                });
+                return 'started';
+            } catch (error) {
+                return 'error:' + String(error);
+            }
+        })()
+    "##;
+    let fetch_js = fetch_js_template
+        .replace("{game_id}", game_id)
+        .replace("{file_id}", file_id);
+
+    let status_js = r##"
+        (() => {
+            if (window.__nexusDownloadUrlError) return { s: "error", e: window.__nexusDownloadUrlError };
+            if (window.__nexusDownloadUrlDone) return { s: "done", p: window.__nexusDownloadUrlPayload };
+            if (window.__nexusDownloadUrlStarted) return { s: "fetching" };
+            return { s: "idle" };
+        })()
+    "##;
+
+    let result = tokio::time::timeout(Duration::from_secs(90), async move {
+        let mut cf_shown = false;
+        loop {
+            if poll_handle.get_webview_window("nexus-generate-download-url").is_none() {
+                return Err("下载链接窗口已关闭".to_string());
+            }
+
+            let is_cf = check_cloudflare_challenge(&poll_window);
+            update_window_visibility_for_cf(
+                &poll_window,
+                &poll_handle,
+                is_cf,
+                &mut cf_shown,
+                false,
+                "Nexus 需要验证",
+                "Nexus 下载链接获取中...",
+            );
+            if is_cf {
+                tokio::time::sleep(Duration::from_millis(800)).await;
+                continue;
+            }
+
+            let _ = eval_js_timeout(&poll_window, &fetch_js, 5);
+
+            let status_json = match eval_js_timeout(&poll_window, status_js, 5) {
+                Some(v) => v,
+                None => {
+                    tokio::time::sleep(Duration::from_millis(300)).await;
+                    continue;
+                }
+            };
+
+            let status: Value = match serde_json::from_str(&status_json) {
+                Ok(s) => s,
+                Err(_) => {
+                    tokio::time::sleep(Duration::from_millis(300)).await;
+                    continue;
+                }
+            };
+
+            match status.get("s").and_then(|v| v.as_str()) {
+                Some("done") => {
+                    let payload = status.get("p").and_then(|v| v.as_str()).unwrap_or("");
+                    if payload.is_empty() {
+                        return Err("GenerateDownloadUrl 未返回内容".to_string());
+                    }
+
+                    let url = parse_download_url_from_body(payload)
+                        .ok_or_else(|| format!("生成下载链接失败，响应: {}", payload))?;
+
+                    return Ok(url);
+                }
+                Some("error") => {
+                    let err = status.get("e").and_then(|v| v.as_str()).unwrap_or_default();
+                    return Err(format!("网页端生成下载链接失败: {}", err));
+                }
+                _ => {}
+            }
+
+            tokio::time::sleep(Duration::from_millis(500)).await;
+        }
+    })
+    .await;
+
+    let _ = window.destroy();
+
+    match result {
+        Ok(res) => res,
+        Err(_) => Err("获取下载链接超时，请确保已登录 Nexus 并完成 Cloudflare 校验".to_string()),
+    }
+}
+
+#[tauri::command]
+pub async fn install_nexus_mod(app: tauri::AppHandle, game_dir: String, download_url: String) -> Result<serde_json::Value, String> {
+
+    let game_path = PathBuf::from(&game_dir);
+    if !game_path.exists() {
+        return Err("游戏目录不存在".to_string());
+    }
+
+    let mods_path = game_path.join("Mods");
+    fs::create_dir_all(&mods_path).map_err(|e| format!("创建 Mods 目录失败: {}", e))?;
+
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_else(|_| Duration::from_secs(0))
+        .as_millis();
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("无法获取应用数据目录: {}", e))?;
+    let working_dir = data_dir.join(format!("nexus_mod_install_{}", timestamp));
+    fs::create_dir_all(&working_dir).map_err(|e| format!("创建临时目录失败: {}", e))?;
+
+    let zip_path = working_dir.join("mod.zip");
+    let extract_dir = working_dir.join("extract");
+
+    let cleanup = || {
+        let _ = fs::remove_dir_all(&working_dir);
+    };
+
+    let url = download_url.trim().to_string();
+    if !url.starts_with("http://") && !url.starts_with("https://") {
+        cleanup();
+        return Err("下载链接不合法".to_string());
+    }
+
+    let download_result = if let Some((game_id, file_id, _game_domain)) = extract_nexus_download_params(&url) {
+        let page_download_url = fetch_nexus_download_url_via_browser(app.clone(), &game_id, &file_id, &url)
+            .await
+            .map_err(|err| format!("获取网页下载链接失败: {}", err))?;
+
+        let target_url = if page_download_url.starts_with('/') {
+            format!("https://www.nexusmods.com{}", page_download_url)
+        } else {
+            page_download_url
+        };
+
+        crate::utils::download_file(&target_url, &zip_path)
+    } else if url.ends_with(".zip") || url.ends_with(".zip/") || url.contains("download") {
+        crate::utils::download_file(&url, &zip_path)
+    } else {
+        Err("无法解析 Nexus 下载参数（file_id 或游戏域名），且当前链接不是直接下载链接".to_string())
+    };
+    if let Err(err) = download_result {
+        cleanup();
+        return Err(format!("下载失败: {}", err));
+    }
+
+    fs::create_dir_all(&extract_dir).map_err(|e| {
+        cleanup();
+        format!("创建解压目录失败: {}", e)
+    })?;
+    if let Err(err) = crate::utils::extract_zip(&zip_path, &extract_dir) {
+        cleanup();
+        return Err(format!("解压失败: {}", err));
+    }
+
+    let mut installed_any = false;
+    let entries = fs::read_dir(&extract_dir).map_err(|e| format!("读取解压目录失败: {}", e))?;
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("读取解压项失败: {}", e))?;
+        let source = entry.path();
+        let target = mods_path.join(entry.file_name());
+
+        if target.exists() {
+            if target.is_dir() {
+                fs::remove_dir_all(&target).map_err(|e| format!("清理旧目录失败: {}", e))?;
+            } else {
+                fs::remove_file(&target).map_err(|e| format!("清理旧文件失败: {}", e))?;
+            }
+        }
+
+        if source.is_dir() {
+            if let Err(err) = crate::utils::copy_dir_all(&source, &target) {
+                cleanup();
+                return Err(format!("复制目录失败: {}", err));
+            }
+        } else {
+            fs::copy(&source, &target).map_err(|e| format!("复制文件失败: {}", e))?;
+        }
+        installed_any = true;
+    }
+
+    if !installed_any {
+        cleanup();
+        return Err("安装文件为空，未写入任何内容".to_string());
+    }
+
+    cleanup();
+    Ok(serde_json::json!({
+        "success": true,
+        "message": "mod installed"
+    }))
 }

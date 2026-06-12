@@ -23,13 +23,9 @@ pub fn check_smapi_status(game_dir: String) -> SmapiStatus {
         };
     }
 
-    #[cfg(target_os = "windows")]
-    let exe_name = "StardewModdingAPI.exe";
-    #[cfg(not(target_os = "windows"))]
-    let exe_name = "StardewModdingAPI";
-
-    let api_exe = game_path.join(exe_name);
-    let installed = api_exe.exists();
+    let api_exe = find_smapi_launcher(game_path);
+    let deps_json = game_path.join("StardewModdingAPI.deps.json");
+    let installed = api_exe.is_some() || deps_json.exists();
 
     let mut version = None;
     if installed {
@@ -44,12 +40,13 @@ pub fn check_smapi_status(game_dir: String) -> SmapiStatus {
         // Strategy 2 (Windows): Read from EXE file version info
         #[cfg(target_os = "windows")]
         if version.is_none() {
-            version = read_version_from_exe(&api_exe);
+            if let Some(path) = api_exe.as_deref() {
+                version = read_version_from_exe(path);
+            }
         }
 
         // Strategy 3: Read from StardewModdingAPI.deps.json
         if version.is_none() {
-            let deps_json = game_path.join("StardewModdingAPI.deps.json");
             if deps_json.exists() {
                 version = read_version_from_deps_json(&deps_json);
             }
@@ -59,7 +56,7 @@ pub fn check_smapi_status(game_dir: String) -> SmapiStatus {
     SmapiStatus {
         installed,
         version,
-        path: if installed { Some(api_exe.to_string_lossy().to_string()) } else { None },
+        path: api_exe.as_ref().map(|p| p.to_string_lossy().to_string()),
     }
 }
 
@@ -165,6 +162,97 @@ pub fn get_smapi_log_path() -> Option<PathBuf> {
         let home = std::env::var("HOME").ok()?;
         Some(PathBuf::from(home).join(".config").join("StardewValley").join("ErrorLogs").join("SMAPI-latest.txt"))
     }
+}
+
+fn find_smapi_launcher(game_path: &Path) -> Option<PathBuf> {
+    #[cfg(target_os = "windows")]
+    {
+        let exe = game_path.join("StardewModdingAPI.exe");
+        if exe.exists() {
+            return Some(exe);
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let exe = game_path.join("StardewModdingAPI");
+        if exe.exists() {
+            return Some(exe);
+        }
+
+        let renamed_exe = game_path.join("StardewValley");
+        if renamed_exe.exists() {
+            return Some(renamed_exe);
+        }
+    }
+
+    None
+}
+
+fn ensure_smapi_deps_json(game_path: &Path) -> Result<(), String> {
+    let source = game_path.join("Stardew Valley.deps.json");
+    let target = game_path.join("StardewModdingAPI.deps.json");
+
+    if !source.exists() {
+        if target.exists() {
+            return Ok(());
+        }
+        return Err("安装包中未找到 Stardew Valley.deps.json，无法按手动流程创建 StardewModdingAPI.deps.json。".to_string());
+    }
+
+    fs::copy(&source, &target).map_err(|e| format!("复制 Stardew Valley.deps.json 到 StardewModdingAPI.deps.json 失败: {}", e))?;
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn apply_unix_launcher_layout(game_path: &Path) -> Result<(), String> {
+    let original = game_path.join("StardewValley-original");
+    let launcher = game_path.join("StardewValley");
+    let smapi_launcher = game_path.join("StardewModdingAPI");
+
+    if launcher.exists() {
+        if !original.exists() {
+            fs::rename(&launcher, &original)
+                .map_err(|e| format!("重命名 StardewValley 到 StardewValley-original 失败: {}", e))?;
+        }
+    }
+
+    if smapi_launcher.exists() {
+        if launcher.exists() {
+            fs::remove_file(&smapi_launcher)
+                .map_err(|e| format!("清理重复的 StardewModdingAPI 启动文件失败: {}", e))?;
+            return Ok(());
+        }
+
+        fs::rename(&smapi_launcher, &launcher)
+            .map_err(|e| format!("重命名 StardewModdingAPI 到 StardewValley 失败: {}", e))?;
+    }
+
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn restore_unix_launcher_layout(game_path: &Path) -> Result<(), String> {
+    let original = game_path.join("StardewValley-original");
+    let launcher = game_path.join("StardewValley");
+    let smapi_launcher = game_path.join("StardewModdingAPI");
+
+    if smapi_launcher.exists() {
+        fs::remove_file(&smapi_launcher)
+            .map_err(|e| format!("删除 StardewModdingAPI 失败: {}", e))?;
+    }
+
+    if original.exists() {
+        if launcher.exists() {
+            fs::remove_file(&launcher)
+                .map_err(|e| format!("移除当前 StardewValley 启动文件失败: {}", e))?;
+        }
+
+        fs::rename(&original, &launcher)
+            .map_err(|e| format!("恢复 StardewValley-original 到 StardewValley 失败: {}", e))?;
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -277,6 +365,12 @@ pub async fn install_smapi(game_dir: String, download_url: String) -> Result<(),
     copy_dir_all(&install_extract_dir, game_path)
         .map_err(|e| format!("拷贝文件到游戏目录失败: {}", e))?;
 
+    // Manual install compatibility: copy Stardew Valley.deps.json to StardewModdingAPI.deps.json
+    ensure_smapi_deps_json(game_path)?;
+
+    #[cfg(not(target_os = "windows"))]
+    apply_unix_launcher_layout(game_path)?;
+
     // Cleanup
     let _ = fs::remove_dir_all(&temp_dir);
 
@@ -290,6 +384,7 @@ pub fn uninstall_smapi(game_dir: String) -> Result<(), String> {
         return Err("游戏安装目录不存在。".to_string());
     }
 
+    #[cfg(target_os = "windows")]
     let files_to_delete = vec![
         "StardewModdingAPI.exe",
         "StardewModdingAPI.dll",
@@ -300,12 +395,26 @@ pub fn uninstall_smapi(game_dir: String) -> Result<(), String> {
         "StardewModdingAPI",
     ];
 
+    #[cfg(not(target_os = "windows"))]
+    let files_to_delete = vec![
+        "StardewModdingAPI",
+        "StardewModdingAPI.dll",
+        "StardewModdingAPI.deps.json",
+        "StardewModdingAPI.runtimeconfig.json",
+        "StardewModdingAPI.pdb",
+        "StardewModdingAPI.xml",
+        "Stardew Valley.deps.json",
+    ];
+
     for file in files_to_delete {
         let p = game_path.join(file);
         if p.exists() {
             fs::remove_file(p).map_err(|e| format!("删除文件 {} 失败: {}", file, e))?;
         }
     }
+
+    #[cfg(not(target_os = "windows"))]
+    restore_unix_launcher_layout(game_path)?;
 
     let dirs_to_delete = vec![
         "smapi-internal",

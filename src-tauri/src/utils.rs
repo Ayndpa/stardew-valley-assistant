@@ -36,7 +36,7 @@ pub fn open_in_file_manager(path: String) -> Result<(), String> {
     Ok(())
 }
 
-pub fn download_file(url: &str, dest: &Path) -> Result<(), String> {
+pub fn download_file_with_headers(url: &str, dest: &Path, headers: &[(&str, &str)]) -> Result<(), String> {
     let agent = ureq::AgentBuilder::new()
         .timeout_connect(std::time::Duration::from_secs(15))
         .timeout_read(std::time::Duration::from_secs(60))
@@ -46,7 +46,11 @@ pub fn download_file(url: &str, dest: &Path) -> Result<(), String> {
     let mut last_err = String::new();
 
     for attempt in 1..=max_retries {
-        match agent.get(url).call() {
+        let mut req = agent.get(url);
+        for (key, value) in headers {
+            req = req.set(key, value);
+        }
+        match req.call() {
             Ok(response) => {
                 let mut bytes = Vec::new();
                 response
@@ -74,6 +78,10 @@ pub fn download_file(url: &str, dest: &Path) -> Result<(), String> {
     }
 
     Err(last_err)
+}
+
+pub fn download_file(url: &str, dest: &Path) -> Result<(), String> {
+    download_file_with_headers(url, dest, &[])
 }
 
 pub fn extract_zip(zip_path: &Path, dest_dir: &Path) -> Result<(), String> {

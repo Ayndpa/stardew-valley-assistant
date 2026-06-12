@@ -27,6 +27,7 @@ interface OnlineModDetailModalProps {
   isOpen: boolean
   onClose: () => void
   mod: SmapiMod | null
+  onNavigate?: (page: "settings") => void
 }
 
 interface ParsedModDetails {
@@ -41,6 +42,7 @@ interface ParsedModDetails {
   totalDls: string
   endorsements: string
   lastUpdated: string
+  downloadUrl?: string
 }
 
 interface CondensedTranslateState extends TranslateState {
@@ -52,6 +54,7 @@ import {
   TranslateState,
   edgeTranslate
 } from "@/lib/translate"
+import { useNexus } from "@/lib/nexus-provider"
 
 async function translateHtmlTextOnly(html: string, toLanguage: string) {
   const parser = new DOMParser()
@@ -167,7 +170,12 @@ async function getTauriListen() {
   return null;
 }
 
-export function OnlineModDetailModal({ isOpen, onClose, mod }: OnlineModDetailModalProps) {
+export function OnlineModDetailModal({
+  isOpen,
+  onClose,
+  mod,
+  onNavigate
+}: OnlineModDetailModalProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [details, setDetails] = useState<ParsedModDetails | null>(null)
@@ -186,6 +194,70 @@ export function OnlineModDetailModal({ isOpen, onClose, mod }: OnlineModDetailMo
   const [showTranslated, setShowTranslated] = useState({ title: false, desc: false, condensedDesc: false })
   const [lightboxImage, setLightboxImage] = useState<string | null>(null)
   const [currentGalleryIndex, setCurrentGalleryIndex] = useState(0)
+  const [isInstalling, setIsInstalling] = useState(false)
+  const [installMessage, setInstallMessage] = useState<string | null>(null)
+  const [installError, setInstallError] = useState<string | null>(null)
+  const { nexusLoggedIn, nexusChecking } = useNexus()
+  const nexusUrl = mod?.ModPages.find(p => p.Text === "Nexus" || p.Url.includes("nexusmods.com"))?.Url || ""
+
+  const resolveNexusUrl = (href: string) => {
+    const value = href.trim()
+    if (!value) return ""
+    if (value.startsWith("http://") || value.startsWith("https://")) return value
+    if (value.startsWith("//")) return `https:${value}`
+    if (value.startsWith("/")) return `https://www.nexusmods.com${value}`
+    return `https://www.nexusmods.com/stardewvalley/mods/${value}`
+  }
+
+  const extractDownloadUrl = (htmlString: string) => {
+    const hrefCandidates = new Set<string>()
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(htmlString, "text/html")
+
+    const pushCandidate = (candidate: string | null) => {
+      const normalized = resolveNexusUrl(candidate || "")
+      if (!normalized) return
+      const lower = normalized.toLowerCase()
+      if (!lower.includes("nexusmods.com")) return
+      hrefCandidates.add(normalized)
+    }
+
+    doc.querySelectorAll("a[href]").forEach((a) => {
+      const href = a.getAttribute("href") || ""
+      const lower = href.toLowerCase()
+      if (!href) return
+      if (lower.includes("file_id=") || lower.includes("/files/") || lower.includes("download")) {
+        pushCandidate(href)
+      }
+    })
+
+    const htmlCandidates = [...htmlString.matchAll(/https?:\/\/[^\s"']*?(?:file_id|download)[^"'\s]*/gi)].map(match => match[0])
+    htmlCandidates.forEach(pushCandidate)
+
+    doc.querySelectorAll("[data-file-id][href]").forEach((el) => {
+      const fileId = el.getAttribute("data-file-id")
+      if (!fileId) return
+      const fileIdDigits = fileId.trim()
+      if (!fileIdDigits) return
+      if (hrefCandidates.size === 0 && nexusUrl) {
+        const base = resolveNexusUrl(nexusUrl).split("?")[0]
+        hrefCandidates.add(`${base}?tab=files&file_id=${encodeURIComponent(fileIdDigits)}&nmm=1`)
+      }
+    })
+
+    const rawFileIdMatches = [...htmlString.matchAll(/(?:file_id|fid)\s*=\s*([0-9]{3,})/gi)]
+    if (rawFileIdMatches.length > 0 && hrefCandidates.size === 0 && nexusUrl) {
+      const base = resolveNexusUrl(nexusUrl).split("?")[0]
+      hrefCandidates.add(`${base}?tab=files&file_id=${rawFileIdMatches[0][1]}&nmm=1`)
+    }
+
+    const candidates = [...hrefCandidates]
+    const directZip = candidates.find((item) => item.toLowerCase().includes(".zip") && (item.includes("file_id") || item.includes("download")))
+    if (directZip) return directZip
+
+    const fileApi = candidates.find(item => item.includes("file_id"))
+    return fileApi || candidates[0] || ""
+  }
 
   // Translate title
   const handleTranslateTitle = useCallback(async () => {
@@ -266,6 +338,59 @@ export function OnlineModDetailModal({ isOpen, onClose, mod }: OnlineModDetailMo
     setCurrentGalleryIndex(0)
   }, [mod])
 
+  const handleDownloadAndInstall = useCallback(async () => {
+    if (!mod || !details) return
+
+    setInstallError(null)
+    setInstallMessage(null)
+
+    const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+    if (!gameDir) {
+      setInstallError("未配置游戏安装目录，请先在设置中配置")
+      return
+    }
+
+    if (nexusChecking) {
+      setInstallError("正在确认 Nexus 登录状态，请稍后重试")
+      return
+    }
+
+    if (!nexusLoggedIn) {
+      setInstallMessage("检测到未登录 NexusMods，正在跳转到设置页...")
+      onNavigate?.("settings")
+      return
+    }
+
+    const downloadUrl = details.downloadUrl?.trim()
+    if (!downloadUrl) {
+      setInstallError("未能解析到可直接下载链接，请先在 Nexus 页面手动下载。")
+      if (nexusUrl) {
+        openUrl(nexusUrl)
+      }
+      return
+    }
+
+    const invoke = await getTauriInvoke()
+    if (!invoke) {
+      setInstallError("当前环境不支持直接安装，请先在 Nexus 页面手动下载并解压到 Mods 目录。")
+      openUrl(downloadUrl)
+      return
+    }
+
+    setIsInstalling(true)
+    setInstallMessage("正在下载并安装...")
+    try {
+      await invoke("install_nexus_mod", { gameDir, downloadUrl })
+      setInstallMessage("已成功安装：模组已写入 Mods 目录。")
+    } catch (err: any) {
+      console.error("Install mod failed:", err)
+      setInstallError(`安装失败: ${err}`)
+      setInstallMessage(null)
+    } finally {
+      setIsInstalling(false)
+    }
+  }, [details, mod, nexusChecking, nexusLoggedIn, onNavigate, nexusUrl])
+
   // Extract Nexus ID from URL
   const getNexusId = (modItem: SmapiMod) => {
     const nexusPage = modItem.ModPages.find(p => p.Text === "Nexus" || p.Url.includes("nexusmods.com"))
@@ -326,8 +451,6 @@ export function OnlineModDetailModal({ isOpen, onClose, mod }: OnlineModDetailMo
         const node = el as HTMLElement
         const style = node.getAttribute("style")
         if (!style) return
-
-        const cssText = node.style.cssText
 
         // Remove problematic constraints regardless of spacing/casing, and keep remaining inline styles.
         node.style.removeProperty("min-width")
@@ -398,6 +521,7 @@ export function OnlineModDetailModal({ isOpen, onClose, mod }: OnlineModDetailMo
       else if (key.includes("endorsement") && val) endorsements = val
     })
     if (!version) version = mod?.Compatibility?.UnofficialVersion?.Text || "1.0.0"
+    const downloadUrl = extractDownloadUrl(htmlString)
 
     // 6. Extract Last Updated from sideitems
     let lastUpdated = ""
@@ -420,7 +544,8 @@ export function OnlineModDetailModal({ isOpen, onClose, mod }: OnlineModDetailMo
       uniqueDls,
       totalDls,
       endorsements,
-      lastUpdated
+      lastUpdated,
+      downloadUrl
     }
   }
 
@@ -584,8 +709,6 @@ export function OnlineModDetailModal({ isOpen, onClose, mod }: OnlineModDetailMo
         return <Badge className="bg-green-500/10 text-green-500 border border-green-500/20 rounded-full font-semibold px-2.5 py-0.5 text-xs">兼容</Badge>
     }
   }
-
-  const nexusUrl = mod.ModPages.find(p => p.Text === "Nexus" || p.Url.includes("nexusmods.com"))?.Url || ""
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm p-4 animate-in fade-in duration-200" onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
@@ -945,16 +1068,23 @@ export function OnlineModDetailModal({ isOpen, onClose, mod }: OnlineModDetailMo
           <Button 
             variant="default" 
             size="sm" 
-            disabled 
-            className="h-8 text-xs rounded-lg gap-1 bg-primary text-primary-foreground hover:bg-primary/95 cursor-not-allowed group relative"
+            disabled={isInstalling}
+            onClick={handleDownloadAndInstall}
+            className="h-8 text-xs rounded-lg gap-1 bg-primary text-primary-foreground hover:bg-primary/95 cursor-pointer group relative"
           >
-            <Download className="h-3 w-3" />
-            <span>下载并安装 (即将开放)</span>
+            {isInstalling ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+            <span>{isInstalling ? "安装中..." : "下载并安装"}</span>
             <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-popover text-popover-foreground border text-[9px] px-2 py-1 rounded shadow-lg whitespace-nowrap z-50">
-              文件一键下载功能将在下一阶段启用
+              尝试从详情页抓取下载链接并解压到 Mods 目录
             </span>
           </Button>
         </div>
+        {installMessage && (
+          <div className="px-4 pb-3 text-[11px] text-emerald-500">{installMessage}</div>
+        )}
+        {installError && (
+          <div className="px-4 pb-3 text-[11px] text-amber-500">{installError}</div>
+        )}
         
       </div>
     </div>

@@ -53,4 +53,4 @@ pub struct Mod {
 // Re-export commands for lib.rs
 pub use local::{list_installed_mods, toggle_mod, save_mod_config};
 pub use profiles::{list_profiles, save_profile, delete_profile, apply_profile, export_profile, import_profile, export_profile_to_file, import_profile_from_file};
-pub use nexus::{fetch_smapi_compatibility_mods, open_scraper_window, open_nexus_ranking_scraper, open_nexus_login_window, check_nexus_login_status, logout_nexus, fetch_nexus_api_key};
+pub use nexus::{fetch_smapi_compatibility_mods, open_scraper_window, open_nexus_ranking_scraper, open_nexus_login_window, check_nexus_login_status, logout_nexus, fetch_nexus_api_key, install_nexus_mod};

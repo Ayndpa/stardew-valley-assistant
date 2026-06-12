@@ -156,7 +156,7 @@ function App() {
                 浏览 SMAPI.io 兼容性数据库和 NexusMods。您可以搜索数千个星露谷物语模组，并了解它们与当前版本的兼容状态。
               </p>
             </div>
-            <OnlineMods />
+            <OnlineMods onNavigate={setCurrentPage} />
           </div>
         )
       default:

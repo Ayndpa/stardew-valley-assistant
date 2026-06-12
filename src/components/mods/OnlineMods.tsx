@@ -49,6 +49,10 @@ export interface SmapiMod {
   Slug: string
 }
 
+interface OnlineModsProps {
+  onNavigate?: (page: "settings") => void
+}
+
 // Initial premium popular mods to display if loading fails or in mock preview
 const POPULAR_MOCK_MODS: SmapiMod[] = [
   {
@@ -142,7 +146,7 @@ async function getTauriInvoke() {
   return null;
 }
 
-export function OnlineMods() {
+export function OnlineMods({ onNavigate }: OnlineModsProps) {
   const [onlineMods, setOnlineMods] = useState<SmapiMod[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -592,6 +596,7 @@ export function OnlineMods() {
         isOpen={isDetailOpen}
         onClose={() => setIsDetailOpen(false)}
         mod={selectedDetailMod}
+        onNavigate={onNavigate}
       />
     </div>
   )
