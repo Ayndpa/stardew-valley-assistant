@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { openUrl } from "@tauri-apps/plugin-opener"
 import { 
   X, 
@@ -8,7 +8,8 @@ import {
   Compass, 
   Loader2, 
   AlertTriangle,
-  RefreshCw
+  RefreshCw,
+  Languages
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -31,6 +32,86 @@ interface ParsedModDetails {
   version: string
   downloads: string
   endorsements: string
+}
+
+// Edge Translate state
+interface TranslateState {
+  titleTranslated: string | null
+  descriptionTranslated: string | null
+  titleLoading: boolean
+  descLoading: boolean
+  error: string | null
+}
+
+// Edge Translate helpers
+let edgeTokenCache: { token: string; expiry: number } | null = null
+
+async function getEdgeToken(): Promise<string> {
+  if (edgeTokenCache && Date.now() < edgeTokenCache.expiry) {
+    return edgeTokenCache.token
+  }
+  const resp = await fetch("https://edge.microsoft.com/translate/auth")
+  if (!resp.ok) throw new Error("获取 Edge 翻译令牌失败")
+  const token = await resp.text()
+  edgeTokenCache = { token, expiry: Date.now() + 8 * 60 * 1000 } // ~10min, refresh at 8min
+  return token
+}
+
+async function edgeTranslate(texts: string[], to: string): Promise<string[]> {
+  const token = await getEdgeToken()
+  const resp = await fetch(
+    `https://api-edge.cognitive.microsofttranslator.com/translate?api-version=3.0&from=en&to=${to}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(texts.map(t => ({ Text: t }))),
+    }
+  )
+  if (!resp.ok) throw new Error("翻译请求失败")
+  const data = await resp.json()
+  return data.map((item: any) => item.translations[0].text as string)
+}
+
+// Strip HTML tags for translation, then re-apply
+function stripHtml(html: string): { plain: string; tagMap: { index: number; tag: string }[] } {
+  const tagMap: { index: number; tag: string }[] = []
+  let plain = ""
+  let i = 0
+  while (i < html.length) {
+    if (html[i] === "<") {
+      const end = html.indexOf(">", i)
+      if (end !== -1) {
+        tagMap.push({ index: plain.length, tag: html.substring(i, end + 1) })
+        i = end + 1
+        continue
+      }
+    }
+    // decode common HTML entities
+    if (html.substring(i, i + 4) === "&nbsp;") { plain += " "; i += 6; continue }
+    if (html.substring(i, i + 4) === "&amp;") { plain += "&"; i += 5; continue }
+    if (html.substring(i, i + 3) === "&lt;") { plain += "<"; i += 4; continue }
+    if (html.substring(i, i + 4) === "&gt;") { plain += ">"; i += 4; continue }
+    if (html.substring(i, i + 6) === "&quot;") { plain += '"'; i += 6; continue }
+    plain += html[i]
+    i++
+  }
+  return { plain, tagMap }
+}
+
+function restoreHtml(translated: string, tagMap: { index: number; tag: string }[]): string {
+  // Simple approach: re-insert tags at approximate positions
+  let result = translated
+  // We insert tags from back to front to avoid index shifting
+  for (let i = tagMap.length - 1; i >= 0; i--) {
+    const { index, tag } = tagMap[i]
+    if (index <= result.length) {
+      result = result.substring(0, index) + tag + result.substring(index)
+    }
+  }
+  return result
 }
 
 // Helper for dynamic imports
@@ -63,6 +144,71 @@ export function OnlineModDetailModal({ isOpen, onClose, mod }: OnlineModDetailMo
   const [error, setError] = useState<string | null>(null)
   const [details, setDetails] = useState<ParsedModDetails | null>(null)
   const unlistenRef = useRef<(() => void) | null>(null)
+  const [translate, setTranslate] = useState<TranslateState>({
+    titleTranslated: null,
+    descriptionTranslated: null,
+    titleLoading: false,
+    descLoading: false,
+    error: null,
+  })
+  const [showTranslated, setShowTranslated] = useState({ title: false, desc: false })
+
+  // Translate title
+  const handleTranslateTitle = useCallback(async () => {
+    if (!details?.title || translate.titleLoading) return
+    if (showTranslated.title) {
+      setShowTranslated(prev => ({ ...prev, title: false }))
+      return
+    }
+    if (translate.titleTranslated) {
+      setShowTranslated(prev => ({ ...prev, title: true }))
+      return
+    }
+    setTranslate(prev => ({ ...prev, titleLoading: true, error: null }))
+    try {
+      const [translated] = await edgeTranslate([details.title], "zh-Hans")
+      setTranslate(prev => ({ ...prev, titleTranslated: translated, titleLoading: false }))
+      setShowTranslated(prev => ({ ...prev, title: true }))
+    } catch (err: any) {
+      setTranslate(prev => ({ ...prev, titleLoading: false, error: "标题翻译失败: " + err.message }))
+    }
+  }, [details, translate.titleLoading, showTranslated.title, translate.titleTranslated])
+
+  // Translate description (HTML)
+  const handleTranslateDesc = useCallback(async () => {
+    if (!details?.description || translate.descLoading) return
+    if (showTranslated.desc) {
+      setShowTranslated(prev => ({ ...prev, desc: false }))
+      return
+    }
+    if (translate.descriptionTranslated) {
+      setShowTranslated(prev => ({ ...prev, desc: true }))
+      return
+    }
+    setTranslate(prev => ({ ...prev, descLoading: true, error: null }))
+    try {
+      const { plain, tagMap } = stripHtml(details.description)
+      // Split into chunks of ~5000 chars for API limits
+      const chunks: string[] = []
+      const chunkSize = 4500
+      for (let i = 0; i < plain.length; i += chunkSize) {
+        chunks.push(plain.substring(i, i + chunkSize))
+      }
+      const translatedChunks = await edgeTranslate(chunks, "zh-Hans")
+      const translatedPlain = translatedChunks.join("")
+      const translatedHtml = restoreHtml(translatedPlain, tagMap)
+      setTranslate(prev => ({ ...prev, descriptionTranslated: translatedHtml, descLoading: false }))
+      setShowTranslated(prev => ({ ...prev, desc: true }))
+    } catch (err: any) {
+      setTranslate(prev => ({ ...prev, descLoading: false, error: "描述翻译失败: " + err.message }))
+    }
+  }, [details, translate.descLoading, showTranslated.desc, translate.descriptionTranslated])
+
+  // Reset translation state when mod changes
+  useEffect(() => {
+    setTranslate({ titleTranslated: null, descriptionTranslated: null, titleLoading: false, descLoading: false, error: null })
+    setShowTranslated({ title: false, desc: false })
+  }, [mod])
 
   // Extract Nexus ID from URL
   const getNexusId = (modItem: SmapiMod) => {
@@ -284,15 +430,29 @@ export function OnlineModDetailModal({ isOpen, onClose, mod }: OnlineModDetailMo
   const nexusUrl = mod.ModPages.find(p => p.Text === "Nexus" || p.Url.includes("nexusmods.com"))?.Url || ""
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm p-4 animate-in fade-in duration-200" onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
       <div className="w-full max-w-4xl max-h-[85vh] bg-card border border-border/80 shadow-2xl rounded-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
         
         {/* Header Panel */}
         <div className="p-5 border-b border-border/60 flex items-center justify-between bg-gradient-to-r from-accent/20 to-card">
           <div className="flex items-center gap-3 min-w-0 pr-4">
             <h3 className="text-base font-bold truncate text-foreground">
-              {loading ? "正在获取 Nexus 模组信息..." : details?.title}
+              {loading ? "正在获取 Nexus 模组信息..." : (showTranslated.title && translate.titleTranslated ? translate.titleTranslated : details?.title)}
             </h3>
+            {!loading && details && (
+              <button
+                onClick={handleTranslateTitle}
+                disabled={translate.titleLoading}
+                className={`shrink-0 p-1 rounded-md transition-colors cursor-pointer ${
+                  showTranslated.title
+                    ? "bg-primary/15 text-primary hover:bg-primary/25"
+                    : "hover:bg-black/5 dark:hover:bg-white/5 text-muted-foreground hover:text-foreground"
+                } ${translate.titleLoading ? "opacity-50 cursor-wait" : ""}`}
+                title={showTranslated.title ? "切换回原文" : "翻译标题"}
+              >
+                {translate.titleLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Languages className="h-3.5 w-3.5" />}
+              </button>
+            )}
             {!loading && details && renderStatusBadge(mod.Compatibility?.Status || "ok")}
           </div>
           <button 
@@ -392,13 +552,34 @@ export function OnlineModDetailModal({ isOpen, onClose, mod }: OnlineModDetailMo
 
             {/* Right Column - Scrollable HTML Description */}
             <div className="flex-1 overflow-hidden flex flex-col p-5 bg-card">
-              <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3 shrink-0">
-                模组详情介绍 (Description)
-              </h4>
+              <div className="flex items-center justify-between mb-3 shrink-0">
+                <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                  {showTranslated.desc ? "模组详情介绍 (已翻译)" : "模组详情介绍 (Description)"}
+                </h4>
+                {details && (
+                  <button
+                    onClick={handleTranslateDesc}
+                    disabled={translate.descLoading}
+                    className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] transition-colors cursor-pointer ${
+                      showTranslated.desc
+                        ? "bg-primary/15 text-primary hover:bg-primary/25 font-semibold"
+                        : "hover:bg-black/5 dark:hover:bg-white/5 text-muted-foreground hover:text-foreground"
+                    } ${translate.descLoading ? "opacity-50 cursor-wait" : ""}`}
+                  >
+                    {translate.descLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Languages className="h-3 w-3" />}
+                    <span>{showTranslated.desc ? "显示原文" : translate.descriptionTranslated ? "已翻译" : "翻译"}</span>
+                  </button>
+                )}
+              </div>
+              {translate.error && (
+                <div className="mb-2 text-[11px] text-amber-500 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-1.5 shrink-0">
+                  {translate.error}
+                </div>
+              )}
               <ScrollArea className="flex-1 pr-3">
                 <div 
                   className="prose dark:prose-invert max-w-none text-xs leading-relaxed text-muted-foreground space-y-4 prose-a:text-primary prose-a:underline hover:prose-a:text-primary/80 smapi-html-body"
-                  dangerouslySetInnerHTML={{ __html: details.description }}
+                  dangerouslySetInnerHTML={{ __html: showTranslated.desc && translate.descriptionTranslated ? translate.descriptionTranslated : details.description }}
                 />
               </ScrollArea>
             </div>

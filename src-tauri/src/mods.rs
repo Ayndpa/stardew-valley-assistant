@@ -407,12 +407,33 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
                     (() => {
                         try {
                             const html = document.documentElement ? document.documentElement.outerHTML : "";
+                            const text = document.body ? document.body.innerText : "";
+                            const lowerHtml = html.toLowerCase();
+                            const lowerTitle = (document.title || "").toLowerCase();
+                            const lowerHref = location.href.toLowerCase();
+                            const isChallenge =
+                                lowerTitle.includes("just a moment") ||
+                                lowerTitle.includes("checking your browser") ||
+                                lowerTitle.includes("attention required") ||
+                                lowerHref.includes("captcha") ||
+                                lowerHref.includes("challenge") ||
+                                lowerHtml.includes("cf-turnstile") ||
+                                lowerHtml.includes("challenges.cloudflare.com") ||
+                                lowerHtml.includes("/cdn-cgi/challenge-platform/") ||
+                                lowerHtml.includes("cf-challenge") ||
+                                lowerHtml.includes("cloudflare ray id") ||
+                                text.includes("Checking if the site connection is secure") ||
+                                text.includes("Verify you are human");
+                            const hasNexusPageMarker =
+                                location.hostname.endsWith("nexusmods.com") &&
+                                !isChallenge &&
+                                !!document.querySelector("#description-content, #section-mod-description, .mod-description, .tab-description, #pagetitle h1, meta[property='og:title'], meta[property='og:description']");
                             return {
                                 readyState: document.readyState,
                                 title: document.title || "",
                                 href: location.href,
-                                hasDetails:
-                                    !!document.querySelector("#description-content, #section-mod-description, .mod-description, #description, #pagetitle h1, h1, meta[property='og:title'], meta[property='og:description']"),
+                                isChallenge,
+                                hasDetails: hasNexusPageMarker,
                                 html
                             };
                         } catch (error) {
@@ -420,6 +441,7 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
                                 readyState: "error",
                                 title: "",
                                 href: "",
+                                isChallenge: false,
                                 hasDetails: false,
                                 html: "",
                                 error: String(error)
@@ -451,7 +473,11 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
                     .get("href")
                     .and_then(|v| v.as_str())
                     .unwrap_or_default();
-                let is_challenge = title.contains("Just a moment")
+                let is_challenge = snapshot
+                    .get("isChallenge")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false)
+                    || title.contains("Just a moment")
                     || title.contains("Checking your browser")
                     || href.contains("captcha")
                     || href.contains("challenge");
@@ -462,6 +488,9 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
                     let _ = poll_window.set_title(&last_title);
                     let _ = poll_window.show();
                     let _ = poll_window.set_focus();
+                    let _ = poll_handle.emit("respond-nexus-html", serde_json::json!({
+                        "status": "challenge"
+                    }));
                 }
 
                 // HTML ready — retrieve and emit. Nexus fills parts of the page asynchronously,
@@ -480,7 +509,7 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
                     .unwrap_or_default()
                     .to_string();
 
-                if !is_challenge && (has_details || (ready_state == "complete" && html.len() > 20_000)) {
+                if !is_challenge && ready_state == "complete" && has_details {
                     let _ = poll_window.set_title("Nexus 信息已获取");
                     println!("[Scraper] Got HTML, length: {}", html.len());
                     let _ = poll_handle.emit("respond-nexus-html", serde_json::json!({
