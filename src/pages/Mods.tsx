@@ -1,56 +1,14 @@
 import { useState, useEffect } from "react"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Separator } from "@/components/ui/separator"
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
-import {
-  Search,
-  Puzzle,
-  FolderOpen,
-  RefreshCw,
-  Plus,
-  Trash2,
-  ExternalLink,
-  Save,
-  CheckCircle2,
-  AlertTriangle,
-  Loader2,
-  X,
-  FileCode,
-  Power,
-  Sliders,
-  Terminal,
-  Info,
-  Download
-} from "lucide-react"
+import { Sliders, CheckCircle2, AlertTriangle, Info, X } from "lucide-react"
 
-// Define Interfaces
-interface ModConfigField {
-  key: string
-  label: string
-  type: "boolean" | "number" | "string"
-  value: any
-  description: string
-}
-
-interface Mod {
-  id: string
-  name: string
-  englishName: string
-  version: string
-  latestVersion: string
-  author: string
-  description: string
-  category: "core" | "content" | "utility" | "expansion"
-  isEnabled: boolean
-  nexusId?: number
-  localPath: string
-  folderName: string
-  dependencies: string[]
-  config: ModConfigField[]
-}
+// Import subcomponents
+import { SmapiInstaller } from "@/components/mods/SmapiInstaller"
+import { SmapiManager } from "@/components/mods/SmapiManager"
+import { ModList, Mod } from "@/components/mods/ModList"
+import { ModDetail } from "@/components/mods/ModDetail"
+import { AddModModal } from "@/components/mods/AddModModal"
 
 // Initial Mock Mods Data
 const INITIAL_MODS: Mod[] = [
@@ -715,6 +673,14 @@ export function Mods() {
     }
   }
 
+  const handleOpenOfficialSite = () => {
+    if (typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__ && tauriOpen) {
+      tauriOpen("https://smapi.io").catch((err: any) => console.error(err));
+    } else {
+      window.open("https://smapi.io", "_blank");
+    }
+  }
+
   // Filter and search computation
   const filteredMods = mods.filter((m) => {
     const matchesSearch =
@@ -757,178 +723,17 @@ export function Mods() {
       )}
 
       {smapiStatus !== null && !smapiStatus.installed ? (
-        <div className="max-w-2xl mx-auto space-y-8 py-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-          {/* Main Hero Card */}
-          <Card className="border border-border shadow-xl bg-card rounded-3xl overflow-hidden relative">
-            <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-red-400 via-orange-400 to-amber-400"></div>
-            
-            <CardContent className="p-8 space-y-8">
-              {/* Icon and Title */}
-              <div className="text-center space-y-3">
-                <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-3xl bg-red-500/10 text-red-500 shadow-inner">
-                  <AlertTriangle className="h-10 w-10 text-red-500 animate-pulse" />
-                </div>
-                <div className="space-y-1">
-                  <h1 className="text-2xl font-extrabold tracking-tight text-foreground">
-                    SMAPI 安装
-                  </h1>
-                  <p className="text-sm text-muted-foreground max-w-md mx-auto">
-                    您需要安装 Stardew Modding API (SMAPI) 才能在《星露谷物语》中使用各种丰富的模组。
-                  </p>
-                </div>
-              </div>
-
-              {/* Status Details */}
-              <div className="bg-accent/20 dark:bg-accent/5 rounded-2xl p-6 border border-border/60 space-y-4">
-                <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">系统检测环境</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                  <div className="space-y-1">
-                    <span className="text-muted-foreground block font-medium">游戏安装目录</span>
-                    <span className="font-semibold text-foreground font-mono truncate block max-w-xs" title={localStorage.getItem("stardewGameDirectory") || ""}>
-                      {localStorage.getItem("stardewGameDirectory") || "未配置"}
-                    </span>
-                  </div>
-                  <div className="space-y-1">
-                    <span className="text-muted-foreground block font-medium">Stardew Valley 版本</span>
-                    <span className="font-semibold text-foreground font-mono bg-accent/40 px-2 py-0.5 rounded text-[11px]">
-                      {gameVersion === null ? "检测中..." : gameVersion}
-                    </span>
-                  </div>
-                  <div className="space-y-1">
-                    <span className="text-muted-foreground block font-medium">SMAPI 状态</span>
-                    <span className="font-semibold text-red-500 flex items-center gap-1 font-medium">
-                      <X className="h-3.5 w-3.5" /> 未安装
-                    </span>
-                  </div>
-                  <div className="space-y-1">
-                    <span className="text-muted-foreground block font-medium">最新可用 SMAPI</span>
-                    <span className="font-semibold text-emerald-600 dark:text-emerald-400 font-mono bg-emerald-500/10 px-2 py-0.5 rounded text-[11px]">
-                      {smapiLatestVersion === null ? "检查中..." : `v${smapiLatestVersion}`}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* 下载设置 */}
-              {installStatus === "idle" && (
-                <div className="bg-accent/20 dark:bg-accent/5 rounded-2xl p-5 border border-border/60 space-y-3">
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                    <div className="space-y-0.5">
-                      <h4 className="text-xs font-bold text-foreground">GitHub 下载源设置</h4>
-                      <p className="text-[10px] text-muted-foreground">国内网络下载缓慢时，推荐开启加速镜像</p>
-                    </div>
-                    <div className="flex bg-accent/40 rounded-xl p-1 border border-border/30 w-full sm:w-auto">
-                      <button
-                        onClick={() => handleSetSmapiMirror("ghproxy")}
-                        type="button"
-                        className={`flex-1 sm:flex-none text-[11px] font-semibold px-3 py-1.5 rounded-lg transition-all ${
-                          smapiMirror === "ghproxy"
-                            ? "bg-primary text-primary-foreground shadow-sm"
-                            : "text-muted-foreground hover:text-foreground"
-                        }`}
-                      >
-                        GHProxy 加速 (推荐)
-                      </button>
-                      <button
-                        onClick={() => handleSetSmapiMirror("official")}
-                        type="button"
-                        className={`flex-1 sm:flex-none text-[11px] font-semibold px-3 py-1.5 rounded-lg transition-all ${
-                          smapiMirror === "official"
-                            ? "bg-primary text-primary-foreground shadow-sm"
-                            : "text-muted-foreground hover:text-foreground"
-                        }`}
-                      >
-                        GitHub 官方源
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Action and Progress Bar */}
-              <div className="space-y-4 pt-4 border-t border-border/60">
-                {installStatus === "idle" ? (
-                  <div className="flex flex-col sm:flex-row justify-center gap-3">
-                    <Button
-                      onClick={handleInstallSmapi}
-                      disabled={smapiLatestVersion === null}
-                      className="bg-primary hover:bg-primary/95 text-primary-foreground font-bold text-sm px-8 py-6 rounded-2xl shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2"
-                    >
-                      <Download className="h-5 w-5" />
-                      一键安装 SMAPI {smapiLatestVersion && `v${smapiLatestVersion}`}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        if (typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__ && tauriOpen) {
-                          tauriOpen("https://smapi.io");
-                        } else {
-                          window.open("https://smapi.io", "_blank");
-                        }
-                      }}
-                      className="border-border text-foreground hover:bg-accent font-semibold text-sm px-6 py-6 rounded-2xl"
-                    >
-                      手动去官网下载
-                    </Button>
-                  </div>
-                ) : installStatus === "error" ? (
-                  <div className="space-y-4">
-                    <div className="bg-red-500/15 border border-red-500/20 text-red-700 dark:text-red-400 text-xs rounded-xl p-4 font-mono break-all">
-                      <p className="font-bold flex items-center gap-1.5 mb-1 text-sm">
-                        <AlertTriangle className="h-4 w-4" /> 安装出错:
-                      </p>
-                      {installError}
-                    </div>
-                    <div className="flex justify-center gap-3">
-                      <Button
-                        onClick={handleInstallSmapi}
-                        className="bg-primary hover:bg-primary/95 text-primary-foreground font-bold text-xs px-6 py-4 rounded-xl"
-                      >
-                        <RefreshCw className="h-4 w-4 mr-1.5 animate-spin" style={{ animationDuration: '3s' }} /> 重新尝试安装
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <div className="flex justify-between text-xs font-bold text-foreground">
-                      <span className="flex items-center gap-1.5">
-                        <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-                        {installStatus === "fetching" && "正在准备网络请求..."}
-                        {installStatus === "downloading" && `正在下载 SMAPI 安装包 (从 GitHub Releases)...`}
-                        {installStatus === "extracting" && "正在解压缩安装包文件..."}
-                        {installStatus === "copying" && "正在部署 SMAPI 核心组件到游戏目录..."}
-                        {installStatus === "success" && "SMAPI 安装完成！"}
-                      </span>
-                      <span>{installProgress}%</span>
-                    </div>
-                    <div className="h-2 w-full bg-accent/40 rounded-full overflow-hidden">
-                      <div 
-                        className="h-full bg-primary transition-all duration-300 rounded-full" 
-                        style={{ width: `${installProgress}%` }}
-                      ></div>
-                    </div>
-                    <p className="text-[10px] text-muted-foreground text-center">
-                      正在自动为您下载平台特定的运行库并完成目录重定向，请勿关闭程序。
-                    </p>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Installation Details Info Card */}
-          <Card className="border border-border bg-card rounded-2xl p-6">
-            <CardHeader className="p-0 pb-3 flex flex-row items-center gap-2">
-              <Info className="h-5 w-5 text-primary" />
-              <CardTitle className="text-sm font-bold text-foreground">关于 SMAPI 的一键安装</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0 text-xs text-muted-foreground/90 space-y-2 leading-relaxed font-medium">
-              <p>1. 星露谷助手会从 GitHub 下载对应您游戏平台的最新版 SMAPI 安装包。</p>
-              <p>2. 程序将执行静默手动解压，并将安装包中 <code className="bg-accent/40 px-1 py-0.5 rounded text-[10px]">internal</code> 的对应文件递归移动部署至您的游戏主目录，与官方脚本安装效果完全一致。</p>
-              <p>3. 卸载十分方便：若将来您希望清除 SMAPI，可以在右上角的管理面板中点击一键卸载，游戏文件会重回官方无模组的纯净版，且您的个人 Mods 目录不受任何损伤。</p>
-            </CardContent>
-          </Card>
-        </div>
+        <SmapiInstaller
+          smapiLatestVersion={smapiLatestVersion}
+          smapiMirror={smapiMirror}
+          setSmapiMirror={handleSetSmapiMirror}
+          onInstall={handleInstallSmapi}
+          onOpenOfficialSite={handleOpenOfficialSite}
+          installStatus={installStatus}
+          installProgress={installProgress}
+          installError={installError}
+          gameVersion={gameVersion}
+        />
       ) : (
         <>
           {/* Header Panel */}
@@ -991,778 +796,73 @@ export function Mods() {
           </div>
 
           {/* SMAPI Management Panel */}
-          {isManagementOpen && smapiStatus?.installed && (
-            <Card className="bg-card border-border shadow-md rounded-2xl p-6 relative overflow-hidden animate-in slide-in-from-top-3 duration-300">
-              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary to-green-600"></div>
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <h3 className="font-extrabold text-lg text-foreground flex items-center gap-2">
-                    <Sliders className="h-5 w-5 text-primary" />
-                    SMAPI 管理面板
-                  </h3>
-                  <p className="text-xs text-muted-foreground mt-0.5 font-medium">查看和维护当前安装的 SMAPI 状态</p>
-                </div>
-                <button 
-                  onClick={() => setIsManagementOpen(false)}
-                  className="p-1 rounded-lg hover:bg-accent text-muted-foreground"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm mb-6">
-                <div className="space-y-1">
-                  <span className="text-xs text-muted-foreground block font-medium">游戏版本</span>
-                  <span className="font-semibold text-foreground font-mono bg-accent/30 px-2 py-0.5 rounded text-xs">{gameVersion || "未检测到"}</span>
-                </div>
-                <div className="space-y-1">
-                  <span className="text-xs text-muted-foreground block font-medium">已安装 SMAPI 版本</span>
-                  <span className="font-semibold text-primary font-mono bg-primary/10 px-2 py-0.5 rounded text-xs">{smapiStatus.version || "已安装"}</span>
-                </div>
-                <div className="space-y-1">
-                  <span className="text-xs text-muted-foreground block font-medium">最新可用版本</span>
-                  <span className="font-semibold text-emerald-600 dark:text-emerald-400 font-mono bg-emerald-500/10 px-2 py-0.5 rounded text-xs">{smapiLatestVersion || "检测中..."}</span>
-                </div>
-              </div>
+          <SmapiManager
+            isManagementOpen={isManagementOpen}
+            setIsManagementOpen={setIsManagementOpen}
+            smapiStatus={smapiStatus}
+            gameVersion={gameVersion}
+            smapiLatestVersion={smapiLatestVersion}
+            onUninstall={handleUninstallSmapi}
+          />
 
-              <div className="border-t border-border pt-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div className="space-y-0.5 flex-1 min-w-0">
-                  <span className="text-xs text-muted-foreground block font-medium">启动文件路径</span>
-                  <code className="text-[11px] font-mono break-all text-foreground bg-accent/40 px-2 py-1 rounded block max-w-full truncate" title={smapiStatus.path || "无"}>
-                    {smapiStatus.path || "无"}
-                  </code>
-                </div>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={handleUninstallSmapi}
-                  className="rounded-xl font-semibold gap-1.5 self-end sm:self-auto shrink-0 bg-red-600 hover:bg-red-700 text-white shadow-sm transition-colors"
-                >
-                  <Trash2 className="h-4 w-4" />
-                  卸载 SMAPI
-                </Button>
-              </div>
-            </Card>
-          )}
-
-          {/* Toolbar / Actions Bar */}
-          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
-            {/* Left Search */}
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4.5 w-4.5 text-muted-foreground" />
-              <Input
-                placeholder="搜索模组名称、英文名、作者或描述..."
-                className="pl-11 h-10 bg-card border border-border shadow-sm rounded-xl focus-visible:ring-primary focus-visible:border-primary transition-all text-xs"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.currentTarget.value)}
+          {/* Main Split Layout */}
+          <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+            {/* Left Area: Filter Tabs & Mod Cards */}
+            <div className="xl:col-span-7">
+              <ModList
+                mods={mods}
+                filteredMods={filteredMods}
+                selectedModId={selectedModId}
+                setSelectedModId={setSelectedModId}
+                onToggleMod={handleToggleMod}
+                onDeleteMod={handleDeleteMod}
+                selectedCategory={selectedCategory}
+                setSelectedCategory={setSelectedCategory}
+                categoryMap={CATEGORY_MAP}
+                searchTerm={searchTerm}
+                setSearchTerm={setSearchTerm}
+                onScan={handleScanDirectory}
+                isScanning={isScanning}
+                onCheckUpdates={handleCheckUpdates}
+                isCheckingUpdates={isCheckingUpdates}
+                onOpenFolder={handleOpenFolder}
+                onOpenAddModal={() => setIsAddModalOpen(true)}
               />
-              {searchTerm && (
-                <button 
-                  onClick={() => setSearchTerm("")} 
-                  className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 text-muted-foreground hover:text-foreground rounded"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              )}
             </div>
 
-            {/* Right Action Buttons */}
-            <div className="flex flex-wrap items-center gap-2">
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="gap-2 h-10 border-border bg-card hover:bg-accent text-sm rounded-xl px-4 font-semibold"
-                onClick={handleScanDirectory}
-                disabled={isScanning}
-              >
-                {isScanning ? (
-                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                ) : (
-                  <FolderOpen className="h-4 w-4 text-emerald-500" />
-                )}
-                {isScanning ? "正在扫描..." : "扫描模组目录"}
-              </Button>
-
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="gap-2 h-10 border-border bg-card hover:bg-accent text-sm rounded-xl px-4 font-semibold"
-                onClick={handleCheckUpdates}
-                disabled={isCheckingUpdates}
-              >
-                <RefreshCw className={`h-4 w-4 text-sky-500 ${isCheckingUpdates ? "animate-spin" : ""}`} />
-                {isCheckingUpdates ? "正在检测更新..." : "检查更新"}
-              </Button>
-
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="gap-2 h-10 border-border bg-card hover:bg-accent text-sm rounded-xl px-4 font-semibold"
-                onClick={handleOpenFolder}
-              >
-                <FolderOpen className="h-4 w-4 text-amber-500" />
-                打开 Mods 目录
-              </Button>
-
-              <Button 
-                variant="default" 
-                size="sm" 
-                className="gap-2 h-10 bg-primary hover:bg-primary/95 text-primary-foreground text-sm font-semibold rounded-xl px-4 shadow-sm"
-                onClick={() => setIsAddModalOpen(true)}
-              >
-                <Plus className="h-4 w-4" />
-                导入新模组
-              </Button>
+            {/* Right Area: Mod Details & Interactive Configuration */}
+            <div className="xl:col-span-5">
+              <ModDetail
+                selectedMod={selectedMod}
+                activeDetailTab={activeDetailTab}
+                setActiveDetailTab={setActiveDetailTab}
+                onToggleMod={handleToggleMod}
+                onOpenFolder={handleOpenFolder}
+                onConfigChange={handleConfigChange}
+                onSaveConfig={handleSaveConfig}
+              />
             </div>
           </div>
-      {/* Main Split Layout */}
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
-        {/* Left Area: Filter Tabs & Mod Cards (8 cols on XL, 12 on normal) */}
-        <div className="xl:col-span-7 space-y-4">
-          {/* Category Tabs */}
-          <div className="flex gap-1.5 p-1 bg-accent/30 dark:bg-accent/10 border border-border/80 rounded-xl overflow-x-auto max-w-full">
-            {(Object.keys(CATEGORY_MAP) as Array<keyof typeof CATEGORY_MAP>).map((catKey) => (
-              <button
-                key={catKey}
-                onClick={() => setSelectedCategory(catKey)}
-                className={`px-4 py-2 text-xs font-semibold rounded-lg whitespace-nowrap transition-all ${
-                  selectedCategory === catKey
-                    ? "bg-card text-primary shadow-sm border border-border/50"
-                    : "text-muted-foreground hover:text-foreground hover:bg-card/40"
-                }`}
-              >
-                {CATEGORY_MAP[catKey]}
-                {catKey !== "all" && (
-                  <span className="ml-1.5 px-1.5 py-0.25 bg-muted dark:bg-muted/30 text-muted-foreground text-[10px] rounded-full">
-                    {mods.filter(m => m.category === catKey).length}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
 
-          {/* List of Mod Cards */}
-          <div className="space-y-3 max-h-[640px] overflow-y-auto pr-1">
-            {filteredMods.length === 0 ? (
-              <Card className="border border-dashed border-border py-16 flex flex-col items-center justify-center text-center">
-                <Puzzle className="h-12 w-12 text-muted-foreground/40 mb-3" />
-                <h3 className="text-lg font-bold text-muted-foreground">没有检索到模组</h3>
-                <p className="text-sm text-muted-foreground/70 max-w-xs mt-1">
-                  尝试更改您的搜索词，或者选择其他的分类筛选。
-                </p>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="mt-4 rounded-xl"
-                  onClick={() => { setSearchTerm(""); setSelectedCategory("all"); }}
-                >
-                  清除所有筛选条件
-                </Button>
-              </Card>
-            ) : (
-              filteredMods.map((mod) => {
-                const hasUpdate = mod.version !== mod.latestVersion
-                const isSelected = mod.id === selectedModId
-                return (
-                  <div
-                    key={mod.id}
-                    className={`group relative p-4 rounded-xl border transition-all duration-200 cursor-pointer ${
-                      isSelected
-                        ? "bg-accent/40 dark:bg-accent/20 border-primary shadow-md ring-1 ring-primary/20"
-                        : "bg-card hover:bg-accent/30 dark:hover:bg-accent/10 border-border hover:border-border-accent shadow-sm"
-                    } ${!mod.isEnabled ? "opacity-65 hover:opacity-85" : ""}`}
-                    onClick={() => {
-                      setSelectedModId(mod.id)
-                      setActiveDetailTab("info") // Default back to info tab on switch
-                    }}
-                  >
-                    {/* Update Indicator Side-Border */}
-                    {hasUpdate && mod.isEnabled && (
-                      <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500 rounded-l-xl" />
-                    )}
-
-                    <div className="flex items-start justify-between gap-4">
-                      {/* Left: Checkbox & Meta */}
-                      <div className="flex items-start gap-3 flex-1 min-w-0">
-                        {/* Status Toggle Switch (Small) */}
-                        <div 
-                          className="mt-1 flex-shrink-0"
-                          onClick={(e) => {
-                            e.stopPropagation() // Don't trigger selection
-                            handleToggleMod(mod.id)
-                          }}
-                        >
-                          <button
-                            type="button"
-                            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
-                              mod.isEnabled ? "bg-primary" : "bg-muted-foreground/30"
-                            }`}
-                          >
-                            <span
-                              className={`pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg ring-0 transition-transform ${
-                                mod.isEnabled ? "translate-x-4.5" : "translate-x-0.5"
-                              }`}
-                            />
-                          </button>
-                        </div>
-
-                        {/* Mod Names */}
-                        <div className="min-w-0">
-                          <div className="flex items-center flex-wrap gap-x-2 gap-y-1">
-                            <h4 className="font-bold text-base truncate group-hover:text-primary transition-colors">
-                              {mod.name}
-                            </h4>
-                            <span className="text-xs text-muted-foreground font-mono truncate max-w-[140px] lg:max-w-xs">
-                              {mod.englishName}
-                            </span>
-                          </div>
-                          <p className="text-xs text-muted-foreground mt-1 font-medium">
-                            作者: {mod.author} · 本地版本: v{mod.version}
-                          </p>
-                          <p className="text-xs text-muted-foreground/80 mt-1 line-clamp-1">
-                            {mod.description}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Right: Badges & Trash */}
-                      <div className="flex flex-col items-end gap-2 flex-shrink-0">
-                        <Badge 
-                          variant="secondary" 
-                          className={`text-[10px] font-bold py-0.5 px-2 rounded-md ${
-                            mod.category === "core" 
-                              ? "bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300 border border-purple-200/50 dark:border-purple-900/40" 
-                              : mod.category === "content" 
-                              ? "bg-pink-100 text-pink-700 dark:bg-pink-950/40 dark:text-pink-300 border border-pink-200/50 dark:border-pink-900/40"
-                              : mod.category === "expansion"
-                              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200/50 dark:border-emerald-900/40"
-                              : "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200/50 dark:border-blue-900/40"
-                          }`}
-                        >
-                          {CATEGORY_MAP[mod.category]}
-                        </Badge>
-
-                        {/* Has Update Badge */}
-                        {hasUpdate ? (
-                          <Badge className="bg-amber-500 hover:bg-amber-600 text-white border-none text-[10px] font-bold flex items-center gap-0.5 py-0.5 px-1.5 animate-pulse rounded-md">
-                            可升级 v{mod.latestVersion}
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="text-[10px] text-green-600 dark:text-green-400 border-green-200 dark:border-green-900/40 bg-green-500/5 dark:bg-green-500/2 py-0.5 px-1.5 rounded-md">
-                            最新版
-                          </Badge>
-                        )}
-
-                        {/* Delete Button (Only displays on hover/select) */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            if(confirm(`确定要从列表中移除模组 [${mod.name}] 吗？`)) {
-                              handleDeleteMod(mod.id)
-                            }
-                          }}
-                          className="opacity-0 group-hover:opacity-100 p-1 hover:bg-destructive/15 text-muted-foreground hover:text-destructive rounded transition-all mt-1"
-                          title="移除该模组"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })
-            )}
-          </div>
-        </div>
-
-        {/* Right Area: Mod Details & Interactive Configuration (5 cols on XL, 12 on normal) */}
-        <div className="xl:col-span-5">
-          {selectedMod ? (
-            <Card className="border border-border shadow-md rounded-xl overflow-hidden bg-card">
-              {/* Card Banner / Title */}
-              <div className="p-6 pb-4 bg-gradient-to-b from-accent/30 dark:from-accent/15 to-transparent border-b border-border/50">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h3 className="text-xl font-bold flex items-center gap-2">
-                      <Puzzle className="h-5 w-5 text-primary" />
-                      {selectedMod.name}
-                    </h3>
-                    <p className="text-xs text-muted-foreground font-mono mt-1">
-                      {selectedMod.englishName}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant={selectedMod.isEnabled ? "default" : "secondary"} className={selectedMod.isEnabled ? "bg-green-600 hover:bg-green-600" : ""}>
-                      {selectedMod.isEnabled ? "已启用" : "已禁用"}
-                    </Badge>
-                  </div>
-                </div>
-
-                {/* Subinfo Row */}
-                <div className="flex items-center gap-x-4 gap-y-2 flex-wrap mt-4 text-xs text-muted-foreground">
-                  <div>
-                    作者: <span className="font-semibold text-foreground">{selectedMod.author}</span>
-                  </div>
-                  <div>
-                    当前版本: <span className="font-semibold text-foreground">v{selectedMod.version}</span>
-                  </div>
-                  {selectedMod.nexusId && (
-                    <a
-                      href={`https://www.nexusmods.com/stardewvalley/mods/${selectedMod.nexusId}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary hover:underline flex items-center gap-0.5"
-                    >
-                      Nexus ID: {selectedMod.nexusId}
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  )}
-                </div>
-              </div>
-
-              {/* Tabs list inside details panel */}
-              <Tabs value={activeDetailTab} onValueChange={setActiveDetailTab} className="w-full">
-                <div className="px-6 border-b border-border/60">
-                  <TabsList className="bg-transparent h-10 p-0 gap-4 w-full justify-start border-none">
-                    <TabsTrigger
-                      value="info"
-                      className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-1 py-2 text-xs font-semibold text-muted-foreground data-[state=active]:text-foreground"
-                    >
-                      <Info className="h-3.5 w-3.5 mr-1" />
-                      模组信息
-                    </TabsTrigger>
-                    <TabsTrigger
-                      value="config"
-                      className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-1 py-2 text-xs font-semibold text-muted-foreground data-[state=active]:text-foreground"
-                    >
-                      <Sliders className="h-3.5 w-3.5 mr-1" />
-                      参数配置
-                    </TabsTrigger>
-                    <TabsTrigger
-                      value="files"
-                      className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-1 py-2 text-xs font-semibold text-muted-foreground data-[state=active]:text-foreground"
-                    >
-                      <FileCode className="h-3.5 w-3.5 mr-1" />
-                      配置文件
-                    </TabsTrigger>
-                    <TabsTrigger
-                      value="logs"
-                      className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-1 py-2 text-xs font-semibold text-muted-foreground data-[state=active]:text-foreground"
-                    >
-                      <Terminal className="h-3.5 w-3.5 mr-1" />
-                      运行日志
-                    </TabsTrigger>
-                  </TabsList>
-                </div>
-
-                {/* Tab: Info */}
-                <TabsContent value="info" className="p-6 space-y-4 outline-none">
-                  <div>
-                    <h4 className="text-sm font-semibold text-foreground mb-1.5">模组描述</h4>
-                    <p className="text-sm text-muted-foreground leading-relaxed">
-                      {selectedMod.description}
-                    </p>
-                  </div>
-
-                  <Separator />
-
-                  <div className="grid grid-cols-2 gap-4 text-xs">
-                    <div>
-                      <span className="text-muted-foreground block mb-0.5">SMAPI 依赖项</span>
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {selectedMod.dependencies.length > 0 ? (
-                          selectedMod.dependencies.map((dep) => (
-                            <Badge key={dep} variant="outline" className="text-[10px] py-0 px-1.5">
-                              {dep}
-                            </Badge>
-                          ))
-                        ) : (
-                          <span className="text-muted-foreground italic">无依赖项</span>
-                        )}
-                      </div>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground block mb-0.5">本地存放路径</span>
-                      <span className="font-mono bg-accent/40 px-1.5 py-0.5 rounded text-[10px] break-all inline-block mt-1 text-foreground">
-                        {selectedMod.localPath}
-                      </span>
-                    </div>
-                  </div>
-
-                  {selectedMod.version !== selectedMod.latestVersion && (
-                    <div className="bg-amber-500/10 border border-amber-200/50 dark:border-amber-900/30 p-3.5 rounded-xl flex items-start gap-2.5">
-                      <AlertTriangle className="h-4.5 w-4.5 text-amber-500 flex-shrink-0 mt-0.5" />
-                      <div>
-                        <p className="text-xs font-semibold text-amber-800 dark:text-amber-200">
-                          发现新版本 v{selectedMod.latestVersion} 可升级
-                        </p>
-                        <p className="text-[11px] text-amber-700/90 dark:text-amber-300/80 mt-0.5">
-                          当前安装版本为 v{selectedMod.version}。建议去 Nexus Mods 下载最新包覆盖更新，以保证与游戏最新版本的兼容性。
-                        </p>
-                        <Button 
-                          variant="link" 
-                          className="text-amber-600 dark:text-amber-400 p-0 h-auto text-[11px] font-bold mt-1.5 hover:underline"
-                          onClick={() => {
-                            window.open(`https://www.nexusmods.com/stardewvalley/mods/${selectedMod.nexusId}`, '_blank')
-                          }}
-                        >
-                          前往 Nexus Mods 下载页面 &rarr;
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="pt-2 flex gap-2">
-                    <Button
-                      variant={selectedMod.isEnabled ? "destructive" : "default"}
-                      size="sm"
-                      className="flex-1 gap-1.5 py-2 rounded-xl text-xs font-semibold"
-                      onClick={() => handleToggleMod(selectedMod.id)}
-                    >
-                      <Power className="h-3.5 w-3.5" />
-                      {selectedMod.isEnabled ? "禁用此模组" : "启用此模组"}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="gap-1.5 py-2 rounded-xl text-xs font-semibold text-muted-foreground hover:text-foreground border-border hover:bg-accent"
-                      onClick={() => handleOpenFolder()}
-                    >
-                      <FolderOpen className="h-3.5 w-3.5" />
-                      定位文件夹
-                    </Button>
-                  </div>
-                </TabsContent>
-
-                {/* Tab: Config Form Editor */}
-                <TabsContent value="config" className="p-6 space-y-4 outline-none">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="text-sm font-semibold text-foreground">动态参数设置</h4>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        模拟编辑该模组的 <code className="bg-accent/40 px-1 py-0.5 rounded text-[10px]">config.json</code> 参数。
-                      </p>
-                    </div>
-                    {selectedMod.config.length > 0 && (
-                      <Button
-                        size="sm"
-                        className="bg-primary hover:bg-primary/95 text-primary-foreground gap-1.5 rounded-lg text-xs"
-                        onClick={handleSaveConfig}
-                        disabled={!selectedMod.isEnabled}
-                      >
-                        <Save className="h-3.5 w-3.5" />
-                        保存配置
-                      </Button>
-                    )}
-                  </div>
-
-                  {!selectedMod.isEnabled && (
-                    <div className="bg-muted dark:bg-muted/10 border border-border p-3.5 rounded-xl text-center text-xs text-muted-foreground">
-                      模组当前处于禁用状态，请在“模组信息”中启用模组后再编辑参数配置。
-                    </div>
-                  )}
-
-                  <div className="space-y-4 mt-2 max-h-[300px] overflow-y-auto pr-1">
-                    {selectedMod.config.length > 0 ? (
-                      selectedMod.config.map((field) => (
-                        <div
-                          key={field.key}
-                          className={`p-3 rounded-lg border transition-all ${
-                            !selectedMod.isEnabled 
-                              ? "opacity-50 border-border bg-accent/10" 
-                              : "border-border/60 bg-accent/10 hover:border-primary/30"
-                          }`}
-                        >
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="space-y-1">
-                              <label className="text-xs font-bold text-foreground block">
-                                {field.label}
-                                <span className="text-[10px] text-muted-foreground font-mono ml-2">
-                                  ({field.key})
-                                </span>
-                              </label>
-                              <span className="text-[10px] text-muted-foreground leading-normal block">
-                                {field.description}
-                              </span>
-                            </div>
-
-                            {/* Render controls based on type */}
-                            <div className="flex-shrink-0 mt-0.5">
-                              {field.type === "boolean" && (
-                                <div 
-                                  onClick={() => {
-                                    if(selectedMod.isEnabled) {
-                                      handleConfigChange(selectedMod.id, field.key, !field.value)
-                                    }
-                                  }}
-                                >
-                                  <button
-                                    type="button"
-                                    disabled={!selectedMod.isEnabled}
-                                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
-                                      field.value ? "bg-primary" : "bg-muted-foreground/30"
-                                    } ${!selectedMod.isEnabled ? "cursor-not-allowed" : ""}`}
-                                  >
-                                    <span
-                                      className={`pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg ring-0 transition-transform ${
-                                        field.value ? "translate-x-4.5" : "translate-x-0.5"
-                                      }`}
-                                    />
-                                  </button>
-                                </div>
-                              )}
-
-                              {field.type === "number" && (
-                                <Input
-                                  type="number"
-                                  disabled={!selectedMod.isEnabled}
-                                  className="w-16 h-8 text-xs text-center border-border bg-card rounded-md"
-                                  value={field.value}
-                                  onChange={(e) =>
-                                    handleConfigChange(
-                                      selectedMod.id,
-                                      field.key,
-                                      parseInt(e.target.value) || 0
-                                    )
-                                  }
-                                />
-                              )}
-
-                              {field.type === "string" && (
-                                <Input
-                                  type="text"
-                                  disabled={!selectedMod.isEnabled}
-                                  className="w-24 h-8 text-xs border border-border bg-card rounded-md"
-                                  value={field.value}
-                                  onChange={(e) =>
-                                    handleConfigChange(selectedMod.id, field.key, e.target.value)
-                                  }
-                                />
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="text-center py-6 text-xs text-muted-foreground italic">
-                        该模组无需任何自定义参数配置。
-                      </div>
-                    )}
-                  </div>
-                </TabsContent>
-
-                {/* Tab: File View Simulation */}
-                <TabsContent value="files" className="p-6 space-y-4 outline-none">
-                  <div>
-                    <h4 className="text-sm font-semibold text-foreground">配置文件模拟器</h4>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      以下是该模组的 <code className="bg-accent/40 px-1 py-0.5 rounded text-[10px]">config.json</code> 在磁盘中的真实序列化状态。
-                    </p>
-                  </div>
-
-                  <div className="bg-zinc-950 dark:bg-black/90 text-zinc-100 rounded-xl p-4 font-mono text-[11px] leading-relaxed overflow-x-auto border border-zinc-800">
-                    <div className="flex items-center justify-between text-[10px] text-zinc-500 border-b border-zinc-800 pb-2 mb-2">
-                      <span>{selectedMod.localPath}/config.json</span>
-                      <span className="text-green-500">JSON Format</span>
-                    </div>
-                    <pre className="text-emerald-400">
-                      {JSON.stringify(
-                        selectedMod.config.reduce((acc, field) => {
-                          acc[field.key] = field.value
-                          return acc
-                        }, {} as Record<string, any>),
-                        null,
-                        2
-                      )}
-                    </pre>
-                  </div>
-                </TabsContent>
-
-                {/* Tab: Logs Simulation */}
-                <TabsContent value="logs" className="p-6 space-y-4 outline-none">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="text-sm font-semibold text-foreground">SMAPI 启动日志流</h4>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        与此模组相关的加载与生命周期钩子事件监控。
-                      </p>
-                    </div>
-                    <Badge variant="outline" className="text-[10px] border-green-700/30 text-green-600 bg-green-500/5">
-                      正常载入
-                    </Badge>
-                  </div>
-
-                  <div className="bg-zinc-950 dark:bg-black/90 text-zinc-300 rounded-xl p-4 font-mono text-[10px] leading-normal space-y-1 border border-zinc-800 h-[240px] overflow-y-auto">
-                    <p className="text-zinc-500">[06:00:00 INFO  SMAPI] 正在载入模组 {selectedMod.englishName}...</p>
-                    <p className="text-zinc-500">[06:00:00 INFO  SMAPI] 读取清单文件 manifest.json...</p>
-                    <p className="text-zinc-400">[06:00:01 TRACE SMAPI] 版本: {selectedMod.version} | 作者: {selectedMod.author} | Nexus ID: {selectedMod.nexusId || "无"}</p>
-                    {selectedMod.dependencies.length > 0 && (
-                      <p className="text-zinc-400">[06:00:01 TRACE SMAPI] 检查依赖项: {selectedMod.dependencies.join(", ")} - 全部就绪</p>
-                    )}
-                    <p className="text-zinc-500">[06:00:01 INFO  SMAPI] 成功加载模组配置 (config.json)</p>
-                    {selectedMod.isEnabled ? (
-                      <>
-                        <p className="text-green-500">[06:00:01 INFO  SMAPI] 模组 "{selectedMod.name}" 开始初始化钩子...</p>
-                        <p className="text-green-400">[06:00:02 INFO  {selectedMod.englishName}] 成功监听了游戏内置更新事件。</p>
-                        <p className="text-zinc-500">[06:00:02 INFO  SMAPI] {selectedMod.englishName} 加载成功，耗时 12ms。</p>
-                      </>
-                    ) : (
-                      <>
-                        <p className="text-zinc-500">[06:00:01 INFO  SMAPI] 检测到配置已显式禁用该模组 (Enabled=false)</p>
-                        <p className="text-amber-500">[06:00:01 WARN  SMAPI] 模组 "{selectedMod.name}" 已跳过加载。</p>
-                      </>
-                    )}
-                  </div>
-                </TabsContent>
-              </Tabs>
-            </Card>
-          ) : (
-            <Card className="border border-border p-8 text-center flex flex-col items-center justify-center h-[400px]">
-              <Puzzle className="h-10 w-10 text-muted-foreground/30 mb-2" />
-              <p className="text-muted-foreground">请在左侧选择一个模组查看详细信息与配置项</p>
-            </Card>
-          )}
-        </div>
-      </div>
-
-      {/* Add Mod Modal Dialog */}
-      {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <Card className="w-full max-w-lg border border-border shadow-2xl bg-card rounded-xl overflow-hidden animate-in zoom-in-95 duration-200">
-            <CardHeader className="flex flex-row items-center justify-between border-b border-border/60 pb-4">
-              <div>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Puzzle className="h-5 w-5 text-primary" />
-                  导入外部游戏模组
-                </CardTitle>
-                <CardDescription className="text-xs mt-1">
-                  手动将非 Nexus 渠道的私有模组或自制模组导入到本地 SMAPI 管理器中。
-                </CardDescription>
-              </div>
-              <button 
-                onClick={() => setIsAddModalOpen(false)} 
-                className="p-1 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <X className="h-4.5 w-4.5" />
-              </button>
-            </CardHeader>
-            <form onSubmit={handleAddNewMod}>
-              <CardContent className="p-6 space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-foreground">
-                      模组中文名称 <span className="text-destructive">*</span>
-                    </label>
-                    <Input
-                      placeholder="例: 高级洒水器拓展"
-                      required
-                      value={newModName}
-                      onChange={(e) => setNewModName(e.target.value)}
-                      className="text-xs h-9 bg-card border-border rounded-lg"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-foreground">
-                      英文唯一识别名
-                    </label>
-                    <Input
-                      placeholder="例: AdvancedSprinklers"
-                      value={newModEngName}
-                      onChange={(e) => setNewModEngName(e.target.value)}
-                      className="text-xs h-9 bg-card border-border rounded-lg"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-foreground">
-                      原作者署名 <span className="text-destructive">*</span>
-                    </label>
-                    <Input
-                      placeholder="例: FarmerJoe"
-                      required
-                      value={newModAuthor}
-                      onChange={(e) => setNewModAuthor(e.target.value)}
-                      className="text-xs h-9 bg-card border-border rounded-lg"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-foreground">
-                      初始版本号
-                    </label>
-                    <Input
-                      placeholder="1.0.0"
-                      value={newModVersion}
-                      onChange={(e) => setNewModVersion(e.target.value)}
-                      className="text-xs h-9 bg-card border-border rounded-lg"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-foreground">
-                    模组类别分类
-                  </label>
-                  <div className="grid grid-cols-4 gap-2">
-                    {(["core", "content", "utility", "expansion"] as const).map((cat) => (
-                      <button
-                        key={cat}
-                        type="button"
-                        onClick={() => setNewModCategory(cat)}
-                        className={`py-2 text-[10px] font-bold border rounded-lg transition-all ${
-                          newModCategory === cat
-                            ? "bg-primary/10 text-primary border-primary"
-                            : "border-border bg-card hover:bg-accent text-muted-foreground hover:text-foreground"
-                        }`}
-                      >
-                        {CATEGORY_MAP[cat]}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-foreground">
-                    模组详细描述说明
-                  </label>
-                  <textarea
-                    placeholder="输入该模组的功能介绍，配置项说明等..."
-                    rows={3}
-                    value={newModDesc}
-                    onChange={(e) => setNewModDesc(e.target.value)}
-                    className="w-full text-xs p-3 border border-border bg-card rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:border-primary resize-none"
-                  />
-                </div>
-
-                {/* Simulated File upload area */}
-                <div className="border-2 border-dashed border-border/80 hover:border-primary/50 rounded-xl p-6 text-center cursor-pointer transition-all bg-accent/10 hover:bg-accent/20">
-                  <Download className="h-6 w-6 text-muted-foreground/60 mx-auto mb-2" />
-                  <p className="text-xs font-bold text-muted-foreground">拖拽模组压缩包 (.zip) 到这里</p>
-                  <p className="text-[10px] text-muted-foreground/60 mt-1">或点击选择电脑中的 SMAPI 文件夹包进行读取</p>
-                </div>
-              </CardContent>
-
-              <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-border/60 bg-accent/15">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => setIsAddModalOpen(false)}
-                  className="rounded-lg text-xs hover:bg-accent"
-                >
-                  取消
-                </Button>
-                <Button
-                  type="submit"
-                  className="bg-primary hover:bg-primary/95 text-primary-foreground font-semibold rounded-lg text-xs"
-                >
-                  确认导入
-                </Button>
-              </div>
-            </form>
-          </Card>
-        </div>
-      )}
+          {/* Add Mod Modal Dialog */}
+          <AddModModal
+            isOpen={isAddModalOpen}
+            onClose={() => setIsAddModalOpen(false)}
+            onSubmit={handleAddNewMod}
+            name={newModName}
+            setName={setNewModName}
+            engName={newModEngName}
+            setEngName={setNewModEngName}
+            author={newModAuthor}
+            setAuthor={setNewModAuthor}
+            desc={newModDesc}
+            setDesc={setNewModDesc}
+            category={newModCategory}
+            setCategory={setNewModCategory}
+            version={newModVersion}
+            setVersion={setNewModVersion}
+            categoryMap={CATEGORY_MAP}
+          />
         </>
       )}
     </div>
