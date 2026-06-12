@@ -47,6 +47,7 @@ interface Mod {
   isEnabled: boolean
   nexusId?: number
   localPath: string
+  folderName: string
   dependencies: string[]
   config: ModConfigField[]
 }
@@ -65,6 +66,7 @@ const INITIAL_MODS: Mod[] = [
     isEnabled: true,
     nexusId: 1915,
     localPath: "Mods/ContentPatcher",
+    folderName: "ContentPatcher",
     dependencies: [],
     config: [
       { key: "Enabled", label: "启用该补丁引擎", type: "boolean", value: true, description: "是否整体激活 Content Patcher 对游戏内容的干预" },
@@ -84,6 +86,7 @@ const INITIAL_MODS: Mod[] = [
     isEnabled: true,
     nexusId: 1150,
     localPath: "Mods/UIInfoSuite2",
+    folderName: "UIInfoSuite2",
     dependencies: ["content-patcher"],
     config: [
       { key: "ShowLuckMinigame", label: "显示每日运气图标", type: "boolean", value: true, description: "在右上角时钟下侧直接显示今天运气的拟物图标" },
@@ -104,6 +107,7 @@ const INITIAL_MODS: Mod[] = [
     isEnabled: true,
     nexusId: 3753,
     localPath: "Mods/StardewValleyExpanded",
+    folderName: "StardewValleyExpanded",
     dependencies: ["content-patcher"],
     config: [
       { key: "OlderSophiaSprite", label: "使用索菲亚成熟头像", type: "boolean", value: false, description: "启用后，NPC索菲亚的立绘与行走图将切换为稍大年龄的风格版本" },
@@ -123,6 +127,7 @@ const INITIAL_MODS: Mod[] = [
     isEnabled: true,
     nexusId: 1063,
     localPath: "Mods/Automate",
+    folderName: "Automate",
     dependencies: [],
     config: [
       { key: "ConnectorWidth", label: "连接件传输跨度", type: "number", value: 1, description: "自定义石路、木地板等充当数据线连接机器时的最长跨越格数" },
@@ -142,6 +147,7 @@ const INITIAL_MODS: Mod[] = [
     isEnabled: true,
     nexusId: 1401,
     localPath: "Mods/TractorMod",
+    folderName: "TractorMod",
     dependencies: [],
     config: [
       { key: "TractorSpeed", label: "拖拉机行驶时速", type: "number", value: 8, description: "驾车时的基础移动速度增量（默认 8，调整过高可能会产生地图穿模问题）" },
@@ -161,6 +167,7 @@ const INITIAL_MODS: Mod[] = [
     isEnabled: false,
     nexusId: 5255,
     localPath: "Mods/EarthyRecolor",
+    folderName: "EarthyRecolor",
     dependencies: ["content-patcher"],
     config: [
       { key: "RecolorWater", label: "重绘游戏水体颜色", type: "boolean", value: true, description: "是否将江河湖海也重绘为契合森林泥土色调的蓝绿色调" },
@@ -179,6 +186,7 @@ const INITIAL_MODS: Mod[] = [
     isEnabled: true,
     nexusId: 239,
     localPath: "Mods/NPCMapLocations",
+    folderName: "NPCMapLocations",
     dependencies: [],
     config: [
       { key: "ShowMinimap", label: "启用HUD小地图", type: "boolean", value: true, description: "是否在游玩画面的右上角显示一块轻量级的雷达小地图" },
@@ -196,12 +204,56 @@ const CATEGORY_MAP = {
   expansion: "大型拓展"
 }
 
+// Dynamic imports of Tauri plugins for browser compatibility
+let tauriInvoke: any = null
+let tauriOpen: any = null
+
+if (typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__) {
+  import("@tauri-apps/api/core").then((mod) => {
+    tauriInvoke = mod.invoke
+  }).catch((err) => {
+    console.error("Failed to load Tauri core invoke plugin", err)
+  })
+
+  import("@tauri-apps/plugin-opener").then((mod) => {
+    tauriOpen = mod.openUrl
+  }).catch((err) => {
+    console.error("Failed to load Tauri opener plugin", err)
+  })
+}
+
 export function Mods() {
   const [mods, setMods] = useState<Mod[]>(INITIAL_MODS)
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedCategory, setSelectedCategory] = useState<string>("all")
   const [selectedModId, setSelectedModId] = useState<string>(INITIAL_MODS[0]?.id || "")
   const [activeDetailTab, setActiveDetailTab] = useState<string>("info")
+  const [smapiStatus, setSmapiStatus] = useState<{
+    installed: boolean
+    version: string | null
+    path: string | null
+  } | null>(null)
+
+  // Installer and Management States
+  const [gameVersion, setGameVersion] = useState<string | null>(null)
+  const [smapiLatestVersion, setSmapiLatestVersion] = useState<string | null>(null)
+  const [smapiDownloadUrl, setSmapiDownloadUrl] = useState<string | null>(null)
+  const [smapiMirror, setSmapiMirror] = useState<"ghproxy" | "official">(() => {
+    if (typeof window !== "undefined") {
+      return (localStorage.getItem("stardewSmapiMirror") as "ghproxy" | "official") || "ghproxy"
+    }
+    return "ghproxy"
+  })
+
+  const handleSetSmapiMirror = (mirror: "ghproxy" | "official") => {
+    setSmapiMirror(mirror)
+    localStorage.setItem("stardewSmapiMirror", mirror)
+  }
+
+  const [isManagementOpen, setIsManagementOpen] = useState(false)
+  const [installStatus, setInstallStatus] = useState<"idle" | "fetching" | "downloading" | "extracting" | "copying" | "success" | "error">("idle")
+  const [installProgress, setInstallProgress] = useState(0)
+  const [installError, setInstallError] = useState<string | null>(null)
 
   // Interactive UI Actions States
   const [isScanning, setIsScanning] = useState(false)
@@ -230,31 +282,179 @@ export function Mods() {
     }
   }, [toast])
 
-  // Handlers
-  const handleToggleMod = (modId: string) => {
-    setMods((prevMods) =>
-      prevMods.map((m) => {
-        if (m.id === modId) {
-          const newStatus = !m.isEnabled
-          showToast(`已${newStatus ? "启用" : "禁用"}模组: ${m.name}`, "info")
-          return { ...m, isEnabled: newStatus }
-        }
-        return m
+  // Fetch Latest SMAPI from GitHub
+  const fetchLatestSmapi = async () => {
+    try {
+      const res = await fetch("https://api.github.com/repos/Pathoschild/SMAPI/releases/latest")
+      const data = await res.json()
+      const tagName = data.tag_name
+      setSmapiLatestVersion(tagName)
+      
+      const zipAsset = data.assets.find((asset: any) => 
+        asset.name.toLowerCase().includes("installer") && asset.name.endsWith(".zip")
+      )
+      if (zipAsset) {
+        setSmapiDownloadUrl(zipAsset.browser_download_url)
+      } else if (data.assets.length > 0) {
+        setSmapiDownloadUrl(data.assets[0].browser_download_url)
+      }
+    } catch (err) {
+      console.error("Failed to fetch latest SMAPI version:", err)
+      setSmapiLatestVersion("4.0.8")
+      setSmapiDownloadUrl("https://github.com/Pathoschild/SMAPI/releases/download/4.0.8/SMAPI.4.0.8.installer.zip")
+    }
+  }
+
+  useEffect(() => {
+    fetchLatestSmapi()
+  }, [])
+
+  // Load game version on mount / change
+  useEffect(() => {
+    const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+    if (gameDir && tauriInvoke) {
+      tauriInvoke("get_game_version", { gameDir })
+        .then((ver: any) => {
+          setGameVersion(ver)
+        })
+        .catch((err: any) => {
+          console.error("Failed to get game version:", err)
+        })
+    } else {
+      setGameVersion("1.6.9")
+    }
+  }, [tauriInvoke])
+
+  // Load actual status and mods list from Tauri backend on mount / when tauriInvoke is loaded
+  useEffect(() => {
+    const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+    if (gameDir && tauriInvoke) {
+      // Load SMAPI status
+      tauriInvoke("check_smapi_status", { gameDir })
+        .then((status: any) => {
+          setSmapiStatus(status)
+        })
+        .catch((err: any) => {
+          console.error("Failed to check SMAPI status:", err)
+        })
+
+      // Load installed mods
+      setIsScanning(true)
+      tauriInvoke("list_installed_mods", { gameDir })
+        .then((loadedMods: any) => {
+          setMods(loadedMods)
+          if (loadedMods.length > 0) {
+            setSelectedModId(loadedMods[0].id)
+          } else {
+            setSelectedModId("")
+          }
+        })
+        .catch((err: any) => {
+          console.error("Failed to list installed mods:", err)
+          showToast("加载本地模组列表失败", "warning")
+        })
+        .finally(() => {
+          setIsScanning(false)
+        })
+    } else {
+      // In Web/Mock environment or if gameDir is empty
+      setSmapiStatus({
+        installed: true,
+        version: "4.0.8",
+        path: "Mock/StardewModdingAPI"
       })
-    )
+    }
+  }, [tauriInvoke])
+
+  // Handlers
+  const handleToggleMod = async (modId: string) => {
+    const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+    const targetMod = mods.find((m) => m.id === modId)
+    if (!targetMod) return
+
+    const newStatus = !targetMod.isEnabled
+
+    if (tauriInvoke && gameDir) {
+      try {
+        const newFolderName = await tauriInvoke("toggle_mod", {
+          gameDir,
+          folderName: targetMod.folderName,
+          enable: newStatus
+        })
+
+        // Update local state
+        setMods((prevMods) =>
+          prevMods.map((m) => {
+            if (m.id === modId) {
+              return {
+                ...m,
+                isEnabled: newStatus,
+                folderName: newFolderName,
+                localPath: `Mods/${newFolderName}`
+              }
+            }
+            return m
+          })
+        )
+        showToast(`已${newStatus ? "启用" : "禁用"}模组: ${targetMod.name}`, "success")
+      } catch (err: any) {
+        console.error("Toggle mod error:", err)
+        showToast("切换模组状态失败: " + err, "warning")
+      }
+    } else {
+      // Browser Mock
+      setMods((prevMods) =>
+        prevMods.map((m) => {
+          if (m.id === modId) {
+            showToast(`（Web 模式模拟）已${newStatus ? "启用" : "禁用"}模组: ${m.name}`, "info")
+            return { ...m, isEnabled: newStatus }
+          }
+          return m
+        })
+      )
+    }
   }
 
   const showToast = (message: string, type: "success" | "info" | "warning") => {
     setToast({ message, type })
   }
 
-  const handleScanDirectory = () => {
+  const handleScanDirectory = async () => {
+    const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+    if (!gameDir) {
+      showToast("未配置游戏安装目录，请先在设置中配置", "warning")
+      return
+    }
+
     setIsScanning(true)
-    const gameDir = localStorage.getItem("stardewGameDirectory") || "C:\\SteamLibrary\\steamapps\\common\\Stardew Valley"
-    setTimeout(() => {
-      setIsScanning(false)
-      showToast(`扫描成功！已在 [${gameDir}\\Mods] 中检索到 ${mods.length} 个模组文件夹。`, "success")
-    }, 1200)
+    if (tauriInvoke) {
+      try {
+        const status = await tauriInvoke("check_smapi_status", { gameDir })
+        setSmapiStatus(status)
+
+        const loadedMods = await tauriInvoke("list_installed_mods", { gameDir })
+        setMods(loadedMods)
+        if (loadedMods.length > 0) {
+          if (!loadedMods.some((m: any) => m.id === selectedModId)) {
+            setSelectedModId(loadedMods[0].id)
+          }
+        } else {
+          setSelectedModId("")
+        }
+        showToast(`扫描成功！已在 [${gameDir}\\Mods] 中检索到 ${loadedMods.length} 个模组文件夹。`, "success")
+      } catch (err: any) {
+        console.error("Scan error:", err)
+        showToast("扫描失败: " + err, "warning")
+      } finally {
+        setIsScanning(false)
+      }
+    } else {
+      // Browser Mock
+      setTimeout(() => {
+        setIsScanning(false)
+        showToast(`（Web 模式模拟）扫描成功！在 [${gameDir}\\Mods] 中检索到 ${mods.length} 个模组文件夹。`, "success")
+      }, 1200)
+    }
   }
 
   const handleCheckUpdates = () => {
@@ -270,9 +470,26 @@ export function Mods() {
     }, 1500)
   }
 
-  const handleOpenFolder = () => {
-    const gameDir = localStorage.getItem("stardewGameDirectory") || "C:\\SteamLibrary\\steamapps\\common\\Stardew Valley"
-    showToast(`已模拟在文件管理器中打开文件夹: ${gameDir}\\Mods`, "success")
+  const handleOpenFolder = async () => {
+    const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+    if (!gameDir) {
+      showToast("未配置游戏安装目录", "warning")
+      return
+    }
+
+    const modsPath = `${gameDir}\\Mods`
+    if (tauriInvoke) {
+      try {
+        await tauriInvoke("open_in_file_manager", { path: modsPath })
+        showToast(`已在系统文件管理器中打开 Mods 文件夹`, "success")
+      } catch (err: any) {
+        console.error("Open folder error:", err)
+        showToast("打开文件夹失败: " + err, "warning")
+      }
+    } else {
+      // Browser Mock
+      showToast(`（Web 模式模拟）已模拟打开文件夹: ${modsPath}`, "success")
+    }
   }
 
   // Handle configuration changes locally
@@ -293,9 +510,152 @@ export function Mods() {
     )
   }
 
-  const handleSaveConfig = () => {
-    if (selectedMod) {
-      showToast(`模组 [${selectedMod.name}] 的配置参数已保存至本地 config.json。`, "success")
+  const handleSaveConfig = async () => {
+    if (!selectedMod) return
+    const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+
+    // Build the config object { key: value }
+    const configObj: Record<string, any> = {}
+    selectedMod.config.forEach((field) => {
+      configObj[field.key] = field.value
+    })
+
+    if (tauriInvoke && gameDir) {
+      try {
+        await tauriInvoke("save_mod_config", {
+          gameDir,
+          folderName: selectedMod.folderName,
+          config: configObj
+        })
+        showToast(`模组 [${selectedMod.name}] 的配置参数已保存至本地 config.json。`, "success")
+      } catch (err: any) {
+        console.error("Save config error:", err)
+        showToast("保存配置失败: " + err, "warning")
+      }
+    } else {
+      // Browser Mock
+      showToast(`（Web 模式模拟）模组 [${selectedMod.name}] 的配置参数已保存至本地 config.json。`, "success")
+    }
+  }
+
+  const handleInstallSmapi = async () => {
+    const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+    if (!gameDir) {
+      showToast("未配置游戏安装目录，请先在设置中配置", "warning")
+      return
+    }
+
+    setInstallStatus("fetching")
+    setInstallProgress(10)
+    setInstallError(null)
+
+    let rawUrl = smapiDownloadUrl
+    if (!rawUrl) {
+      rawUrl = "https://github.com/Pathoschild/SMAPI/releases/download/4.0.8/SMAPI.4.0.8.installer.zip"
+    }
+
+    const downloadUrl = smapiMirror === "ghproxy" ? `https://mirror.ghproxy.com/${rawUrl}` : rawUrl
+
+    if (tauriInvoke) {
+      try {
+        setInstallStatus("downloading")
+        setInstallProgress(35)
+        
+        await tauriInvoke("install_smapi", { gameDir, downloadUrl })
+        
+        setInstallStatus("extracting")
+        setInstallProgress(75)
+        await new Promise((resolve) => setTimeout(resolve, 800))
+        
+        setInstallStatus("copying")
+        setInstallProgress(90)
+        await new Promise((resolve) => setTimeout(resolve, 500))
+
+        setInstallStatus("success")
+        setInstallProgress(100)
+        showToast("SMAPI 安装成功！", "success")
+        
+        // Reload status
+        const status = await tauriInvoke("check_smapi_status", { gameDir })
+        setSmapiStatus(status)
+        
+        // Scan mods
+        const loadedMods = await tauriInvoke("list_installed_mods", { gameDir })
+        setMods(loadedMods)
+        if (loadedMods.length > 0) {
+          setSelectedModId(loadedMods[0].id)
+        } else {
+          setSelectedModId("")
+        }
+        
+        setTimeout(() => {
+          setInstallStatus("idle")
+        }, 1500)
+      } catch (err: any) {
+        console.error("Install SMAPI error:", err)
+        setInstallStatus("error")
+        setInstallError(err.toString())
+        showToast(`安装失败: ${err}`, "warning")
+      }
+    } else {
+      // Browser Mock
+      setInstallStatus("downloading")
+      setInstallProgress(35)
+      setTimeout(() => {
+        setInstallStatus("extracting")
+        setInstallProgress(65)
+        setTimeout(() => {
+          setInstallStatus("copying")
+          setInstallProgress(90)
+          setTimeout(() => {
+            setInstallStatus("success")
+            setInstallProgress(100)
+            showToast("（Web 模式模拟）SMAPI 安装成功！", "success")
+            setSmapiStatus({
+              installed: true,
+              version: smapiLatestVersion || "4.0.8",
+              path: "Mock/StardewModdingAPI"
+            })
+            setTimeout(() => {
+              setInstallStatus("idle")
+            }, 1000)
+          }, 1000)
+        }, 1000)
+      }, 1000)
+    }
+  }
+
+  const handleUninstallSmapi = async () => {
+    const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+    if (!gameDir) return
+
+    if (window.confirm("确定要卸载 SMAPI 吗？此操作会清除 SMAPI 启动核心，但会保留您的 Mods 文件夹和其中的个人模组。")) {
+      if (tauriInvoke) {
+        try {
+          await tauriInvoke("uninstall_smapi", { gameDir })
+          showToast("SMAPI 卸载成功！游戏已重回原版状态。", "success")
+          
+          const status = await tauriInvoke("check_smapi_status", { gameDir })
+          setSmapiStatus(status)
+          setMods([])
+          setSelectedModId("")
+          setIsManagementOpen(false)
+        } catch (err: any) {
+          console.error("Uninstall SMAPI error:", err)
+          showToast("卸载失败: " + err, "warning")
+        }
+      } else {
+        // Browser Mock
+        showToast("（Web 模式模拟）SMAPI 卸载成功！", "success")
+        setSmapiStatus({
+          installed: false,
+          version: null,
+          path: null
+        })
+        setMods([])
+        setSelectedModId("")
+        setIsManagementOpen(false)
+      }
     }
   }
 
@@ -318,6 +678,7 @@ export function Mods() {
       category: newModCategory,
       isEnabled: true,
       localPath: `Mods/${newModEngName.replace(/\s+/g, "") || newModName}`,
+      folderName: newModEngName.replace(/\s+/g, "") || newModName,
       dependencies: [],
       config: [
         { key: "Enabled", label: "启用该模组", type: "boolean", value: true, description: "控制此模组是否加载生效" }
@@ -395,112 +756,365 @@ export function Mods() {
         </div>
       )}
 
-      {/* Header Panel */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-card border border-border p-6 rounded-2xl shadow-sm bg-gradient-to-r from-card to-accent/20">
-        <div>
-          <div className="flex items-center gap-3">
-            <h2 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-primary to-green-600 bg-clip-text text-transparent">模组管理</h2>
-            <Badge variant="secondary" className="bg-primary/10 text-primary border border-primary/20 gap-1.5 px-3 py-1 font-semibold rounded-full">
-              SMAPI: v4.0.8 (加载完毕)
-            </Badge>
-          </div>
-          <p className="text-muted-foreground mt-2 text-sm max-w-xl">
-            对游戏扩展模组的加载进行集中控制。您可以在此处扫描本地模组、进行一键版本查重升级，或者直接对每个模组的本地 <code className="bg-accent/40 px-1 py-0.5 rounded text-xs">config.json</code> 参数进行模拟可视化编辑。
-          </p>
-        </div>
+      {smapiStatus !== null && !smapiStatus.installed ? (
+        <div className="max-w-2xl mx-auto space-y-8 py-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          {/* Main Hero Card */}
+          <Card className="border border-border shadow-xl bg-card rounded-3xl overflow-hidden relative">
+            <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-red-400 via-orange-400 to-amber-400"></div>
+            
+            <CardContent className="p-8 space-y-8">
+              {/* Icon and Title */}
+              <div className="text-center space-y-3">
+                <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-3xl bg-red-500/10 text-red-500 shadow-inner">
+                  <AlertTriangle className="h-10 w-10 text-red-500 animate-pulse" />
+                </div>
+                <div className="space-y-1">
+                  <h1 className="text-2xl font-extrabold tracking-tight text-foreground">
+                    SMAPI 安装
+                  </h1>
+                  <p className="text-sm text-muted-foreground max-w-md mx-auto">
+                    您需要安装 Stardew Modding API (SMAPI) 才能在《星露谷物语》中使用各种丰富的模组。
+                  </p>
+                </div>
+              </div>
 
-        {/* Global Statistics Panel */}
-        <div className="flex gap-4 self-stretch lg:self-auto">
-          <div className="bg-accent/30 dark:bg-accent/10 border border-border/60 rounded-xl px-4 py-3 text-center flex-1 lg:flex-initial min-w-[90px]">
-            <p className="text-xs text-muted-foreground font-medium">已安装</p>
-            <p className="text-2xl font-bold text-foreground mt-0.5">{totalInstalled}</p>
-          </div>
-          <div className="bg-green-50/50 dark:bg-green-950/10 border border-green-100 dark:border-green-950 rounded-xl px-4 py-3 text-center flex-1 lg:flex-initial min-w-[90px]">
-            <p className="text-xs text-green-700 dark:text-green-400 font-medium">已启用</p>
-            <p className="text-2xl font-bold text-green-600 dark:text-green-500 mt-0.5">{activeCount}</p>
-          </div>
-          <div className={`border rounded-xl px-4 py-3 text-center flex-1 lg:flex-initial min-w-[90px] transition-colors ${
-            updateAvailableCount > 0 
-              ? "bg-amber-50/50 dark:bg-amber-950/10 border-amber-200 dark:border-amber-900" 
-              : "bg-accent/30 dark:bg-accent/10 border-border/60"
-          }`}>
-            <p className={`text-xs font-medium ${updateAvailableCount > 0 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}>可更新</p>
-            <p className={`text-2xl font-bold mt-0.5 ${updateAvailableCount > 0 ? "text-amber-500" : "text-foreground"}`}>{updateAvailableCount}</p>
-          </div>
-        </div>
-      </div>
+              {/* Status Details */}
+              <div className="bg-accent/20 dark:bg-accent/5 rounded-2xl p-6 border border-border/60 space-y-4">
+                <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">系统检测环境</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                  <div className="space-y-1">
+                    <span className="text-muted-foreground block font-medium">游戏安装目录</span>
+                    <span className="font-semibold text-foreground font-mono truncate block max-w-xs" title={localStorage.getItem("stardewGameDirectory") || ""}>
+                      {localStorage.getItem("stardewGameDirectory") || "未配置"}
+                    </span>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-muted-foreground block font-medium">Stardew Valley 版本</span>
+                    <span className="font-semibold text-foreground font-mono bg-accent/40 px-2 py-0.5 rounded text-[11px]">
+                      {gameVersion === null ? "检测中..." : gameVersion}
+                    </span>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-muted-foreground block font-medium">SMAPI 状态</span>
+                    <span className="font-semibold text-red-500 flex items-center gap-1 font-medium">
+                      <X className="h-3.5 w-3.5" /> 未安装
+                    </span>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-muted-foreground block font-medium">最新可用 SMAPI</span>
+                    <span className="font-semibold text-emerald-600 dark:text-emerald-400 font-mono bg-emerald-500/10 px-2 py-0.5 rounded text-[11px]">
+                      {smapiLatestVersion === null ? "检查中..." : `v${smapiLatestVersion}`}
+                    </span>
+                  </div>
+                </div>
+              </div>
 
-      {/* Toolbar / Actions Bar */}
-      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
-        {/* Left Search */}
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4.5 w-4.5 text-muted-foreground" />
-          <Input
-            placeholder="搜索模组名称、英文名、作者或描述..."
-            className="pl-11 h-10 bg-card border border-border shadow-sm rounded-xl focus-visible:ring-primary focus-visible:border-primary transition-all"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.currentTarget.value)}
-          />
-          {searchTerm && (
-            <button 
-              onClick={() => setSearchTerm("")} 
-              className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 text-muted-foreground hover:text-foreground rounded"
-            >
-              <X className="h-4 w-4" />
-            </button>
+              {/* 下载设置 */}
+              {installStatus === "idle" && (
+                <div className="bg-accent/20 dark:bg-accent/5 rounded-2xl p-5 border border-border/60 space-y-3">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div className="space-y-0.5">
+                      <h4 className="text-xs font-bold text-foreground">GitHub 下载源设置</h4>
+                      <p className="text-[10px] text-muted-foreground">国内网络下载缓慢时，推荐开启加速镜像</p>
+                    </div>
+                    <div className="flex bg-accent/40 rounded-xl p-1 border border-border/30 w-full sm:w-auto">
+                      <button
+                        onClick={() => handleSetSmapiMirror("ghproxy")}
+                        type="button"
+                        className={`flex-1 sm:flex-none text-[11px] font-semibold px-3 py-1.5 rounded-lg transition-all ${
+                          smapiMirror === "ghproxy"
+                            ? "bg-primary text-primary-foreground shadow-sm"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        GHProxy 加速 (推荐)
+                      </button>
+                      <button
+                        onClick={() => handleSetSmapiMirror("official")}
+                        type="button"
+                        className={`flex-1 sm:flex-none text-[11px] font-semibold px-3 py-1.5 rounded-lg transition-all ${
+                          smapiMirror === "official"
+                            ? "bg-primary text-primary-foreground shadow-sm"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        GitHub 官方源
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Action and Progress Bar */}
+              <div className="space-y-4 pt-4 border-t border-border/60">
+                {installStatus === "idle" ? (
+                  <div className="flex flex-col sm:flex-row justify-center gap-3">
+                    <Button
+                      onClick={handleInstallSmapi}
+                      disabled={smapiLatestVersion === null}
+                      className="bg-primary hover:bg-primary/95 text-primary-foreground font-bold text-sm px-8 py-6 rounded-2xl shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2"
+                    >
+                      <Download className="h-5 w-5" />
+                      一键安装 SMAPI {smapiLatestVersion && `v${smapiLatestVersion}`}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        if (typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__ && tauriOpen) {
+                          tauriOpen("https://smapi.io");
+                        } else {
+                          window.open("https://smapi.io", "_blank");
+                        }
+                      }}
+                      className="border-border text-foreground hover:bg-accent font-semibold text-sm px-6 py-6 rounded-2xl"
+                    >
+                      手动去官网下载
+                    </Button>
+                  </div>
+                ) : installStatus === "error" ? (
+                  <div className="space-y-4">
+                    <div className="bg-red-500/15 border border-red-500/20 text-red-700 dark:text-red-400 text-xs rounded-xl p-4 font-mono break-all">
+                      <p className="font-bold flex items-center gap-1.5 mb-1 text-sm">
+                        <AlertTriangle className="h-4 w-4" /> 安装出错:
+                      </p>
+                      {installError}
+                    </div>
+                    <div className="flex justify-center gap-3">
+                      <Button
+                        onClick={handleInstallSmapi}
+                        className="bg-primary hover:bg-primary/95 text-primary-foreground font-bold text-xs px-6 py-4 rounded-xl"
+                      >
+                        <RefreshCw className="h-4 w-4 mr-1.5 animate-spin" style={{ animationDuration: '3s' }} /> 重新尝试安装
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="flex justify-between text-xs font-bold text-foreground">
+                      <span className="flex items-center gap-1.5">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                        {installStatus === "fetching" && "正在准备网络请求..."}
+                        {installStatus === "downloading" && `正在下载 SMAPI 安装包 (从 GitHub Releases)...`}
+                        {installStatus === "extracting" && "正在解压缩安装包文件..."}
+                        {installStatus === "copying" && "正在部署 SMAPI 核心组件到游戏目录..."}
+                        {installStatus === "success" && "SMAPI 安装完成！"}
+                      </span>
+                      <span>{installProgress}%</span>
+                    </div>
+                    <div className="h-2 w-full bg-accent/40 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-primary transition-all duration-300 rounded-full" 
+                        style={{ width: `${installProgress}%` }}
+                      ></div>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground text-center">
+                      正在自动为您下载平台特定的运行库并完成目录重定向，请勿关闭程序。
+                    </p>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Installation Details Info Card */}
+          <Card className="border border-border bg-card rounded-2xl p-6">
+            <CardHeader className="p-0 pb-3 flex flex-row items-center gap-2">
+              <Info className="h-5 w-5 text-primary" />
+              <CardTitle className="text-sm font-bold text-foreground">关于 SMAPI 的一键安装</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0 text-xs text-muted-foreground/90 space-y-2 leading-relaxed font-medium">
+              <p>1. 星露谷助手会从 GitHub 下载对应您游戏平台的最新版 SMAPI 安装包。</p>
+              <p>2. 程序将执行静默手动解压，并将安装包中 <code className="bg-accent/40 px-1 py-0.5 rounded text-[10px]">internal</code> 的对应文件递归移动部署至您的游戏主目录，与官方脚本安装效果完全一致。</p>
+              <p>3. 卸载十分方便：若将来您希望清除 SMAPI，可以在右上角的管理面板中点击一键卸载，游戏文件会重回官方无模组的纯净版，且您的个人 Mods 目录不受任何损伤。</p>
+            </CardContent>
+          </Card>
+        </div>
+      ) : (
+        <>
+          {/* Header Panel */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-card border border-border p-6 rounded-2xl shadow-sm bg-gradient-to-r from-card to-accent/20 animate-in fade-in duration-300">
+            <div>
+              <div className="flex items-center gap-3">
+                <h2 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-primary to-green-600 bg-clip-text text-transparent">模组管理</h2>
+                <Badge 
+                  variant="secondary" 
+                  className={`gap-1.5 px-3 py-1 font-semibold rounded-full border transition-all ${
+                    smapiStatus?.installed 
+                      ? "bg-primary/10 text-primary border-primary/20" 
+                      : "bg-red-500/10 text-red-500 border-red-500/20"
+                  }`}
+                >
+                  {smapiStatus === null ? (
+                    "正在检测 SMAPI..."
+                  ) : smapiStatus.installed ? (
+                    `SMAPI: v${smapiStatus.version || "已安装"} (加载完毕)`
+                  ) : (
+                    "SMAPI: 未安装"
+                  )}
+                </Badge>
+                {smapiStatus?.installed && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 rounded-lg text-xs gap-1.5 hover:bg-accent border-border font-semibold shadow-sm"
+                    onClick={() => setIsManagementOpen(!isManagementOpen)}
+                  >
+                    <Sliders className="h-3.5 w-3.5 text-primary" />
+                    管理 SMAPI
+                  </Button>
+                )}
+              </div>
+              <p className="text-muted-foreground mt-2 text-sm max-w-xl">
+                对游戏扩展模组的加载进行集中控制。您可以在此处扫描本地模组、进行一键版本查重升级，或者直接对每个模组的本地 <code className="bg-accent/40 px-1 py-0.5 rounded text-xs">config.json</code> 参数进行模拟可视化编辑。
+              </p>
+            </div>
+
+            {/* Global Statistics Panel */}
+            <div className="flex gap-4 self-stretch lg:self-auto">
+              <div className="bg-accent/30 dark:bg-accent/10 border border-border/60 rounded-xl px-4 py-3 text-center flex-1 lg:flex-initial min-w-[90px]">
+                <p className="text-xs text-muted-foreground font-medium">已安装</p>
+                <p className="text-2xl font-bold text-foreground mt-0.5">{totalInstalled}</p>
+              </div>
+              <div className="bg-green-50/50 dark:bg-green-950/10 border border-green-100 dark:border-green-950 rounded-xl px-4 py-3 text-center flex-1 lg:flex-initial min-w-[90px]">
+                <p className="text-xs text-green-700 dark:text-green-400 font-medium">已启用</p>
+                <p className="text-2xl font-bold text-green-600 dark:text-green-500 mt-0.5">{activeCount}</p>
+              </div>
+              <div className={`border rounded-xl px-4 py-3 text-center flex-1 lg:flex-initial min-w-[90px] transition-colors ${
+                updateAvailableCount > 0 
+                  ? "bg-amber-50/50 dark:bg-amber-950/10 border-amber-200 dark:border-amber-900" 
+                  : "bg-accent/30 dark:bg-accent/10 border-border/60"
+              }`}>
+                <p className={`text-xs font-medium ${updateAvailableCount > 0 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}>可更新</p>
+                <p className={`text-2xl font-bold mt-0.5 ${updateAvailableCount > 0 ? "text-amber-500" : "text-foreground"}`}>{updateAvailableCount}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* SMAPI Management Panel */}
+          {isManagementOpen && smapiStatus?.installed && (
+            <Card className="bg-card border-border shadow-md rounded-2xl p-6 relative overflow-hidden animate-in slide-in-from-top-3 duration-300">
+              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary to-green-600"></div>
+              <div className="flex justify-between items-start mb-4">
+                <div>
+                  <h3 className="font-extrabold text-lg text-foreground flex items-center gap-2">
+                    <Sliders className="h-5 w-5 text-primary" />
+                    SMAPI 管理面板
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-0.5 font-medium">查看和维护当前安装的 SMAPI 状态</p>
+                </div>
+                <button 
+                  onClick={() => setIsManagementOpen(false)}
+                  className="p-1 rounded-lg hover:bg-accent text-muted-foreground"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm mb-6">
+                <div className="space-y-1">
+                  <span className="text-xs text-muted-foreground block font-medium">游戏版本</span>
+                  <span className="font-semibold text-foreground font-mono bg-accent/30 px-2 py-0.5 rounded text-xs">{gameVersion || "未检测到"}</span>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-xs text-muted-foreground block font-medium">已安装 SMAPI 版本</span>
+                  <span className="font-semibold text-primary font-mono bg-primary/10 px-2 py-0.5 rounded text-xs">{smapiStatus.version || "已安装"}</span>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-xs text-muted-foreground block font-medium">最新可用版本</span>
+                  <span className="font-semibold text-emerald-600 dark:text-emerald-400 font-mono bg-emerald-500/10 px-2 py-0.5 rounded text-xs">{smapiLatestVersion || "检测中..."}</span>
+                </div>
+              </div>
+
+              <div className="border-t border-border pt-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div className="space-y-0.5 flex-1 min-w-0">
+                  <span className="text-xs text-muted-foreground block font-medium">启动文件路径</span>
+                  <code className="text-[11px] font-mono break-all text-foreground bg-accent/40 px-2 py-1 rounded block max-w-full truncate" title={smapiStatus.path || "无"}>
+                    {smapiStatus.path || "无"}
+                  </code>
+                </div>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleUninstallSmapi}
+                  className="rounded-xl font-semibold gap-1.5 self-end sm:self-auto shrink-0 bg-red-600 hover:bg-red-700 text-white shadow-sm transition-colors"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  卸载 SMAPI
+                </Button>
+              </div>
+            </Card>
           )}
-        </div>
 
-        {/* Right Action Buttons */}
-        <div className="flex flex-wrap items-center gap-2">
-          <Button 
-            variant="outline" 
-            size="sm" 
-            className="gap-2 h-10 border-border bg-card hover:bg-accent text-sm rounded-xl px-4"
-            onClick={handleScanDirectory}
-            disabled={isScanning}
-          >
-            {isScanning ? (
-              <Loader2 className="h-4 w-4 animate-spin text-primary" />
-            ) : (
-              <FolderOpen className="h-4 w-4 text-emerald-500" />
-            )}
-            {isScanning ? "正在扫描..." : "扫描模组目录"}
-          </Button>
+          {/* Toolbar / Actions Bar */}
+          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+            {/* Left Search */}
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4.5 w-4.5 text-muted-foreground" />
+              <Input
+                placeholder="搜索模组名称、英文名、作者或描述..."
+                className="pl-11 h-10 bg-card border border-border shadow-sm rounded-xl focus-visible:ring-primary focus-visible:border-primary transition-all text-xs"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.currentTarget.value)}
+              />
+              {searchTerm && (
+                <button 
+                  onClick={() => setSearchTerm("")} 
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 text-muted-foreground hover:text-foreground rounded"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
 
-          <Button 
-            variant="outline" 
-            size="sm" 
-            className="gap-2 h-10 border-border bg-card hover:bg-accent text-sm rounded-xl px-4"
-            onClick={handleCheckUpdates}
-            disabled={isCheckingUpdates}
-          >
-            <RefreshCw className={`h-4 w-4 text-sky-500 ${isCheckingUpdates ? "animate-spin" : ""}`} />
-            {isCheckingUpdates ? "正在检测更新..." : "检查更新"}
-          </Button>
+            {/* Right Action Buttons */}
+            <div className="flex flex-wrap items-center gap-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="gap-2 h-10 border-border bg-card hover:bg-accent text-sm rounded-xl px-4 font-semibold"
+                onClick={handleScanDirectory}
+                disabled={isScanning}
+              >
+                {isScanning ? (
+                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                ) : (
+                  <FolderOpen className="h-4 w-4 text-emerald-500" />
+                )}
+                {isScanning ? "正在扫描..." : "扫描模组目录"}
+              </Button>
 
-          <Button 
-            variant="outline" 
-            size="sm" 
-            className="gap-2 h-10 border-border bg-card hover:bg-accent text-sm rounded-xl px-4"
-            onClick={handleOpenFolder}
-          >
-            <FolderOpen className="h-4 w-4 text-amber-500" />
-            打开 Mods 目录
-          </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="gap-2 h-10 border-border bg-card hover:bg-accent text-sm rounded-xl px-4 font-semibold"
+                onClick={handleCheckUpdates}
+                disabled={isCheckingUpdates}
+              >
+                <RefreshCw className={`h-4 w-4 text-sky-500 ${isCheckingUpdates ? "animate-spin" : ""}`} />
+                {isCheckingUpdates ? "正在检测更新..." : "检查更新"}
+              </Button>
 
-          <Button 
-            variant="default" 
-            size="sm" 
-            className="gap-2 h-10 bg-primary hover:bg-primary/95 text-primary-foreground text-sm font-semibold rounded-xl px-4 shadow-sm"
-            onClick={() => setIsAddModalOpen(true)}
-          >
-            <Plus className="h-4 w-4" />
-            导入新模组
-          </Button>
-        </div>
-      </div>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="gap-2 h-10 border-border bg-card hover:bg-accent text-sm rounded-xl px-4 font-semibold"
+                onClick={handleOpenFolder}
+              >
+                <FolderOpen className="h-4 w-4 text-amber-500" />
+                打开 Mods 目录
+              </Button>
 
+              <Button 
+                variant="default" 
+                size="sm" 
+                className="gap-2 h-10 bg-primary hover:bg-primary/95 text-primary-foreground text-sm font-semibold rounded-xl px-4 shadow-sm"
+                onClick={() => setIsAddModalOpen(true)}
+              >
+                <Plus className="h-4 w-4" />
+                导入新模组
+              </Button>
+            </div>
+          </div>
       {/* Main Split Layout */}
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
         {/* Left Area: Filter Tabs & Mod Cards (8 cols on XL, 12 on normal) */}
@@ -1148,6 +1762,8 @@ export function Mods() {
             </form>
           </Card>
         </div>
+      )}
+        </>
       )}
     </div>
   )
