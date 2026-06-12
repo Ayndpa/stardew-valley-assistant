@@ -6,10 +6,11 @@ import { NPCs } from "@/pages/NPCs"
 import { Calendar } from "@/pages/Calendar"
 import { Settings } from "@/pages/Settings"
 import { Mods } from "@/pages/Mods"
+import { OnlineMods } from "@/components/mods/OnlineMods"
 import { Onboarding } from "@/components/Onboarding"
 import "./index.css"
 
-export type Page = "dashboard" | "crops" | "npcs" | "calendar" | "settings" | "mods"
+export type Page = "dashboard" | "crops" | "npcs" | "calendar" | "settings" | "mods" | "onlineMods"
 
 export interface SaveSummary {
   id: string
@@ -121,6 +122,18 @@ function App() {
         return <Settings selectedSaveId={selectedSaveId} />
       case "mods":
         return <Mods />
+      case "onlineMods":
+        return (
+          <div className="p-8 space-y-6">
+            <div>
+              <h2 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-primary to-green-600 bg-clip-text text-transparent">获取模组</h2>
+              <p className="text-muted-foreground mt-2 text-sm max-w-xl">
+                浏览 SMAPI.io 兼容性数据库和 NexusMods。您可以搜索数千个星露谷物语模组，并了解它们与当前版本的兼容状态。
+              </p>
+            </div>
+            <OnlineMods />
+          </div>
+        )
       default:
         return <Dashboard selectedSaveId={selectedSaveId} />
     }

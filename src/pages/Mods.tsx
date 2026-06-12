@@ -825,7 +825,6 @@ export function Mods() {
             smapiLatestVersion={smapiLatestVersion}
             onUninstall={handleUninstallSmapi}
           />
-
           {/* Main Split Layout */}
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
             {/* Left Area: Filter Tabs & Mod Cards */}

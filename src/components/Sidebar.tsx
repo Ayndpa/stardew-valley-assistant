@@ -14,6 +14,7 @@ import {
   Puzzle,
   ChevronDown,
   User,
+  Download,
 } from "lucide-react"
 
 interface SidebarProps {
@@ -30,6 +31,7 @@ const navItems: { id: Page; label: string; icon: React.ReactNode }[] = [
   { id: "npcs", label: "村民关系", icon: <Users /> },
   { id: "calendar", label: "节日日历", icon: <CalendarDays /> },
   { id: "mods", label: "模组管理", icon: <Puzzle /> },
+  { id: "onlineMods", label: "获取模组", icon: <Download className="h-4 w-4" /> },
   { id: "settings", label: "设置", icon: <Settings /> },
 ]
 

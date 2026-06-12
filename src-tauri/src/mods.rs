@@ -240,3 +240,50 @@ pub fn save_mod_config(game_dir: String, folder_name: String, config: serde_json
 
     Ok(())
 }
+
+#[tauri::command]
+pub async fn fetch_smapi_compatibility_mods() -> Result<Vec<serde_json::Value>, String> {
+    let temp_dir = std::env::temp_dir();
+    let temp_html_path = temp_dir.join("smapi_mods_temp.html");
+    let temp_json_path = temp_dir.join("smapi_mods_temp.json");
+
+    // 1. Download smapi.io HTML page
+    let html_url = "https://smapi.io/mods";
+    crate::utils::download_file(html_url, &temp_html_path)
+        .map_err(|e| format!("Failed to download SMAPI compatibility HTML: {}", e))?;
+
+    // 2. Read HTML content to find the JSON link
+    let html_content = fs::read_to_string(&temp_html_path)
+        .map_err(|e| format!("Failed to read temporary HTML file: {}", e))?;
+
+    let fetch_uri = extract_fetch_uri(&html_content)
+        .ok_or_else(|| "Could not find fetchUri inside smapi.io/mods page. The page format may have changed.".to_string())?;
+
+    // 3. Download JSON file
+    crate::utils::download_file(&fetch_uri, &temp_json_path)
+        .map_err(|e| format!("Failed to download SMAPI compatibility JSON: {}", e))?;
+
+    // 4. Read and parse JSON content
+    let json_content = fs::read_to_string(&temp_json_path)
+        .map_err(|e| format!("Failed to read temporary JSON file: {}", e))?;
+
+    let parsed_json: Vec<serde_json::Value> = serde_json::from_str(&json_content)
+        .map_err(|e| format!("Failed to parse SMAPI compatibility JSON: {}", e))?;
+
+    // 5. Clean up temporary files
+    let _ = fs::remove_file(&temp_html_path);
+    let _ = fs::remove_file(&temp_json_path);
+
+    Ok(parsed_json)
+}
+
+fn extract_fetch_uri(html: &str) -> Option<String> {
+    let key = "fetchUri: \"";
+    if let Some(start_idx) = html.find(key) {
+        let after_key = &html[start_idx + key.len()..];
+        if let Some(end_idx) = after_key.find('"') {
+            return Some(after_key[..end_idx].to_string());
+        }
+    }
+    None
+}
