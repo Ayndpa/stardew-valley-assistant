@@ -28,7 +28,28 @@ pub struct SaveSummary {
 pub struct FriendshipInfo {
     pub npc_name: String,
     pub points: i32,
+    pub gifts_this_week: i32,
+    pub gifts_today: i32,
+    pub talked_to_today: bool,
+    pub status: String,
 }
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct PlantedCrop {
+    pub location: String,
+    pub x: i32,
+    pub y: i32,
+    pub seed_id: String,
+    pub harvest_id: String,
+    pub current_phase: i32,
+    pub day_of_current_phase: i32,
+    pub fully_grown: bool,
+    pub dead: bool,
+    pub is_watered: bool,
+    pub phase_days: Vec<i32>,
+}
+
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -92,19 +113,52 @@ fn parse_friendship_data(xml: &str) -> Vec<FriendshipInfo> {
                         if let Some(str_end) = key_xml.find("</string>") {
                             let npc_name = key_xml[str_start + 8..str_end].to_string();
                             
+                            let mut points = 0;
+                            let mut gifts_this_week = 0;
+                            let mut gifts_today = 0;
+                            let mut talked_to_today = false;
+                            let mut status = "Friendly".to_string();
+                            
                             if let Some(val_start) = item_xml.find("<value>") {
                                 if let Some(val_end) = item_xml.find("</value>") {
                                     let val_xml = &item_xml[val_start..val_end];
+                                    
                                     if let Some(pts_start) = val_xml.find("<Points>") {
                                         if let Some(pts_end) = val_xml.find("</Points>") {
-                                            let points_str = &val_xml[pts_start + 8..pts_end];
-                                            if let Ok(points) = points_str.parse::<i32>() {
-                                                list.push(FriendshipInfo { npc_name, points });
-                                            }
+                                            points = val_xml[pts_start + 8..pts_end].parse::<i32>().unwrap_or(0);
+                                        }
+                                    }
+                                    if let Some(gtw_start) = val_xml.find("<GiftsThisWeek>") {
+                                        if let Some(gtw_end) = val_xml.find("</GiftsThisWeek>") {
+                                            gifts_this_week = val_xml[gtw_start + 15..gtw_end].parse::<i32>().unwrap_or(0);
+                                        }
+                                    }
+                                    if let Some(gt_start) = val_xml.find("<GiftsToday>") {
+                                        if let Some(gt_end) = val_xml.find("</GiftsToday>") {
+                                            gifts_today = val_xml[gt_start + 12..gt_end].parse::<i32>().unwrap_or(0);
+                                        }
+                                    }
+                                    if let Some(ttt_start) = val_xml.find("<TalkedToToday>") {
+                                        if let Some(ttt_end) = val_xml.find("</TalkedToToday>") {
+                                            talked_to_today = val_xml[ttt_start + 15..ttt_end].trim() == "true";
+                                        }
+                                    }
+                                    if let Some(st_start) = val_xml.find("<Status>") {
+                                        if let Some(st_end) = val_xml.find("</Status>") {
+                                            status = val_xml[st_start + 8..st_end].to_string();
                                         }
                                     }
                                 }
                             }
+                            
+                            list.push(FriendshipInfo {
+                                npc_name,
+                                points,
+                                gifts_this_week,
+                                gifts_today,
+                                talked_to_today,
+                                status,
+                            });
                         }
                     }
                 }
@@ -114,6 +168,7 @@ fn parse_friendship_data(xml: &str) -> Vec<FriendshipInfo> {
     }
     list
 }
+
 
 fn parse_museum_pieces_count(xml: &str) -> i32 {
     if let Some(start_idx) = xml.find("<museumPieces>") {
@@ -354,3 +409,186 @@ pub fn get_save_detail(id: String) -> Result<SaveDetail, String> {
         friendships,
     })
 }
+
+#[tauri::command]
+pub fn get_planted_crops(id: String) -> Result<Vec<PlantedCrop>, String> {
+    let saves_dir = get_saves_dir()
+        .ok_or_else(|| "Could not locate APPDATA or HOME directory".to_string())?;
+    
+    let save_folder = saves_dir.join(&id);
+    if !save_folder.exists() {
+        return Err(format!("Save folder {} does not exist", id));
+    }
+
+    let main_save_path = save_folder.join(&id);
+    if !main_save_path.exists() {
+        return Err(format!("Main save file {} not found in {}", id, id));
+    }
+
+    let xml = fs::read_to_string(&main_save_path)
+        .map_err(|e| format!("Failed to read main save file: {}", e))?;
+
+    let mut planted_crops = Vec::new();
+    
+    let mut location_blocks = Vec::new();
+    let mut search_pos = 0;
+    while let Some(start_idx) = xml[search_pos..].find("<GameLocation") {
+        let abs_start = search_pos + start_idx;
+        let block_content = &xml[abs_start..];
+        
+        let end_offset = match block_content.find("</GameLocation>") {
+            Some(offset) => offset,
+            None => break,
+        };
+        let abs_end = abs_start + end_offset + 15;
+        let loc_xml = &xml[abs_start..abs_end];
+        location_blocks.push(loc_xml);
+        search_pos = abs_end;
+    }
+
+    for loc_xml in location_blocks {
+        let name = get_tag_value(loc_xml, "name").unwrap_or("Unknown").to_string();
+        
+        let mut terrain_features_section = "";
+        if let Some(tf_start) = loc_xml.find("<terrainFeatures>") {
+            if let Some(tf_end) = loc_xml[tf_start..].find("</terrainFeatures>") {
+                terrain_features_section = &loc_xml[tf_start..tf_start + tf_end];
+            }
+        }
+
+        if terrain_features_section.is_empty() {
+            continue;
+        }
+
+        let mut item_pos = 0;
+        while let Some(item_start) = terrain_features_section[item_pos..].find("<item>") {
+            let abs_item_start = item_pos + item_start;
+            let item_end = match terrain_features_section[abs_item_start..].find("</item>") {
+                Some(offset) => abs_item_start + offset,
+                None => break,
+            };
+            let item_xml = &terrain_features_section[abs_item_start..item_end];
+            
+            if item_xml.contains("xsi:type=\"HoeDirt\"") || item_xml.contains("type=\"HoeDirt\"") {
+                let mut x = 0;
+                let mut y = 0;
+                if let Some(key_start) = item_xml.find("<key>") {
+                    if let Some(key_end) = item_xml.find("</key>") {
+                        let key_xml = &item_xml[key_start..key_end];
+                        if let Some(x_start) = key_xml.find("<X>") {
+                            if let Some(x_end) = key_xml.find("</X>") {
+                                x = key_xml[x_start + 3..x_end].parse::<i32>().unwrap_or(0);
+                            }
+                        }
+                        if let Some(y_start) = key_xml.find("<Y>") {
+                            if let Some(y_end) = key_xml.find("</Y>") {
+                                y = key_xml[y_start + 3..y_end].parse::<i32>().unwrap_or(0);
+                            }
+                        }
+                    }
+                }
+
+                if let Some(val_start) = item_xml.find("<value>") {
+                    if let Some(val_end) = item_xml.find("</value>") {
+                        let val_xml = &item_xml[val_start..val_end];
+                        
+                        let mut is_watered = false;
+                        if let Some(state_start) = val_xml.find("<state>") {
+                            if let Some(state_end) = val_xml.find("</state>") {
+                                let state_val = val_xml[state_start + 7..state_end].parse::<i32>().unwrap_or(0);
+                                is_watered = state_val == 1;
+                            }
+                        }
+
+                        if let Some(crop_start) = val_xml.find("<crop>") {
+                            if let Some(crop_end) = val_xml.find("</crop>") {
+                                let crop_xml = &val_xml[crop_start..crop_end];
+                                
+                                let current_phase = extract_tag_i32(crop_xml, "currentPhase");
+                                let day_of_current_phase = extract_tag_i32(crop_xml, "dayOfCurrentPhase");
+                                
+                                let mut fully_grown = false;
+                                if let Some(fg_start) = crop_xml.find("<fullGrown>") {
+                                    if let Some(fg_end) = crop_xml.find("</fullGrown>") {
+                                        fully_grown = crop_xml[fg_start + 11..fg_end].trim() == "true";
+                                    }
+                                }
+                                
+                                let mut dead = false;
+                                if let Some(d_start) = crop_xml.find("<dead>") {
+                                    if let Some(d_end) = crop_xml.find("</dead>") {
+                                        dead = crop_xml[d_start + 6..d_end].trim() == "true";
+                                    }
+                                }
+
+                                let seed_id = extract_tag_string(crop_xml, "seedIndex");
+                                let harvest_id = extract_tag_string(crop_xml, "indexOfHarvest");
+
+                                let mut phase_days = Vec::new();
+                                if let Some(pd_start) = crop_xml.find("<phaseDays>") {
+                                    if let Some(pd_end) = crop_xml.find("</phaseDays>") {
+                                        let pd_xml = &crop_xml[pd_start..pd_end];
+                                        let mut pd_pos = 0;
+                                        while let Some(int_start) = pd_xml[pd_pos..].find("<int>") {
+                                            let abs_int_start = pd_pos + int_start;
+                                            if let Some(int_end) = pd_xml[abs_int_start..].find("</int>") {
+                                                let abs_int_end = abs_int_start + int_end;
+                                                let val_str = &pd_xml[abs_int_start + 5..abs_int_end];
+                                                if let Ok(val) = val_str.parse::<i32>() {
+                                                    phase_days.push(val);
+                                                }
+                                                pd_pos = abs_int_end + 6;
+                                            } else {
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+
+                                planted_crops.push(PlantedCrop {
+                                    location: name.clone(),
+                                    x,
+                                    y,
+                                    seed_id,
+                                    harvest_id,
+                                    current_phase,
+                                    day_of_current_phase,
+                                    fully_grown,
+                                    dead,
+                                    is_watered,
+                                    phase_days,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+            item_pos = item_end + 7;
+        }
+    }
+
+    Ok(planted_crops)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_list() {
+        match list_save_files() {
+            Ok(list) => {
+                println!("SUCCESS: Listed {} saves", list.len());
+                for s in list {
+                    println!("  - {} ({})", s.player_name, s.farm_name);
+                }
+            }
+            Err(e) => {
+                println!("ERROR listing saves: {}", e);
+                panic!("Failed: {}", e);
+            }
+        }
+    }
+}
+
+

@@ -7,7 +7,7 @@ mod saves;
 use crate::game::{auto_detect_game_dir, get_game_version};
 use crate::smapi::{check_smapi_status, install_smapi, uninstall_smapi};
 use crate::mods::{list_installed_mods, toggle_mod, save_mod_config};
-use crate::saves::{list_save_files, get_save_detail};
+use crate::saves::{list_save_files, get_save_detail, get_planted_crops};
 use crate::utils::open_in_file_manager;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -33,8 +33,10 @@ pub fn run() {
             install_smapi,
             uninstall_smapi,
             list_save_files,
-            get_save_detail
+            get_save_detail,
+            get_planted_crops
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+

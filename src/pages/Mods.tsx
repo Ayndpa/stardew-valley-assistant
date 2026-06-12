@@ -162,22 +162,29 @@ const CATEGORY_MAP = {
   expansion: "大型拓展"
 }
 
-// Dynamic imports of Tauri plugins for browser compatibility
-let tauriInvoke: any = null
-let tauriOpen: any = null
+// Helper functions for dynamic imports to ensure web compatibility
+async function getTauriInvoke() {
+  if (typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__) {
+    try {
+      const mod = await import("@tauri-apps/api/core");
+      return mod.invoke;
+    } catch (err) {
+      console.error("Failed to load Tauri core invoke plugin", err);
+    }
+  }
+  return null;
+}
 
-if (typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__) {
-  import("@tauri-apps/api/core").then((mod) => {
-    tauriInvoke = mod.invoke
-  }).catch((err) => {
-    console.error("Failed to load Tauri core invoke plugin", err)
-  })
-
-  import("@tauri-apps/plugin-opener").then((mod) => {
-    tauriOpen = mod.openUrl
-  }).catch((err) => {
-    console.error("Failed to load Tauri opener plugin", err)
-  })
+async function getTauriOpen() {
+  if (typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__) {
+    try {
+      const mod = await import("@tauri-apps/plugin-opener");
+      return mod.openUrl;
+    } catch (err) {
+      console.error("Failed to load Tauri opener plugin", err);
+    }
+  }
+  return null;
 }
 
 export function Mods() {
@@ -269,60 +276,67 @@ export function Mods() {
 
   // Load game version on mount / change
   useEffect(() => {
-    const gameDir = localStorage.getItem("stardewGameDirectory") || ""
-    if (gameDir && tauriInvoke) {
-      tauriInvoke("get_game_version", { gameDir })
-        .then((ver: any) => {
+    async function loadVersion() {
+      const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+      const invoke = await getTauriInvoke()
+      if (gameDir && invoke) {
+        try {
+          const ver = await invoke("get_game_version", { gameDir }) as string
           setGameVersion(ver)
-        })
-        .catch((err: any) => {
+        } catch (err) {
           console.error("Failed to get game version:", err)
-        })
-    } else {
-      setGameVersion("1.6.9")
+        }
+      } else {
+        setGameVersion("1.6.9")
+      }
     }
-  }, [tauriInvoke])
+    loadVersion()
+  }, [])
 
-  // Load actual status and mods list from Tauri backend on mount / when tauriInvoke is loaded
+  // Load actual status and mods list from Tauri backend on mount
   useEffect(() => {
-    const gameDir = localStorage.getItem("stardewGameDirectory") || ""
-    if (gameDir && tauriInvoke) {
-      // Load SMAPI status
-      tauriInvoke("check_smapi_status", { gameDir })
-        .then((status: any) => {
-          setSmapiStatus(status)
-        })
-        .catch((err: any) => {
-          console.error("Failed to check SMAPI status:", err)
-        })
+    async function initMods() {
+      const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+      const invoke = await getTauriInvoke()
+      if (gameDir && invoke) {
+        // Load SMAPI status
+        invoke("check_smapi_status", { gameDir })
+          .then((status: any) => {
+            setSmapiStatus(status)
+          })
+          .catch((err: any) => {
+            console.error("Failed to check SMAPI status:", err)
+          })
 
-      // Load installed mods
-      setIsScanning(true)
-      tauriInvoke("list_installed_mods", { gameDir })
-        .then((loadedMods: any) => {
-          setMods(loadedMods)
-          if (loadedMods.length > 0) {
-            setSelectedModId(loadedMods[0].id)
-          } else {
-            setSelectedModId("")
-          }
+        // Load installed mods
+        setIsScanning(true)
+        invoke("list_installed_mods", { gameDir })
+          .then((loadedMods: any) => {
+            setMods(loadedMods)
+            if (loadedMods.length > 0) {
+              setSelectedModId(loadedMods[0].id)
+            } else {
+              setSelectedModId("")
+            }
+          })
+          .catch((err: any) => {
+            console.error("Failed to list installed mods:", err)
+            showToast("加载本地模组列表失败", "warning")
+          })
+          .finally(() => {
+            setIsScanning(false)
+          })
+      } else {
+        // In Web/Mock environment or if gameDir is empty
+        setSmapiStatus({
+          installed: true,
+          version: "4.0.8",
+          path: "Mock/StardewModdingAPI"
         })
-        .catch((err: any) => {
-          console.error("Failed to list installed mods:", err)
-          showToast("加载本地模组列表失败", "warning")
-        })
-        .finally(() => {
-          setIsScanning(false)
-        })
-    } else {
-      // In Web/Mock environment or if gameDir is empty
-      setSmapiStatus({
-        installed: true,
-        version: "4.0.8",
-        path: "Mock/StardewModdingAPI"
-      })
+      }
     }
-  }, [tauriInvoke])
+    initMods()
+  }, [])
 
   // Handlers
   const handleToggleMod = async (modId: string) => {
@@ -331,14 +345,15 @@ export function Mods() {
     if (!targetMod) return
 
     const newStatus = !targetMod.isEnabled
+    const invoke = await getTauriInvoke()
 
-    if (tauriInvoke && gameDir) {
+    if (invoke && gameDir) {
       try {
-        const newFolderName = await tauriInvoke("toggle_mod", {
+        const newFolderName = await invoke("toggle_mod", {
           gameDir,
           folderName: targetMod.folderName,
           enable: newStatus
-        })
+        }) as string
 
         // Update local state
         setMods((prevMods) =>
@@ -385,12 +400,13 @@ export function Mods() {
     }
 
     setIsScanning(true)
-    if (tauriInvoke) {
+    const invoke = await getTauriInvoke()
+    if (invoke) {
       try {
-        const status = await tauriInvoke("check_smapi_status", { gameDir })
+        const status = await invoke("check_smapi_status", { gameDir }) as any
         setSmapiStatus(status)
 
-        const loadedMods = await tauriInvoke("list_installed_mods", { gameDir })
+        const loadedMods = await invoke("list_installed_mods", { gameDir }) as any[]
         setMods(loadedMods)
         if (loadedMods.length > 0) {
           if (!loadedMods.some((m: any) => m.id === selectedModId)) {
@@ -436,9 +452,10 @@ export function Mods() {
     }
 
     const modsPath = `${gameDir}\\Mods`
-    if (tauriInvoke) {
+    const invoke = await getTauriInvoke()
+    if (invoke) {
       try {
-        await tauriInvoke("open_in_file_manager", { path: modsPath })
+        await invoke("open_in_file_manager", { path: modsPath })
         showToast(`已在系统文件管理器中打开 Mods 文件夹`, "success")
       } catch (err: any) {
         console.error("Open folder error:", err)
@@ -478,9 +495,10 @@ export function Mods() {
       configObj[field.key] = field.value
     })
 
-    if (tauriInvoke && gameDir) {
+    const invoke = await getTauriInvoke()
+    if (invoke && gameDir) {
       try {
-        await tauriInvoke("save_mod_config", {
+        await invoke("save_mod_config", {
           gameDir,
           folderName: selectedMod.folderName,
           config: configObj
@@ -513,13 +531,14 @@ export function Mods() {
     }
 
     const downloadUrl = smapiMirror === "ghproxy" ? `https://mirror.ghproxy.com/${rawUrl}` : rawUrl
+    const invoke = await getTauriInvoke()
 
-    if (tauriInvoke) {
+    if (invoke) {
       try {
         setInstallStatus("downloading")
         setInstallProgress(35)
         
-        await tauriInvoke("install_smapi", { gameDir, downloadUrl })
+        await invoke("install_smapi", { gameDir, downloadUrl })
         
         setInstallStatus("extracting")
         setInstallProgress(75)
@@ -534,11 +553,11 @@ export function Mods() {
         showToast("SMAPI 安装成功！", "success")
         
         // Reload status
-        const status = await tauriInvoke("check_smapi_status", { gameDir })
+        const status = await invoke("check_smapi_status", { gameDir }) as any
         setSmapiStatus(status)
         
         // Scan mods
-        const loadedMods = await tauriInvoke("list_installed_mods", { gameDir })
+        const loadedMods = await invoke("list_installed_mods", { gameDir }) as any[]
         setMods(loadedMods)
         if (loadedMods.length > 0) {
           setSelectedModId(loadedMods[0].id)
@@ -588,12 +607,13 @@ export function Mods() {
     if (!gameDir) return
 
     if (window.confirm("确定要卸载 SMAPI 吗？此操作会清除 SMAPI 启动核心，但会保留您的 Mods 文件夹和其中的个人模组。")) {
-      if (tauriInvoke) {
+      const invoke = await getTauriInvoke()
+      if (invoke) {
         try {
-          await tauriInvoke("uninstall_smapi", { gameDir })
+          await invoke("uninstall_smapi", { gameDir })
           showToast("SMAPI 卸载成功！游戏已重回原版状态。", "success")
           
-          const status = await tauriInvoke("check_smapi_status", { gameDir })
+          const status = await invoke("check_smapi_status", { gameDir }) as any
           setSmapiStatus(status)
           setMods([])
           setSelectedModId("")
@@ -673,9 +693,10 @@ export function Mods() {
     }
   }
 
-  const handleOpenOfficialSite = () => {
-    if (typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__ && tauriOpen) {
-      tauriOpen("https://smapi.io").catch((err: any) => console.error(err));
+  const handleOpenOfficialSite = async () => {
+    const openUrl = await getTauriOpen()
+    if (openUrl) {
+      openUrl("https://smapi.io").catch((err: any) => console.error(err));
     } else {
       window.open("https://smapi.io", "_blank");
     }

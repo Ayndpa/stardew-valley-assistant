@@ -19,22 +19,29 @@ import {
   ChevronDown,
 } from "lucide-react"
 
-// Dynamic imports of Tauri plugins to ensure browser compatibility
-let openTauriDialog: any = null
-let tauriInvoke: any = null
+// Helper functions for dynamic imports to ensure web compatibility
+async function getTauriDialog() {
+  if (typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__) {
+    try {
+      const mod = await import("@tauri-apps/plugin-dialog");
+      return mod.open;
+    } catch (err) {
+      console.error("Failed to load Tauri Dialog plugin", err);
+    }
+  }
+  return null;
+}
 
-if (typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__) {
-  import("@tauri-apps/plugin-dialog").then((mod) => {
-    openTauriDialog = mod.open
-  }).catch((err) => {
-    console.error("Failed to load Tauri Dialog plugin", err)
-  })
-
-  import("@tauri-apps/api/core").then((mod) => {
-    tauriInvoke = mod.invoke
-  }).catch((err) => {
-    console.error("Failed to load Tauri core invoke plugin", err)
-  })
+async function getTauriInvoke() {
+  if (typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__) {
+    try {
+      const mod = await import("@tauri-apps/api/core");
+      return mod.invoke;
+    } catch (err) {
+      console.error("Failed to load Tauri core invoke plugin", err);
+    }
+  }
+  return null;
 }
 
 interface OnboardingProps {
@@ -89,9 +96,10 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   }, [directory])
 
    const handleBrowse = async () => {
-    if (openTauriDialog) {
+    const dialog = await getTauriDialog()
+    if (dialog) {
       try {
-        const selected = await openTauriDialog({
+        const selected = await dialog({
           directory: true,
           multiple: false,
           title: "选择星露谷物语 (Stardew Valley) 安装目录",
@@ -121,15 +129,16 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   }
 
   const handleAutoDetect = async () => {
-    if (tauriInvoke) {
+    const invoke = await getTauriInvoke()
+    if (invoke) {
       try {
         triggerNotification("正在自动搜寻游戏目录...")
-        const detectedPath = await tauriInvoke("auto_detect_game_dir")
+        const detectedPath = await invoke("auto_detect_game_dir") as string
         if (detectedPath) {
           setDirectory(detectedPath)
           triggerNotification("自动检测成功！已找到游戏安装目录。")
         } else {
-          triggerNotification("未能在 Steam 库中找到安装的星露谷物语，请手动选择。")
+          triggerNotification("未能在 Steam 库中找到安装 of 星露谷物语，请手动选择。")
         }
       } catch (err) {
         console.error("Tauri auto detect error:", err)

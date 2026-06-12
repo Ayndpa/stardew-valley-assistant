@@ -16,15 +16,8 @@ import {
   User,
 } from "lucide-react"
 
-// Dynamic imports of Tauri core for web preview compatibility
-let tauriInvoke: any = null
-if (typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__) {
-  import("@tauri-apps/api/core").then((mod) => {
-    tauriInvoke = mod.invoke
-  }).catch((err) => {
-    console.error("Failed to load Tauri core invoke plugin", err)
-  })
-}
+// Dynamic imports will be done inline inside useEffect/handlers for reliability
+
 
 interface SaveSummary {
   id: string
@@ -171,43 +164,13 @@ const generateForecast = (startDay: number, season: number, saveId: string, tomo
   return forecast
 }
 
-export function Dashboard() {
-  const [saves, setSaves] = useState<SaveSummary[]>([])
-  const [selectedSaveId, setSelectedSaveId] = useState<string>(() => {
-    return localStorage.getItem("selectedSaveId") || ""
-  })
+interface DashboardProps {
+  selectedSaveId: string
+}
+
+export function Dashboard({ selectedSaveId }: DashboardProps) {
   const [detail, setDetail] = useState<SaveDetail | null>(null)
   const [loading, setLoading] = useState(true)
-
-  // Load the list of saves
-  useEffect(() => {
-    async function fetchSavesList() {
-      if (tauriInvoke) {
-        try {
-          const list: SaveSummary[] = await tauriInvoke("list_save_files")
-          setSaves(list)
-          if (list.length > 0) {
-            const storedId = localStorage.getItem("selectedSaveId")
-            if (storedId && list.some(s => s.id === storedId)) {
-              setSelectedSaveId(storedId)
-            } else {
-              setSelectedSaveId(list[0].id)
-              localStorage.setItem("selectedSaveId", list[0].id)
-            }
-          } else {
-            setSelectedSaveId(MOCK_SAVE_SUMMARY.id)
-          }
-        } catch (err) {
-          console.error("Error listing saves:", err)
-          setSelectedSaveId(MOCK_SAVE_SUMMARY.id)
-        }
-      } else {
-        setSaves([MOCK_SAVE_SUMMARY])
-        setSelectedSaveId(MOCK_SAVE_SUMMARY.id)
-      }
-    }
-    fetchSavesList()
-  }, [])
 
   // Fetch details for the selected save
   useEffect(() => {
@@ -215,9 +178,13 @@ export function Dashboard() {
       if (!selectedSaveId) return
       
       setLoading(true)
-      if (tauriInvoke && selectedSaveId !== MOCK_SAVE_SUMMARY.id) {
+      const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__;
+      const isMock = selectedSaveId === MOCK_SAVE_SUMMARY.id;
+      
+      if (isTauri && !isMock) {
         try {
-          const d: SaveDetail = await tauriInvoke("get_save_detail", { id: selectedSaveId })
+          const { invoke } = await import("@tauri-apps/api/core");
+          const d: SaveDetail = await invoke("get_save_detail", { id: selectedSaveId })
           setDetail(d)
         } catch (err) {
           console.error("Error loading save detail:", err)
@@ -233,10 +200,6 @@ export function Dashboard() {
     fetchDetail()
   }, [selectedSaveId])
 
-  const handleSaveChange = (id: string) => {
-    setSelectedSaveId(id)
-    localStorage.setItem("selectedSaveId", id)
-  }
 
   if (loading && !detail) {
     return (
@@ -251,7 +214,7 @@ export function Dashboard() {
 
   const activeDetail = detail || MOCK_SAVE_DETAIL
   const summary = activeDetail.summary
-  const isMockData = !saves.length || selectedSaveId === MOCK_SAVE_SUMMARY.id
+  const isMockData = selectedSaveId === MOCK_SAVE_SUMMARY.id
 
   const seasonName = SEASONS[summary.season] || "春季"
   const dayOfMonth = summary.dayOfMonth
@@ -450,19 +413,6 @@ export function Dashboard() {
         <div>
           <div className="flex items-center gap-3">
             <h2 className="text-3xl font-bold tracking-tight">仪表盘</h2>
-            {saves.length > 0 && (
-              <select
-                value={selectedSaveId || ""}
-                onChange={(e) => handleSaveChange(e.target.value)}
-                className="bg-accent/50 border border-border text-sm rounded-md px-2.5 py-1 h-8 focus:ring-1 focus:ring-primary focus:outline-none cursor-pointer font-medium max-w-[200px]"
-              >
-                {saves.map((s) => (
-                  <option key={s.id} value={s.id} className="bg-background text-foreground">
-                    {s.playerName} ({s.farmName}农场)
-                  </option>
-                ))}
-              </select>
-            )}
           </div>
           <p className="text-muted-foreground mt-1 font-medium">
             {seasonName} 第 {dayOfMonth} 天 · {weekdayName} (第 {year} 年)
