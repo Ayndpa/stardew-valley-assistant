@@ -1,6 +1,15 @@
 use std::fs;
 use tauri::Manager;
 
+struct LoginStatusCache {
+    result: serde_json::Value,
+    timestamp: std::time::Instant,
+}
+
+static LOGIN_STATUS_CACHE: std::sync::OnceLock<std::sync::Mutex<Option<LoginStatusCache>>> = std::sync::OnceLock::new();
+static LOGIN_IN_PROGRESS: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
+static API_KEY_IN_PROGRESS: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
+
 fn create_nexus_webview(
     app: &tauri::AppHandle,
     label: &str,
@@ -672,6 +681,35 @@ pub async fn check_nexus_login_status(app: tauri::AppHandle) -> Result<serde_jso
 
     println!("[NexusLoginCheck] check_nexus_login_status command called");
 
+    // 1. Check if we have a very recent successful check in the cache (e.g., within 5 seconds)
+    let cache_mutex = LOGIN_STATUS_CACHE.get_or_init(|| std::sync::Mutex::new(None));
+    {
+        if let Ok(cache_guard) = cache_mutex.lock() {
+            if let Some(ref cache) = *cache_guard {
+                if cache.timestamp.elapsed() < std::time::Duration::from_secs(5) {
+                    println!("[NexusLoginCheck] Returning cached login status: {:?}", cache.result);
+                    return Ok(cache.result.clone());
+                }
+            }
+        }
+    }
+
+    // 2. Lock to prevent concurrent checks
+    let progress_mutex = LOGIN_IN_PROGRESS.get_or_init(|| tokio::sync::Mutex::new(()));
+    let _guard = progress_mutex.lock().await;
+
+    // 3. Re-check cache after acquiring lock (double-checked locking pattern)
+    {
+        if let Ok(cache_guard) = cache_mutex.lock() {
+            if let Some(ref cache) = *cache_guard {
+                if cache.timestamp.elapsed() < std::time::Duration::from_secs(5) {
+                    println!("[NexusLoginCheck] Returning cached login status after acquiring lock: {:?}", cache.result);
+                    return Ok(cache.result.clone());
+                }
+            }
+        }
+    }
+
     let data_dir = app
         .path()
         .app_data_dir()
@@ -684,11 +722,25 @@ pub async fn check_nexus_login_status(app: tauri::AppHandle) -> Result<serde_jso
     if let Some(ref dir) = data_dir {
         if !dir.exists() {
             println!("[NexusLoginCheck] webview_data directory does not exist, returning not logged in.");
-            return Ok(serde_json::json!({ "loggedIn": false, "username": "" }));
+            let res = serde_json::json!({ "loggedIn": false, "username": "" });
+            if let Ok(mut cache_guard) = cache_mutex.lock() {
+                *cache_guard = Some(LoginStatusCache {
+                    result: res.clone(),
+                    timestamp: std::time::Instant::now(),
+                });
+            }
+            return Ok(res);
         }
     } else {
         println!("[NexusLoginCheck] app_data_dir returned None, returning not logged in.");
-        return Ok(serde_json::json!({ "loggedIn": false, "username": "" }));
+        let res = serde_json::json!({ "loggedIn": false, "username": "" });
+        if let Ok(mut cache_guard) = cache_mutex.lock() {
+            *cache_guard = Some(LoginStatusCache {
+                result: res.clone(),
+                timestamp: std::time::Instant::now(),
+            });
+        }
+        return Ok(res);
     }
 
     let handle = app.clone();
@@ -849,10 +901,19 @@ pub async fn check_nexus_login_status(app: tauri::AppHandle) -> Result<serde_jso
 
     let _ = window.destroy();
 
-    match result {
-        Ok(val) => Ok(val),
-        Err(_) => Ok(serde_json::json!({ "loggedIn": false, "username": "" })),
+    let final_res = match result {
+        Ok(val) => val,
+        Err(_) => serde_json::json!({ "loggedIn": false, "username": "" }),
+    };
+
+    if let Ok(mut cache_guard) = cache_mutex.lock() {
+        *cache_guard = Some(LoginStatusCache {
+            result: final_res.clone(),
+            timestamp: std::time::Instant::now(),
+        });
     }
+
+    Ok(final_res)
 }
 
 #[tauri::command]
@@ -876,17 +937,36 @@ pub async fn fetch_nexus_api_key(app: tauri::AppHandle, force: Option<bool>) -> 
         .map_err(|e| format!("Failed to resolve app data: {}", e))?
         .join("nexus_api_key.txt");
 
-    if force.unwrap_or(false) {
-        if api_key_path.exists() {
-            let _ = fs::remove_file(&api_key_path);
-        }
-    } else if api_key_path.exists() {
+    let is_force = force.unwrap_or(false);
+
+    if !is_force && api_key_path.exists() {
         if let Ok(cached_key) = fs::read_to_string(&api_key_path) {
             let trimmed = cached_key.trim().to_string();
             if trimmed.len() > 10 {
                 println!("[NexusApiKey] Using cached API key");
                 return Ok(serde_json::json!({ "apiKey": trimmed }));
             }
+        }
+    }
+
+    // Acquire lock to serialize concurrent API key fetches
+    let progress_mutex = API_KEY_IN_PROGRESS.get_or_init(|| tokio::sync::Mutex::new(()));
+    let _guard = progress_mutex.lock().await;
+
+    // Double check cache after acquiring the lock
+    if !is_force && api_key_path.exists() {
+        if let Ok(cached_key) = fs::read_to_string(&api_key_path) {
+            let trimmed = cached_key.trim().to_string();
+            if trimmed.len() > 10 {
+                println!("[NexusApiKey] Using cached API key after acquiring lock");
+                return Ok(serde_json::json!({ "apiKey": trimmed }));
+            }
+        }
+    }
+
+    if is_force {
+        if api_key_path.exists() {
+            let _ = fs::remove_file(&api_key_path);
         }
     }
 

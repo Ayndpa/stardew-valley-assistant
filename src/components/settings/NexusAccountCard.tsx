@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react"
 import { Globe, User, LogOut, Loader2, KeyRound, Copy, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -30,12 +31,33 @@ export function NexusAccountCard({
   onCopyApiKey,
   onRefreshApiKey,
 }: NexusAccountCardProps) {
+  const [iconSrc, setIconSrc] = useState<string>("")
+
+  useEffect(() => {
+    async function loadIcon() {
+      if (typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__) {
+        try {
+          const { convertFileSrc } = await import("@tauri-apps/api/core")
+          const src = convertFileSrc("C:\\Users\\Administrator\\Downloads\\ODF.png")
+          setIconSrc(src)
+        } catch (err) {
+          console.error("Failed to load Nexus account icon:", err)
+        }
+      }
+    }
+    loadIcon()
+  }, [])
+
   return (
     <Card className="overflow-hidden border border-border/80">
       <CardHeader className="bg-gradient-to-r from-orange-500/10 via-transparent to-transparent pb-4">
         <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-full bg-orange-500/10 flex items-center justify-center border border-orange-500/20 shrink-0">
-            <Globe className="h-5 w-5 text-orange-500" />
+          <div className="h-10 w-10 rounded-full overflow-hidden flex items-center justify-center border border-orange-500/20 shrink-0 bg-orange-500/5">
+            {iconSrc ? (
+              <img src={iconSrc} alt="NexusMods" className="h-full w-full object-cover" />
+            ) : (
+              <Globe className="h-5 w-5 text-orange-500" />
+            )}
           </div>
           <div>
             <CardTitle className="text-lg font-bold">NexusMods 账号</CardTitle>
@@ -142,8 +164,12 @@ export function NexusAccountCard({
         ) : (
           <div className="flex items-center justify-between p-3 rounded-lg bg-accent/30 border border-border/60">
             <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center">
-                <Globe className="h-4 w-4 text-muted-foreground" />
+              <div className="h-9 w-9 rounded-full overflow-hidden flex items-center justify-center bg-muted">
+                {iconSrc ? (
+                  <img src={iconSrc} alt="NexusMods" className="h-full w-full object-cover" />
+                ) : (
+                  <Globe className="h-4 w-4 text-muted-foreground" />
+                )}
               </div>
               <div>
                 <p className="text-sm font-medium">未登录</p>
@@ -161,6 +187,8 @@ export function NexusAccountCard({
             >
               {nexusLoggingIn ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
+              ) : iconSrc ? (
+                <img src={iconSrc} alt="" className="h-4 w-4 object-cover rounded-full" />
               ) : (
                 <Globe className="h-4 w-4" />
               )}
