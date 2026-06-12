@@ -9,6 +9,7 @@ struct LoginStatusCache {
 static LOGIN_STATUS_CACHE: std::sync::OnceLock<std::sync::Mutex<Option<LoginStatusCache>>> = std::sync::OnceLock::new();
 static LOGIN_IN_PROGRESS: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
 static API_KEY_IN_PROGRESS: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
+static RANKING_COUNTER: std::sync::OnceLock<std::sync::atomic::AtomicU64> = std::sync::OnceLock::new();
 
 fn create_nexus_webview(
     app: &tauri::AppHandle,
@@ -19,9 +20,16 @@ fn create_nexus_webview(
 ) -> Result<tauri::WebviewWindow, String> {
     use tauri::Manager;
 
-    // Destroy old window with same label if it exists
+    // Destroy old window with same label if it exists, then wait briefly
+    // so the label is fully released before we rebuild.
     if let Some(old_window) = app.get_webview_window(label) {
         let _ = old_window.destroy();
+        std::thread::sleep(std::time::Duration::from_millis(150));
+    }
+    // Double-check: if a stale handle still lingers, try once more.
+    if let Some(old_window) = app.get_webview_window(label) {
+        let _ = old_window.destroy();
+        std::thread::sleep(std::time::Duration::from_millis(150));
     }
 
     let data_dir = app
@@ -181,7 +189,15 @@ pub async fn open_nexus_ranking_scraper(
     sort_field: String,
     sort_direction: String,
     search_query: String,
+    name_filter: Option<String>,
+    author_filter: Option<String>,
+    uploader_filter: Option<String>,
 ) -> Result<(), String> {
+    // Generate a unique label so multiple ranking scrapers can run concurrently
+    let counter = RANKING_COUNTER.get_or_init(|| std::sync::atomic::AtomicU64::new(0));
+    let id = counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let window_label = format!("nexus-ranking-scraper-{}", id);
+
     // Lightweight page just to pass Cloudflare and obtain session cookies
     let url_str = "https://www.nexusmods.com/robots.txt".to_string();
     let url = url_str.parse::<tauri::Url>().map_err(|e| e.to_string())?;
@@ -191,7 +207,7 @@ pub async fn open_nexus_ranking_scraper(
     tauri::async_runtime::spawn(async move {
         use tauri::Emitter;
 
-        let window = match create_nexus_webview(&handle, "nexus-ranking-scraper", "Nexus 模组加载中...", url, false) {
+        let window = match create_nexus_webview(&handle, &window_label, "Nexus 模组加载中...", url, false) {
             Ok(w) => w,
             Err(e) => {
                 println!("[RankingScraper] Failed to build ranking scraper window: {:?}", e);
@@ -207,13 +223,20 @@ pub async fn open_nexus_ranking_scraper(
             let mut cf_shown = false;
             let mut graphql_requested = false;
 
+            let search_val = name_filter.as_deref().unwrap_or(&search_query);
+            let author_val = author_filter.as_deref().unwrap_or("");
+            let uploader_val = uploader_filter.as_deref().unwrap_or("");
+
             let emit_event = |payload: serde_json::Value| {
                 let mut full_payload = payload;
                 if let Some(obj) = full_payload.as_object_mut() {
                     obj.insert("offset".to_string(), serde_json::json!(offset));
                     obj.insert("sort_field".to_string(), serde_json::json!(sort_field));
                     obj.insert("sort_direction".to_string(), serde_json::json!(sort_direction));
-                    obj.insert("search_query".to_string(), serde_json::json!(search_query));
+                    obj.insert("search_query".to_string(), serde_json::json!(search_val));
+                    obj.insert("name_filter".to_string(), serde_json::json!(search_val));
+                    obj.insert("author_filter".to_string(), serde_json::json!(author_val));
+                    obj.insert("uploader_filter".to_string(), serde_json::json!(uploader_val));
                 }
                 let _ = poll_handle.emit("respond-nexus-ranking-html", full_payload);
             };
@@ -222,24 +245,50 @@ pub async fn open_nexus_ranking_scraper(
                 eval_js_timeout(win, js, 10)
             };
 
-            let escaped_search = search_query.replace('\\', "\\\\").replace('"', "\\\"");
-            let name_filter = if escaped_search.is_empty() {
-                "[]".to_string()
-            } else {
-                format!(r#"[{{ op: "CONTAINS", value: "{}" }}]"#, escaped_search)
-            };
+            // Build GraphQL filter based on search parameters
+            let mut filter_map = serde_json::Map::new();
+            filter_map.insert("filter".to_string(), serde_json::json!([]));
+            filter_map.insert("gameDomainName".to_string(), serde_json::json!([{"op": "EQUALS", "value": "stardewvalley"}]));
+            if !search_val.is_empty() {
+                filter_map.insert("name".to_string(), serde_json::json!([{"op": "WILDCARD", "value": search_val}]));
+            }
+            if !author_val.is_empty() {
+                filter_map.insert("author".to_string(), serde_json::json!([{"op": "WILDCARD", "value": author_val}]));
+            }
+            if !uploader_val.is_empty() {
+                filter_map.insert("uploader".to_string(), serde_json::json!([{"op": "WILDCARD", "value": uploader_val}]));
+            }
 
-            let variables_json = format!(
-                r#"{{
-                                    count: 20,
-                                    facets: {{ categoryName: [], languageName: [], tag: [] }},
-                                    filter: {{ adultContent: [{{ op: "EQUALS", value: false }}], filter: [], gameDomainName: [{{ op: "EQUALS", value: "stardewvalley" }}], name: {} }},
-                                    offset: {},
-                                    postFilter: {{}},
-                                    sort: [{{ {}: {{ direction: "{}" }} }}]
-                                }}"#,
-                name_filter, offset, sort_field, sort_direction
-            );
+            // Build sort as array (NexusMods API expects [ModsSort!])
+            let sort_value = serde_json::json!([{
+                sort_field.clone(): {"direction": sort_direction}
+            }]);
+
+            // Build complete GraphQL variables
+            let graphql_variables = serde_json::json!({
+                "count": 20,
+                "facets": {"categoryName": [], "languageName": [], "tag": []},
+                "filter": filter_map,
+                "offset": offset,
+                "sort": sort_value
+            });
+
+            // Build the full fetch payload using serde_json for safe serialization
+            let graphql_payload = serde_json::json!({
+                "query": "\n    query ModsListing($count: Int = 0, $facets: ModsFacet, $filter: ModsFilter, $offset: Int, $postFilter: ModsFilter, $sort: [ModsSort!]) {\n  mods(\n    count: $count\n    facets: $facets\n    filter: $filter\n    offset: $offset\n    postFilter: $postFilter\n    sort: $sort\n    viewUserBlockedContent: false\n  ) {\n    facetsData\n    nodes {\n      ...ModTileFragment\n    }\n    totalCount\n  }\n}\n    fragment ModTileFragment on Mod {\n  adultContent\n  createdAt\n  downloads\n  endorsements\n  fileSize\n  game {\n    domainName\n    id\n    name\n  }\n  modCategory {\n    categoryId\n    name\n  }\n  modId\n  name\n  status\n  summary\n  thumbnailUrl\n  thumbnailBlurredUrl\n  uid\n  updatedAt\n  uploader {\n    avatar\n    memberId\n    name\n  }\n  viewerDownloaded\n  viewerEndorsed\n  viewerTracked\n  viewerUpdateAvailable\n  viewerIsBlocked\n}",
+                "variables": graphql_variables,
+                "operationName": "ModsListing"
+            });
+
+            // Serialize and escape for safe embedding in JS string literal
+            let payload_str = serde_json::to_string(&graphql_payload).unwrap();
+            let js_escaped = payload_str
+                .replace('\\', "\\\\")
+                .replace('"', "\\\"")
+                .replace('\n', "\\n")
+                .replace('\r', "\\r")
+                .replace('\u{2028}', "\\u2028")
+                .replace('\u{2029}', "\\u2029");
 
             // JS #1: fire the GraphQL fetch, store result in window variable
             let mut graphql_fire_js = format!(r##"
@@ -250,28 +299,7 @@ pub async fn open_nexus_ranking_scraper(
                         fetch('https://api-router.nexusmods.com/graphql', {{
                             method: 'POST',
                             headers: {{ 'Content-Type': 'application/json', 'X-GraphQL-OperationName': 'ModsListing' }},
-                            body: JSON.stringify({{
-                                query: `
-                                    query ModsListing($count: Int = 0, $facets: ModsFacet, $filter: ModsFilter, $offset: Int, $postFilter: ModsFilter, $sort: [ModsSort!]) {{
-                                      mods(count: $count, facets: $facets, filter: $filter, offset: $offset, postFilter: $postFilter, sort: $sort, viewUserBlockedContent: false) {{
-                                        facetsData
-                                        nodes {{ ...ModTileFragment }}
-                                        totalCount
-                                      }}
-                                    }}
-                                    fragment ModTileFragment on Mod {{
-                                      adultContent createdAt downloads endorsements fileSize
-                                      game {{ domainName id name }}
-                                      modCategory {{ categoryId name }}
-                                      modId name status summary
-                                      thumbnailUrl thumbnailBlurredUrl uid updatedAt
-                                      uploader {{ avatar memberId name }}
-                                      viewerDownloaded viewerEndorsed viewerTracked viewerUpdateAvailable viewerIsBlocked
-                                    }}
-                                `,
-                                variables: {},
-                                operationName: 'ModsListing'
-                            }}),
+                            body: "{js_escaped}",
                             credentials: 'include'
                         }}).then(r => r.json()).then(json => {{
                             window.__nexusGraphQLData = JSON.stringify(json);
@@ -283,7 +311,7 @@ pub async fn open_nexus_ranking_scraper(
                         return 'started';
                     }} catch(e) {{ return 'error:' + String(e); }}
                 }})()
-            "##, variables_json);
+            "##);
 
             if cfg!(debug_assertions) {
                 graphql_fire_js = graphql_fire_js.replace(
@@ -309,7 +337,7 @@ pub async fn open_nexus_ranking_scraper(
 
             loop {
                 // Check if window still exists
-                if poll_handle.get_webview_window("nexus-ranking-scraper").is_none() {
+                if poll_handle.get_webview_window(&window_label).is_none() {
                     println!("[RankingScraper] Window was destroyed, exiting loop");
                     break;
                 }
@@ -334,6 +362,16 @@ pub async fn open_nexus_ranking_scraper(
                                 "done" => {
                                     // Retrieve the actual data
                                     if let Some(data_str) = eval_js(&poll_window, graphql_retrieve_js) {
+                                        // Debug: log response structure
+                                        if let Ok(ref data) = serde_json::from_str::<serde_json::Value>(&data_str) {
+                                            let has_errors = data.get("errors").is_some();
+                                            let total_count = data.pointer("/data/mods/totalCount");
+                                            let nodes_count = data.pointer("/data/mods/nodes").and_then(|n| n.as_array()).map(|a| a.len());
+                                            println!("[RankingScraper] GraphQL response: has_errors={}, totalCount={:?}, nodes_count={:?}", has_errors, total_count, nodes_count);
+                                            if has_errors {
+                                                println!("[RankingScraper] GraphQL errors: {}", serde_json::to_string_pretty(data.get("errors").unwrap()).unwrap_or_default());
+                                            }
+                                        }
                                         if let Ok(data) = serde_json::from_str::<serde_json::Value>(&data_str) {
                                             let _ = poll_window.set_title("Nexus 排行榜已获取");
                                             println!("[RankingScraper] GraphQL data retrieved!");
@@ -384,6 +422,7 @@ pub async fn open_nexus_ranking_scraper(
                 if !is_cf {
                     graphql_requested = true;
                     println!("[RankingScraper] Page ready, firing GraphQL request...");
+                    println!("[RankingScraper] GraphQL variables: {}", serde_json::to_string(&graphql_variables).unwrap_or_default());
                     let res = eval_js(&poll_window, &graphql_fire_js);
                     println!("[RankingScraper] graphql_fire_js eval result: {:?}", res);
                     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
@@ -1171,6 +1210,7 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
             let timeout = std::time::Instant::now() + std::time::Duration::from_secs(180);
             let mut cf_shown = false;
             let mut last_title = String::new();
+            let mut details_ready_count: u32 = 0;
 
             let eval_js = |win: &tauri::WebviewWindow, js: &str| -> Option<String> {
                 eval_js_timeout(win, js, 2)
@@ -1232,6 +1272,8 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
                             const ogDescription = document.querySelector("meta[property='og:description']")?.getAttribute("content") || "";
                             const hasNexusDetailMarker =
                                 !!document.querySelector("#description-content, #section-mod-description, .mod-description, .tab-description, #pagetitle h1, meta[property='og:title'], meta[property='og:description']");
+                            const hasRichContent =
+                                !!document.querySelector(".statitem, ul.thumbgallery.gallery, .sideitems");
                             const hasNexusPageMarker =
                                 location.hostname.endsWith("nexusmods.com") &&
                                 hasNexusDetailMarker &&
@@ -1246,12 +1288,14 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
                             return {
                                 readyState: document.readyState,
                                 hasDetails: hasNexusPageMarker,
+                                hasRichContent,
                                 html
                             };
                         } catch (error) {
                             return {
                                 readyState: "error",
                                 hasDetails: false,
+                                hasRichContent: false,
                                 html: "",
                                 error: String(error)
                             };
@@ -1283,6 +1327,10 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
                     .get("hasDetails")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
+                let has_rich_content = snapshot
+                    .get("hasRichContent")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
                 let html = snapshot
                     .get("html")
                     .and_then(|v| v.as_str())
@@ -1290,13 +1338,27 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
                     .to_string();
 
                 if !is_challenge && ready_state == "complete" && has_details {
-                    let _ = poll_window.set_title("Nexus 信息已获取");
-                    println!("[Scraper] Got HTML, length: {}", html.len());
-                    let _ = poll_handle.emit("respond-nexus-html", serde_json::json!({
-                        "html": html
-                    }));
-                    let _ = poll_window.destroy();
-                    return;
+                    if has_rich_content {
+                        // Rich content (stats, images, sidebar) loaded — emit immediately
+                        let _ = poll_window.set_title("Nexus 信息已获取");
+                        println!("[Scraper] Got HTML with rich content, length: {}", html.len());
+                        let _ = poll_handle.emit("respond-nexus-html", serde_json::json!({
+                            "html": html
+                        }));
+                        let _ = poll_window.destroy();
+                        return;
+                    }
+                    // Basic details present but no rich content yet — wait up to 6s for AJAX
+                    details_ready_count += 1;
+                    if details_ready_count >= 12 {
+                        let _ = poll_window.set_title("Nexus 信息已获取");
+                        println!("[Scraper] Got HTML (fallback after wait), length: {}", html.len());
+                        let _ = poll_handle.emit("respond-nexus-html", serde_json::json!({
+                            "html": html
+                        }));
+                        let _ = poll_window.destroy();
+                        return;
+                    }
                 }
 
                 tokio::time::sleep(std::time::Duration::from_millis(500)).await;

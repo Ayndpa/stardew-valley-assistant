@@ -50,8 +50,8 @@ interface SystemCache {
 }
 
 // Local cache helper functions
-const getCacheKey = (sortField: string, sortDirection: string, searchQuery: string) => {
-  return `${sortField}_${sortDirection}_${searchQuery.trim().toLowerCase()}`
+const getCacheKey = (sortField: string, sortDirection: string, searchQuery: string, authorQuery: string = "", uploaderQuery: string = "") => {
+  return `${sortField}_${sortDirection}_${searchQuery.trim().toLowerCase()}_${authorQuery.trim().toLowerCase()}_${uploaderQuery.trim().toLowerCase()}`
 }
 
 const getCachedPage = (queryKey: string, pageNum: number): CachePage | null => {
@@ -168,10 +168,15 @@ function mapGraphQLToRanking(graphqlData: any, offset: number): NexusRankedMod[]
 // Persistent set of query keys that have been verified in the current session
 const verifiedKeysInSession = new Set<string>()
 
+// Guard against duplicate concurrent fetches (React StrictMode fires effects twice)
+let rankingFetchInProgress = false
+
 // Persistent session browsing state
 let sessionCurrentPage = 1
 let sessionSortField = "downloads"
 let sessionSearchQuery = ""
+let sessionAuthorQuery = ""
+let sessionUploaderQuery = ""
 
 export interface NexusModsRankingProps {
   onOpenDetail?: (mod: NexusRankedMod) => void
@@ -183,6 +188,10 @@ export function NexusModsRanking({ onOpenDetail }: NexusModsRankingProps = {}) {
   const [sortDirection] = useState<string>("DESC")
   const [searchQuery, setSearchQuery] = useState<string>(() => sessionSearchQuery)
   const [searchInputValue, setSearchInputValue] = useState<string>(() => sessionSearchQuery)
+  const [authorInputValue, setAuthorInputValue] = useState<string>(() => sessionAuthorQuery)
+  const [authorQuery, setAuthorQuery] = useState<string>(() => sessionAuthorQuery)
+  const [uploaderInputValue, setUploaderInputValue] = useState<string>(() => sessionUploaderQuery)
+  const [uploaderQuery, setUploaderQuery] = useState<string>(() => sessionUploaderQuery)
   
   // Pagination from Session
   const [currentPage, setCurrentPage] = useState<number>(() => sessionCurrentPage)
@@ -216,15 +225,44 @@ export function NexusModsRanking({ onOpenDetail }: NexusModsRankingProps = {}) {
     sessionCurrentPage = currentPage
     sessionSortField = sortField
     sessionSearchQuery = searchQuery
-  }, [currentPage, sortField, searchQuery])
+    sessionAuthorQuery = authorQuery
+    sessionUploaderQuery = uploaderQuery
+
+    const qKey = getCacheKey(sortField, sortDirection, searchQuery, authorQuery, uploaderQuery)
+    const cached = getCachedPage(qKey, currentPage)
+    const sessionKey = `${qKey}_p${currentPage}`
+
+    if (cached) {
+      setRanking(cached.mods)
+      setTotalCount(cached.totalCount)
+      setError(null)
+      setLoading(false)
+
+      if (currentPage === 1 && !verifiedKeysInSession.has(sessionKey)) {
+        // Silent update for page 1 in the background only if not yet verified in this session
+        fetchRanking(1, sortField, sortDirection, searchQuery, true, authorQuery, uploaderQuery)
+      }
+    } else {
+      fetchRanking(currentPage, sortField, sortDirection, searchQuery, false, authorQuery, uploaderQuery)
+    }
+  }, [currentPage, sortField, searchQuery, authorQuery, uploaderQuery])
 
   const fetchRanking = async (
     targetPage: number,
     targetSortField: string,
     targetSortDirection: string,
     targetSearchQuery: string,
-    isSilent: boolean
+    isSilent: boolean,
+    targetAuthorQuery: string = "",
+    targetUploaderQuery: string = ""
   ) => {
+    // Prevent duplicate concurrent fetches (React StrictMode fires effects twice)
+    if (rankingFetchInProgress) {
+      console.log("[Ranking] Fetch already in progress, skipping duplicate call.")
+      return
+    }
+    rankingFetchInProgress = true
+
     if (isSilent) {
       setIsBackgroundRefreshing(true)
     } else {
@@ -234,7 +272,7 @@ export function NexusModsRanking({ onOpenDetail }: NexusModsRankingProps = {}) {
     setScrapeStatus("loading")
 
     const targetOffset = (targetPage - 1) * itemsPerPage
-    const qKey = getCacheKey(targetSortField, targetSortDirection, targetSearchQuery)
+    const qKey = getCacheKey(targetSortField, targetSortDirection, targetSearchQuery, targetAuthorQuery, targetUploaderQuery)
 
     const invoke = await getTauriInvoke()
     const listen = await getTauriListen()
@@ -254,11 +292,28 @@ export function NexusModsRanking({ onOpenDetail }: NexusModsRankingProps = {}) {
           offset?: number
           sort_field?: string
           search_query?: string
+          name_filter?: string
+          author_filter?: string
+          uploader_filter?: string
         }>("respond-nexus-ranking-html", (event) => {
+          console.log("[Ranking] Event received:", JSON.stringify({
+            has_mods: !!event.payload.mods,
+            has_error: !!event.payload.error,
+            status: event.payload.status,
+            offset: event.payload.offset,
+            sort_field: event.payload.sort_field,
+            name_filter: event.payload.name_filter,
+            targetOffset, targetSortField, targetSearchQuery, targetAuthorQuery, targetUploaderQuery,
+            mods_keys: event.payload.mods ? Object.keys(event.payload.mods) : null,
+            totalCount: event.payload.mods?.data?.mods?.totalCount ?? event.payload.mods?.mods?.totalCount ?? null,
+            nodes_count: event.payload.mods?.data?.mods?.nodes?.length ?? event.payload.mods?.mods?.nodes?.length ?? null,
+          }))
           // Verify that this event corresponds to our active request to prevent race conditions
           if (event.payload.offset !== undefined && event.payload.offset !== targetOffset) return
           if (event.payload.sort_field !== undefined && event.payload.sort_field !== targetSortField) return
-          if (event.payload.search_query !== undefined && event.payload.search_query !== targetSearchQuery) return
+          if (event.payload.name_filter !== undefined && event.payload.name_filter !== targetSearchQuery) return
+          if (event.payload.author_filter !== undefined && event.payload.author_filter !== targetAuthorQuery) return
+          if (event.payload.uploader_filter !== undefined && event.payload.uploader_filter !== targetUploaderQuery) return
 
           if (event.payload.status === "challenge") {
             setScrapeStatus("challenge")
@@ -271,6 +326,7 @@ export function NexusModsRanking({ onOpenDetail }: NexusModsRankingProps = {}) {
 
           if (event.payload.error) {
             setError(event.payload.error)
+            rankingFetchInProgress = false
             setLoading(false)
             setIsBackgroundRefreshing(false)
             if (unlistenRef.current) {
@@ -282,6 +338,7 @@ export function NexusModsRanking({ onOpenDetail }: NexusModsRankingProps = {}) {
 
           if (!event.payload.mods) {
             setError("未收到 Nexus GraphQL 数据，请重试。")
+            rankingFetchInProgress = false
             setLoading(false)
             setIsBackgroundRefreshing(false)
             if (unlistenRef.current) {
@@ -326,6 +383,7 @@ export function NexusModsRanking({ onOpenDetail }: NexusModsRankingProps = {}) {
             setTotalCount(total)
           }
 
+          rankingFetchInProgress = false
           setLoading(false)
           setIsBackgroundRefreshing(false)
           setScrapeStatus("idle")
@@ -343,13 +401,17 @@ export function NexusModsRanking({ onOpenDetail }: NexusModsRankingProps = {}) {
           offset: targetOffset,
           sortField: targetSortField,
           sortDirection: targetSortDirection,
-          searchQuery: targetSearchQuery
+          searchQuery: targetSearchQuery,
+          nameFilter: targetSearchQuery,
+          authorFilter: targetAuthorQuery,
+          uploaderFilter: targetUploaderQuery
         })
 
         // Safety timeout
         setTimeout(() => {
           if (unlistenRef.current) {
             setError("加载超时。这可能是由于网络不稳定或验证未能通过。")
+            rankingFetchInProgress = false
             setLoading(false)
             setIsBackgroundRefreshing(false)
             setScrapeStatus("idle")
@@ -360,6 +422,7 @@ export function NexusModsRanking({ onOpenDetail }: NexusModsRankingProps = {}) {
       } catch (err: any) {
         console.error("[Ranking] Scraper invocation error:", err)
         setError("启动排行榜抓取器失败: " + err)
+        rankingFetchInProgress = false
         setLoading(false)
         setIsBackgroundRefreshing(false)
         setScrapeStatus("idle")
@@ -371,10 +434,15 @@ export function NexusModsRanking({ onOpenDetail }: NexusModsRankingProps = {}) {
         
         if (targetSearchQuery) {
           const s = targetSearchQuery.toLowerCase()
-          filtered = filtered.filter(m => 
-            m.name.toLowerCase().includes(s) || 
-            m.author.toLowerCase().includes(s)
-          )
+          filtered = filtered.filter(m => m.name.toLowerCase().includes(s))
+        }
+        if (targetAuthorQuery) {
+          const a = targetAuthorQuery.toLowerCase()
+          filtered = filtered.filter(m => m.author.toLowerCase().includes(a))
+        }
+        if (targetUploaderQuery) {
+          const u = targetUploaderQuery.toLowerCase()
+          filtered = filtered.filter(m => m.author.toLowerCase().includes(u))
         }
         
         if (targetSortField === "downloads") {
@@ -422,6 +490,7 @@ export function NexusModsRanking({ onOpenDetail }: NexusModsRankingProps = {}) {
           setTotalCount(total)
         }
         
+        rankingFetchInProgress = false
         setLoading(false)
         setIsBackgroundRefreshing(false)
         setScrapeStatus("idle")
@@ -429,31 +498,6 @@ export function NexusModsRanking({ onOpenDetail }: NexusModsRankingProps = {}) {
     }
   }
 
-  // Auto load or refresh when parameters change
-  useEffect(() => {
-    // Sync browsing state to session variables
-    sessionCurrentPage = currentPage
-    sessionSortField = sortField
-    sessionSearchQuery = searchQuery
-
-    const qKey = getCacheKey(sortField, sortDirection, searchQuery)
-    const cached = getCachedPage(qKey, currentPage)
-    const sessionKey = `${qKey}_p${currentPage}`
-
-    if (cached) {
-      setRanking(cached.mods)
-      setTotalCount(cached.totalCount)
-      setError(null)
-      setLoading(false)
-
-      if (currentPage === 1 && !verifiedKeysInSession.has(sessionKey)) {
-        // Silent update for page 1 in the background only if not yet verified in this session
-        fetchRanking(1, sortField, sortDirection, searchQuery, true)
-      }
-    } else {
-      fetchRanking(currentPage, sortField, sortDirection, searchQuery, false)
-    }
-  }, [currentPage, sortField, searchQuery])
 
   // Cleanup on unmount
   useEffect(() => {
@@ -468,6 +512,8 @@ export function NexusModsRanking({ onOpenDetail }: NexusModsRankingProps = {}) {
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     setSearchQuery(searchInputValue)
+    setAuthorQuery(authorInputValue)
+    setUploaderQuery(uploaderInputValue)
     setCurrentPage(1)
   }
 
@@ -511,18 +557,34 @@ export function NexusModsRanking({ onOpenDetail }: NexusModsRankingProps = {}) {
 
       {/* Control Panel: Search & Sorting */}
       <div className="flex flex-col md:flex-row gap-4 justify-between items-center bg-card border border-border p-4 rounded-xl shadow-sm">
-        {/* Search */}
-        <form onSubmit={handleSearchSubmit} className="relative w-full md:max-w-xs flex gap-2">
+        {/* Search Filters */}
+        <form onSubmit={handleSearchSubmit} className="flex flex-col md:flex-row gap-2 w-full">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="搜索 Nexus 模组..."
+              placeholder="模组名称..."
               value={searchInputValue}
               onChange={(e) => setSearchInputValue(e.target.value)}
               className="pl-9 bg-accent/10 border-border text-xs rounded-lg h-9"
             />
           </div>
-          <Button type="submit" size="sm" className="h-9 px-3 rounded-lg text-xs font-semibold cursor-pointer">
+          <div className="relative flex-1">
+            <Input
+              placeholder="作者..."
+              value={authorInputValue}
+              onChange={(e) => setAuthorInputValue(e.target.value)}
+              className="bg-accent/10 border-border text-xs rounded-lg h-9 px-3"
+            />
+          </div>
+          <div className="relative flex-1">
+            <Input
+              placeholder="上传者..."
+              value={uploaderInputValue}
+              onChange={(e) => setUploaderInputValue(e.target.value)}
+              className="bg-accent/10 border-border text-xs rounded-lg h-9 px-3"
+            />
+          </div>
+          <Button type="submit" size="sm" className="h-9 px-4 rounded-lg text-xs font-semibold cursor-pointer shrink-0">
             搜索
           </Button>
         </form>

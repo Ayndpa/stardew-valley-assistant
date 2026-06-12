@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { 
   Search, 
   Download, 
@@ -245,9 +245,16 @@ export function OnlineMods() {
     }
   }
 
+  // Track active tab so we only fetch SMAPI data on demand
+  const [activeTab, setActiveTab] = useState<string>("nexus")
+  const smapiFetchedRef = useRef(false)
+
   useEffect(() => {
-    fetchOnlineModsList()
-  }, [])
+    if (activeTab === "smapi" && !smapiFetchedRef.current) {
+      smapiFetchedRef.current = true
+      fetchOnlineModsList()
+    }
+  }, [activeTab])
 
   // Filter and search computation
   const filteredMods = useMemo(() => {
@@ -302,7 +309,7 @@ export function OnlineMods() {
 
   return (
     <div className="space-y-6">
-      <Tabs defaultValue="nexus" className="w-full space-y-6">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full space-y-6">
         <div className="flex justify-center border-b border-border/40 pb-4">
           <TabsList className="grid w-full max-w-md grid-cols-2 bg-muted/65 p-1 rounded-xl h-11 border border-border/30 shadow-inner">
             <TabsTrigger 

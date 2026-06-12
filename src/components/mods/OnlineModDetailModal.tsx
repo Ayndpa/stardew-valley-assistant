@@ -5,15 +5,20 @@ import {
   ExternalLink, 
   Download, 
   Info, 
-  Compass, 
   Loader2, 
   AlertTriangle,
   RefreshCw,
-  Languages
+  Languages,
+  ChevronLeft,
+  ChevronRight,
+  Calendar,
+  User,
+  Tag,
+  Eye,
+  ZoomIn
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { ScrollArea } from "@/components/ui/scroll-area"
 
 // Import types from OnlineMods
 import type { SmapiMod } from "./OnlineMods"
@@ -28,18 +33,114 @@ interface ParsedModDetails {
   title: string
   author: string
   imageUrl: string
+  galleryImages: string[]
   description: string
+  condensedDescription: string
   version: string
-  downloads: string
+  uniqueDls: string
+  totalDls: string
   endorsements: string
+  lastUpdated: string
+}
+
+interface CondensedTranslateState extends TranslateState {
+  condensedDescriptionTranslated: string | null
+  condensedDescLoading: boolean
 }
 
 import {
   TranslateState,
-  edgeTranslate,
-  stripHtml,
-  restoreHtml
+  edgeTranslate
 } from "@/lib/translate"
+
+async function translateHtmlTextOnly(html: string, toLanguage: string) {
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(`<div id="translate-root">${html}</div>`, "text/html")
+  const root = doc.querySelector("#translate-root")
+  if (!root) return html
+
+  const isInExclusionTag = (node: Node) => {
+    let parent = node.parentElement
+    while (parent) {
+      const tag = parent.tagName.toLowerCase()
+      if (tag === "script" || tag === "style") return true
+      parent = parent.parentElement
+    }
+    return false
+  }
+
+  const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      const text = node.textContent || ""
+      if (!text || !text.trim()) return NodeFilter.FILTER_REJECT
+      if (isInExclusionTag(node)) return NodeFilter.FILTER_REJECT
+      return NodeFilter.FILTER_ACCEPT
+    },
+  })
+
+  const textNodes: Text[] = []
+  let currentNode = walker.nextNode()
+  while (currentNode) {
+    textNodes.push(currentNode as Text)
+    currentNode = walker.nextNode()
+  }
+
+  if (textNodes.length === 0) return html
+
+  const originalTexts = textNodes.map(node => node.textContent || "")
+  const chunkLimit = 4500
+  const chunkedTasks: { nodeIndex: number; text: string }[] = []
+
+  originalTexts.forEach((text, index) => {
+    if (text.length <= chunkLimit) {
+      chunkedTasks.push({ nodeIndex: index, text })
+      return
+    }
+    for (let i = 0; i < text.length; i += chunkLimit) {
+      chunkedTasks.push({ nodeIndex: index, text: text.substring(i, i + chunkLimit) })
+    }
+  })
+
+  if (chunkedTasks.length === 0) return html
+
+  const translatedByNode: string[][] = originalTexts.map(() => [])
+  const batchSize = 10
+  const batchChars = 4800
+  let cursor = 0
+
+  while (cursor < chunkedTasks.length) {
+    let end = cursor
+    let batchCharCount = 0
+    while (end < chunkedTasks.length) {
+      const nextText = chunkedTasks[end].text
+      if (end > cursor && batchCharCount + nextText.length > batchChars) break
+      batchCharCount += nextText.length
+      end += 1
+    }
+
+    const batch = chunkedTasks.slice(cursor, end)
+    if (batch.length > batchSize) {
+      end = cursor + batchSize
+    }
+
+    const batchTexts = chunkedTasks.slice(cursor, end).map(task => task.text)
+    const translatedBatch = await edgeTranslate(batchTexts, toLanguage)
+
+    translatedBatch.forEach((translatedText, offset) => {
+      const task = chunkedTasks[cursor + offset]
+      if (!task) return
+      translatedByNode[task.nodeIndex].push(translatedText ?? task.text)
+    })
+
+    cursor = end
+  }
+
+  for (let i = 0; i < textNodes.length; i += 1) {
+    textNodes[i].textContent = (translatedByNode[i].length ? translatedByNode[i].join("") : originalTexts[i])
+  }
+
+  return root.innerHTML
+}
 
 // Helper for dynamic imports
 async function getTauriInvoke() {
@@ -72,14 +173,19 @@ export function OnlineModDetailModal({ isOpen, onClose, mod }: OnlineModDetailMo
   const [details, setDetails] = useState<ParsedModDetails | null>(null)
   const [scrapeStatus, setScrapeStatus] = useState<"loading" | "challenge">("loading")
   const unlistenRef = useRef<(() => void) | null>(null)
-  const [translate, setTranslate] = useState<TranslateState>({
+  const detailBodyRef = useRef<HTMLDivElement | null>(null)
+  const [translate, setTranslate] = useState<CondensedTranslateState>({
     titleTranslated: null,
     descriptionTranslated: null,
+    condensedDescriptionTranslated: null,
     titleLoading: false,
     descLoading: false,
+    condensedDescLoading: false,
     error: null,
   })
-  const [showTranslated, setShowTranslated] = useState({ title: false, desc: false })
+  const [showTranslated, setShowTranslated] = useState({ title: false, desc: false, condensedDesc: false })
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null)
+  const [currentGalleryIndex, setCurrentGalleryIndex] = useState(0)
 
   // Translate title
   const handleTranslateTitle = useCallback(async () => {
@@ -115,16 +221,7 @@ export function OnlineModDetailModal({ isOpen, onClose, mod }: OnlineModDetailMo
     }
     setTranslate(prev => ({ ...prev, descLoading: true, error: null }))
     try {
-      const { plain, tagMap } = stripHtml(details.description)
-      // Split into chunks of ~5000 chars for API limits
-      const chunks: string[] = []
-      const chunkSize = 4500
-      for (let i = 0; i < plain.length; i += chunkSize) {
-        chunks.push(plain.substring(i, i + chunkSize))
-      }
-      const translatedChunks = await edgeTranslate(chunks, "zh-Hans")
-      const translatedPlain = translatedChunks.join("")
-      const translatedHtml = restoreHtml(translatedPlain, tagMap)
+      const translatedHtml = await translateHtmlTextOnly(details.description, "zh-Hans")
       setTranslate(prev => ({ ...prev, descriptionTranslated: translatedHtml, descLoading: false }))
       setShowTranslated(prev => ({ ...prev, desc: true }))
     } catch (err: any) {
@@ -132,10 +229,41 @@ export function OnlineModDetailModal({ isOpen, onClose, mod }: OnlineModDetailMo
     }
   }, [details, translate.descLoading, showTranslated.desc, translate.descriptionTranslated])
 
+  // Translate condensed description (HTML)
+  const handleTranslateCondensedDesc = useCallback(async () => {
+    if (!details?.condensedDescription || translate.condensedDescLoading) return
+    if (showTranslated.condensedDesc) {
+      setShowTranslated(prev => ({ ...prev, condensedDesc: false }))
+      return
+    }
+    if (translate.condensedDescriptionTranslated) {
+      setShowTranslated(prev => ({ ...prev, condensedDesc: true }))
+      return
+    }
+    setTranslate(prev => ({ ...prev, condensedDescLoading: true, error: null }))
+    try {
+      const translatedHtml = await translateHtmlTextOnly(details.condensedDescription, "zh-Hans")
+      setTranslate(prev => ({ ...prev, condensedDescriptionTranslated: translatedHtml, condensedDescLoading: false }))
+      setShowTranslated(prev => ({ ...prev, condensedDesc: true }))
+    } catch (err: any) {
+      setTranslate(prev => ({ ...prev, condensedDescLoading: false, error: "补充说明翻译失败: " + err.message }))
+    }
+  }, [details, translate.condensedDescLoading, showTranslated.condensedDesc, translate.condensedDescriptionTranslated])
+
   // Reset translation state when mod changes
   useEffect(() => {
-    setTranslate({ titleTranslated: null, descriptionTranslated: null, titleLoading: false, descLoading: false, error: null })
-    setShowTranslated({ title: false, desc: false })
+    setTranslate({
+      titleTranslated: null,
+      descriptionTranslated: null,
+      condensedDescriptionTranslated: null,
+      titleLoading: false,
+      descLoading: false,
+      condensedDescLoading: false,
+      error: null,
+    })
+    setShowTranslated({ title: false, desc: false, condensedDesc: false })
+    setLightboxImage(null)
+    setCurrentGalleryIndex(0)
   }, [mod])
 
   // Extract Nexus ID from URL
@@ -152,63 +280,132 @@ export function OnlineModDetailModal({ isOpen, onClose, mod }: OnlineModDetailMo
 
     // 1. Extract Title
     let title = doc.querySelector('meta[property="og:title"]')?.getAttribute("content") || ""
-    if (!title) {
-      title = doc.querySelector("#pagetitle h1")?.textContent?.trim() || ""
-    }
-    if (!title) {
-      title = doc.querySelector("h1")?.textContent?.trim() || (mod ? mod.Name : "未知模组")
-    }
-    // Remove Nexus suffix
+    if (!title) title = doc.querySelector("#pagetitle h1")?.textContent?.trim() || ""
+    if (!title) title = doc.querySelector("h1")?.textContent?.trim() || (mod ? mod.Name : "未知模组")
     title = title.replace(/\s+at Stardew Valley Nexus.*/i, "")
 
-    // 2. Extract Author
-    let author = doc.querySelector(".author-name")?.textContent?.trim() || ""
-    if (!author) {
-      author = doc.querySelector(".member-name a")?.textContent?.trim() || ""
-    }
-    if (!author) {
-      author = doc.querySelector(".headline-container a")?.textContent?.trim() || (mod ? mod.Author : "未知作者")
-    }
-    author = author.replace(/^created by\s+/i, "")
+    // 2. Extract Author from sideitems "Created by" block
+    let author = ""
+    const sideItems = doc.querySelectorAll(".sideitems .sideitem")
+    sideItems.forEach(item => {
+      const h3 = item.querySelector("h3")
+      if (h3 && h3.textContent?.trim().toLowerCase().includes("created by")) {
+        // Get text content excluding the h3 itself
+        const clone = item.cloneNode(true) as HTMLElement
+        clone.querySelector("h3")?.remove()
+        author = clone.textContent?.trim() || ""
+      }
+    })
+    if (!author) author = doc.querySelector(".author-name")?.textContent?.trim() || ""
+    if (!author) author = doc.querySelector(".member-name a")?.textContent?.trim() || ""
+    if (!author) author = mod ? mod.Author : "未知作者"
+    author = author.replace(/^created by\s+/i, "").trim()
 
-    // 3. Extract Hero Image
+    // 3. Extract Gallery Images from thumbgallery (data-src has full-size URLs)
+    const galleryImages: string[] = []
+    const thumbs = doc.querySelectorAll("ul.thumbgallery.gallery > li.thumb[data-src]")
+    thumbs.forEach(thumb => {
+      const src = thumb.getAttribute("data-src")
+      if (src && src.startsWith("http") && !galleryImages.includes(src)) {
+        galleryImages.push(src)
+      }
+    })
+
+    // Hero image: prefer og:image, fallback to first gallery image
     let imageUrl = doc.querySelector('meta[property="og:image"]')?.getAttribute("content") || ""
-    if (!imageUrl) {
-      imageUrl = doc.querySelector(".gallery-image img")?.getAttribute("src") || ""
-    }
-    if (!imageUrl) {
-      imageUrl = doc.querySelector("#gallery .previews img")?.getAttribute("src") || ""
+    if (!imageUrl && galleryImages.length > 0) imageUrl = galleryImages[0]
+
+    // 4. Extract Full Description from .tab-description container
+    //    Remove non-content elements (headings, share buttons, actions, accordion, scripts)
+    const sanitizeDescriptionHtml = (html: string) => {
+      const safeDoc = parser.parseFromString(`<div>${html}</div>`, "text/html")
+      const tempContainer = safeDoc.body.firstElementChild
+      if (!tempContainer) return html
+
+      tempContainer.querySelectorAll("*").forEach(el => {
+        const node = el as HTMLElement
+        const style = node.getAttribute("style")
+        if (!style) return
+
+        const cssText = node.style.cssText
+
+        // Remove problematic constraints regardless of spacing/casing, and keep remaining inline styles.
+        node.style.removeProperty("min-width")
+        node.style.removeProperty("width")
+        const displayValue = node.style.getPropertyValue("display").trim().toLowerCase()
+        if (displayValue === "table" || displayValue === "inline-table" || displayValue.startsWith("table-")) {
+          node.style.removeProperty("display")
+        }
+
+        if (node.style.cssText.trim()) {
+          node.setAttribute("style", node.style.cssText.endsWith(";") ? node.style.cssText : `${node.style.cssText};`)
+        } else {
+          node.removeAttribute("style")
+        }
+
+        const lowerStyle = style.toLowerCase()
+        if (lowerStyle.includes("min-width") || lowerStyle.includes("width") || lowerStyle.includes("display: table")) {
+          node.removeAttribute("style")
+        }
+      })
+
+      const cleaned = tempContainer.innerHTML
+        .replace(/<\s*br\s*\/?\s*>/gi, "")
+        .replace(/<\s*\/\s*p\s*>\s*<\s*p[^>]*>/gi, "")
+
+      return cleaned
     }
 
-    // 4. Extract Description
-    let description = doc.querySelector("#description-content")?.innerHTML || ""
-    if (!description) {
-      description = doc.querySelector(".mod-description")?.innerHTML || ""
+    let description = ""
+    let condensedDescription = ""
+    const descContainer = doc.querySelector(".tab-description")
+    if (descContainer) {
+      const clone = descContainer.cloneNode(true) as HTMLElement
+      // Remove non-content elements
+      const removeSelectors = [
+        "h2", ".modhistory", "ul.actions", ".accordionitems",
+        "script", ".share-button", "share-button", ".report-abuse-btn",
+        ".clearfix:empty"
+      ]
+      clone.querySelectorAll(removeSelectors.join(",")).forEach(el => el.remove())
+      description = sanitizeDescriptionHtml(clone.innerHTML?.trim() || "")
     }
-    if (!description) {
-      description = doc.querySelector("#description")?.innerHTML || ""
-    }
+    condensedDescription = sanitizeDescriptionHtml(doc.querySelector(".container.mod_description_container.condensed")?.innerHTML || "")
+    // Fallback: try other known selectors
+    if (!description) description = sanitizeDescriptionHtml(doc.querySelector("#description-content")?.innerHTML || "")
+    if (!description) description = sanitizeDescriptionHtml(doc.querySelector(".mod-description")?.innerHTML || "")
+    if (!description) description = sanitizeDescriptionHtml(doc.querySelector("#description")?.innerHTML || "")
     if (!description) {
       description = doc.querySelector('meta[property="og:description"]')?.getAttribute("content") || "暂无详细描述。"
     }
 
-    // 5. Extract Stats from list
-    let version = mod ? mod.Compatibility?.UnofficialVersion?.Text || "1.0.0" : "1.0.0"
-    let downloads = "—"
+    // 5. Extract Stats from .statitem elements
+    let version = mod?.Compatibility?.UnofficialVersion?.Text || ""
+    let uniqueDls = "—"
+    let totalDls = "—"
     let endorsements = "—"
 
-    const infoItems = doc.querySelectorAll(".info-icon-list li")
-    infoItems.forEach(item => {
-      const text = item.textContent || ""
-      if (text.includes("Version")) {
-        const val = item.querySelector(".value")?.textContent || ""
-        if (val) version = val.trim()
-      } else if (text.includes("Unique DLs") || text.includes("Downloads")) {
-        const val = item.querySelector(".value")?.textContent || ""
-        if (val) downloads = val.trim()
-      } else if (text.includes("Endorsements")) {
-        const val = item.querySelector(".value")?.textContent || ""
-        if (val) endorsements = val.trim()
+    const statItems = doc.querySelectorAll(".statitem")
+    statItems.forEach(item => {
+      const titleEl = item.querySelector(".titlestat")
+      const valueEl = item.querySelector(".stat")
+      if (!titleEl || !valueEl) return
+      const key = titleEl.textContent?.trim().toLowerCase() || ""
+      const val = valueEl.textContent?.trim() || ""
+      if (key.includes("version") && val) version = val
+      else if (key.includes("unique") && val) uniqueDls = val
+      else if (key === "total downloads" && val) totalDls = val
+      else if (key.includes("endorsement") && val) endorsements = val
+    })
+    if (!version) version = mod?.Compatibility?.UnofficialVersion?.Text || "1.0.0"
+
+    // 6. Extract Last Updated from sideitems
+    let lastUpdated = ""
+    sideItems.forEach(item => {
+      const h3 = item.querySelector("h3")
+      if (h3 && h3.textContent?.trim().toLowerCase().includes("last updated")) {
+        const timeEl = item.querySelector("time")
+        lastUpdated = timeEl?.textContent?.trim() || item.textContent?.replace(/last updated/i, "").trim() || ""
       }
     })
 
@@ -216,10 +413,14 @@ export function OnlineModDetailModal({ isOpen, onClose, mod }: OnlineModDetailMo
       title,
       author,
       imageUrl,
+      galleryImages,
       description,
+      condensedDescription,
       version,
-      downloads,
-      endorsements
+      uniqueDls,
+      totalDls,
+      endorsements,
+      lastUpdated
     }
   }
 
@@ -233,14 +434,18 @@ export function OnlineModDetailModal({ isOpen, onClose, mod }: OnlineModDetailMo
     const nexusId = getNexusId(mod)
     if (!nexusId) {
       // If it doesn't have a Nexus page, simulate standard details
-      setDetails({
-        title: mod.Name,
-        author: mod.Author,
-        imageUrl: "",
-        description: mod.Compatibility?.Summary || "该模组没有关联的 NexusMods 页面，仅提供基础兼容性说明。",
-        version: "—",
-        downloads: "—",
-        endorsements: "—"
+        setDetails({
+          title: mod.Name,
+          author: mod.Author,
+          imageUrl: "",
+          galleryImages: [],
+          condensedDescription: "",
+          description: mod.Compatibility?.Summary || "该模组没有关联的 NexusMods 页面，仅提供基础兼容性说明。",
+          version: "—",
+          uniqueDls: "—",
+          totalDls: "—",
+        endorsements: "—",
+        lastUpdated: "—"
       })
       setLoading(false)
       return
@@ -321,10 +526,16 @@ export function OnlineModDetailModal({ isOpen, onClose, mod }: OnlineModDetailMo
           title: mod.Name,
           author: mod.Author,
           imageUrl: "https://staticdelivery.nexusmods.com/mods/1303/images/1915/1915-1711204213-790176840.png",
+          galleryImages: [
+            "https://staticdelivery.nexusmods.com/mods/1303/images/1915/1915-1711204213-790176840.png",
+          ],
+          condensedDescription: "",
           description: `<h3>关于此模组</h3><p>这是一个高级的预览内容，模拟了从 NexusMods 抓取到的 HTML 格式文本。</p><p>${mod.Compatibility?.Summary || "本模组是 Stardew Valley 的经典必备模组，没有任何已知问题。"}</p><h4>特点:</h4><ul><li>实时解析与序列化</li><li>支持 Markdown 与 HTML 转化</li><li>微距渲染，性能极佳</li></ul>`,
           version: "2.3.0",
-          downloads: "4.8M",
-          endorsements: "128,490"
+          uniqueDls: "4.8M",
+          totalDls: "12.1M",
+          endorsements: "128,490",
+          lastUpdated: "2024年3月"
         })
         setLoading(false)
       }, 1500)
@@ -343,6 +554,14 @@ export function OnlineModDetailModal({ isOpen, onClose, mod }: OnlineModDetailMo
       }
     }
   }, [isOpen, mod])
+
+  useEffect(() => {
+    const detailNode = detailBodyRef.current
+    if (!detailNode) return
+
+    detailNode.style.setProperty("display", "block", "important")
+    detailNode.style.setProperty("overflow", "hidden", "important")
+  }, [details, isOpen, currentGalleryIndex, showTranslated.title, showTranslated.desc, showTranslated.condensedDesc])
 
   if (!isOpen || !mod) return null
 
@@ -370,7 +589,7 @@ export function OnlineModDetailModal({ isOpen, onClose, mod }: OnlineModDetailMo
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm p-4 animate-in fade-in duration-200" onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="w-full max-w-4xl max-h-[85vh] bg-card border border-border/80 shadow-2xl rounded-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+      <div className="w-full max-w-5xl max-h-[90vh] bg-card border border-border/80 shadow-2xl rounded-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
         
         {/* Header Panel */}
         <div className="p-5 border-b border-border/60 flex items-center justify-between bg-gradient-to-r from-accent/20 to-card">
@@ -438,95 +657,269 @@ export function OnlineModDetailModal({ isOpen, onClose, mod }: OnlineModDetailMo
 
         {/* Details State */}
         {!loading && details && (
-          <div className="flex-1 overflow-hidden flex flex-col lg:flex-row">
-            
-            {/* Left Column - Meta Panel */}
-            <div className="w-full lg:w-72 border-r border-border/40 p-5 bg-accent/10 flex-shrink-0 space-y-4 overflow-y-auto max-h-[30vh] lg:max-h-none">
-              {/* Mod Main Image */}
-              {details.imageUrl ? (
-                <div className="aspect-video w-full rounded-lg overflow-hidden border border-border bg-black/10 shrink-0">
-                  <img 
-                    src={details.imageUrl} 
-                    alt={details.title}
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      // fallback to placeholder if error loading image
-                      (e.target as HTMLImageElement).src = ""
-                    }}
-                  />
-                </div>
-              ) : (
-                <div className="aspect-video w-full rounded-lg bg-accent/30 flex items-center justify-center border border-border border-dashed shrink-0">
-                  <Compass className="h-8 w-8 text-muted-foreground/45" />
-                </div>
-              )}
+          <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
 
-              {/* Stats Metadata List */}
-              <div className="space-y-3.5 text-xs">
-                <div className="flex justify-between items-center py-1 border-b border-border/40">
-                  <span className="text-muted-foreground">最新版本</span>
-                  <span className="font-bold text-foreground">{details.version}</span>
-                </div>
-                <div className="flex justify-between items-center py-1 border-b border-border/40">
-                  <span className="text-muted-foreground">推荐作者</span>
-                  <span className="font-bold text-foreground truncate max-w-[150px]">{details.author}</span>
-                </div>
-                <div className="flex justify-between items-center py-1 border-b border-border/40">
-                  <span className="text-muted-foreground">总下载量</span>
-                  <span className="font-bold text-foreground">{details.downloads}</span>
-                </div>
-                <div className="flex justify-between items-center py-1 border-b border-border/40">
-                  <span className="text-muted-foreground">推荐推荐数</span>
-                  <span className="font-bold text-foreground">{details.endorsements}</span>
-                </div>
-              </div>
-
-              {/* Status Notice */}
-              <div className="bg-card border border-border/60 rounded-xl p-3 text-xs leading-relaxed space-y-1">
-                <p className="font-bold text-foreground flex items-center gap-1">
-                  <Info className="h-3.5 w-3.5 text-primary shrink-0" />
-                  <span>{mod.Compatibility ? "兼容性报告" : "兼容性说明"}</span>
-                </p>
-                <p className="text-muted-foreground text-[11px]">
-                  {mod.Compatibility
-                    ? "此处的报告是经 SMAPI 社区及作者核验后的准确记录，用以替代落后的游戏日志检查。"
-                    : "该模组暂未收录在 SMAPI 兼容列表中，通常适用于不需要 SMAPI 兼容特殊报告的模组。"}
-                </p>
-              </div>
-            </div>
-
-            {/* Right Column - Scrollable HTML Description */}
-            <div className="flex-1 overflow-hidden flex flex-col p-5 bg-card">
-              <div className="flex items-center justify-between mb-3 shrink-0">
-                <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                  {showTranslated.desc ? "模组详情介绍 (已翻译)" : "模组详情介绍 (Description)"}
-                </h4>
-                {details && (
-                  <button
-                    onClick={handleTranslateDesc}
-                    disabled={translate.descLoading}
-                    className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] transition-colors cursor-pointer ${
-                      showTranslated.desc
-                        ? "bg-primary/15 text-primary hover:bg-primary/25 font-semibold"
-                        : "hover:bg-black/5 dark:hover:bg-white/5 text-muted-foreground hover:text-foreground"
-                    } ${translate.descLoading ? "opacity-50 cursor-wait" : ""}`}
-                  >
-                    {translate.descLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Languages className="h-3 w-3" />}
-                    <span>{showTranslated.desc ? "显示原文" : translate.descriptionTranslated ? "已翻译" : "翻译"}</span>
-                  </button>
+            {/* Lightbox Overlay */}
+                {lightboxImage && (
+              <div
+                className="fixed inset-0 z-[60] bg-black/90 flex items-center justify-center"
+                onClick={() => setLightboxImage(null)}
+              >
+                <button
+                  className="absolute top-4 right-4 p-2 text-white/80 hover:text-white rounded-full bg-white/10 hover:bg-white/20 transition-colors cursor-pointer"
+                  onClick={() => setLightboxImage(null)}
+                >
+                  <X className="h-5 w-5" />
+                </button>
+                {details.galleryImages.length > 1 && (
+                  <>
+                    <button
+                      className="absolute left-4 top-1/2 -translate-y-1/2 p-2 text-white/70 hover:text-white rounded-full bg-white/10 hover:bg-white/20 transition-colors cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        const newIndex = currentGalleryIndex > 0 ? currentGalleryIndex - 1 : details.galleryImages.length - 1
+                        setCurrentGalleryIndex(newIndex)
+                        setLightboxImage(details.galleryImages[newIndex])
+                      }}
+                    >
+                      <ChevronLeft className="h-6 w-6" />
+                    </button>
+                    <button
+                      className="absolute right-4 top-1/2 -translate-y-1/2 p-2 text-white/70 hover:text-white rounded-full bg-white/10 hover:bg-white/20 transition-colors cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        const newIndex = currentGalleryIndex < details.galleryImages.length - 1 ? currentGalleryIndex + 1 : 0
+                        setCurrentGalleryIndex(newIndex)
+                        setLightboxImage(details.galleryImages[newIndex])
+                      }}
+                    >
+                      <ChevronRight className="h-6 w-6" />
+                    </button>
+                  </>
+                )}
+                <img
+                  src={lightboxImage}
+                  alt={details.title}
+                  className="w-auto h-auto max-w-[90vw] max-h-[85vh] object-contain rounded-lg shadow-2xl block"
+                  onClick={(e) => e.stopPropagation()}
+                />
+                {details.galleryImages.length > 1 && (
+                  <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-black/60 text-white text-xs px-3 py-1.5 rounded-full">
+                    {currentGalleryIndex + 1} / {details.galleryImages.length}
+                  </div>
                 )}
               </div>
-              {translate.error && (
-                <div className="mb-2 text-[11px] text-amber-500 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-1.5 shrink-0">
-                  {translate.error}
+            )}
+
+            {/* Scrollable Content */}
+            <div className="flex-1 min-h-0 overflow-auto">
+              <div
+                ref={detailBodyRef}
+                className="p-5 space-y-5 w-full max-w-full min-w-0"
+                style={{ width: "100%", minWidth: 0, maxWidth: "100%" }}
+              >
+
+                {/* Image Gallery */}
+                {details.galleryImages.length > 0 && (
+                  <div className="space-y-3">
+                    {/* Main large image */}
+                    <div
+                      className="relative w-full h-[34vh] max-h-[320px] rounded-xl overflow-hidden border border-border bg-black/5 cursor-pointer group flex items-center justify-center"
+                      onClick={() => {
+                        setLightboxImage(details.galleryImages[currentGalleryIndex])
+                      }}
+                    >
+                      <img
+                        src={details.galleryImages[currentGalleryIndex]}
+                        alt={details.title}
+                        className="w-auto h-auto max-w-full max-h-full object-contain p-2 box-border block transition-transform group-hover:scale-[1.02] mx-auto"
+                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none" }}
+                      />
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
+                        <ZoomIn className="h-8 w-8 text-white/0 group-hover:text-white/70 transition-colors drop-shadow-lg" />
+                      </div>
+                      {details.galleryImages.length > 1 && (
+                        <>
+                          <button
+                            className="absolute left-2 top-1/2 -translate-y-1/2 p-1.5 rounded-full bg-black/40 text-white/80 hover:bg-black/60 hover:text-white opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              const newIndex = currentGalleryIndex > 0 ? currentGalleryIndex - 1 : details.galleryImages.length - 1
+                              setCurrentGalleryIndex(newIndex)
+                            }}
+                          >
+                            <ChevronLeft className="h-4 w-4" />
+                          </button>
+                          <button
+                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-full bg-black/40 text-white/80 hover:bg-black/60 hover:text-white opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              const newIndex = currentGalleryIndex < details.galleryImages.length - 1 ? currentGalleryIndex + 1 : 0
+                              setCurrentGalleryIndex(newIndex)
+                            }}
+                          >
+                            <ChevronRight className="h-4 w-4" />
+                          </button>
+                          <div className="absolute bottom-2 right-2 bg-black/50 text-white text-[10px] px-2 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                            {currentGalleryIndex + 1} / {details.galleryImages.length}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                    {/* Thumbnail strip */}
+                    {details.galleryImages.length > 1 && (
+                      <div className="flex gap-2 overflow-x-auto pb-1">
+                        {details.galleryImages.map((img, index) => (
+                          <button
+                            key={index}
+                            className={`shrink-0 rounded-lg overflow-hidden border-2 transition-all cursor-pointer ${
+                              index === currentGalleryIndex
+                                ? "border-primary shadow-md"
+                                : "border-transparent opacity-60 hover:opacity-100 hover:border-border"
+                            }`}
+                            style={{ width: "88px", height: "52px" }}
+                            onClick={() => setCurrentGalleryIndex(index)}
+                          >
+                            <img
+                              src={img}
+                              alt={`Screenshot ${index + 1}`}
+                              className="w-full h-full object-cover block"
+                            />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Stats Row */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="bg-accent/20 border border-border/50 rounded-xl p-3 text-center space-y-1">
+                    <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider flex items-center justify-center gap-1">
+                      <Tag className="h-3 w-3" />
+                      <span>版本</span>
+                    </p>
+                    <p className="text-sm font-bold text-foreground">{details.version}</p>
+                  </div>
+                  <div className="bg-accent/20 border border-border/50 rounded-xl p-3 text-center space-y-1">
+                    <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider flex items-center justify-center gap-1">
+                      <Eye className="h-3 w-3" />
+                      <span>独立下载</span>
+                    </p>
+                    <p className="text-sm font-bold text-foreground">{details.uniqueDls}</p>
+                  </div>
+                  <div className="bg-accent/20 border border-border/50 rounded-xl p-3 text-center space-y-1">
+                    <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider flex items-center justify-center gap-1">
+                      <Download className="h-3 w-3" />
+                      <span>总下载</span>
+                    </p>
+                    <p className="text-sm font-bold text-foreground">{details.totalDls}</p>
+                  </div>
+                  <div className="bg-accent/20 border border-border/50 rounded-xl p-3 text-center space-y-1">
+                    <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider flex items-center justify-center gap-1">
+                      <Info className="h-3 w-3" />
+                      <span>推荐数</span>
+                    </p>
+                    <p className="text-sm font-bold text-foreground">{details.endorsements}</p>
+                  </div>
                 </div>
-              )}
-              <ScrollArea className="flex-1 pr-3">
-                <div 
-                  className="prose dark:prose-invert max-w-none text-xs leading-relaxed text-muted-foreground space-y-4 prose-a:text-primary prose-a:underline hover:prose-a:text-primary/80 smapi-html-body"
-                  dangerouslySetInnerHTML={{ __html: showTranslated.desc && translate.descriptionTranslated ? translate.descriptionTranslated : details.description }}
-                />
-              </ScrollArea>
+
+                {/* Author & Date Info */}
+                <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1.5">
+                    <User className="h-3.5 w-3.5" />
+                    <span>作者：</span>
+                    <span className="font-semibold text-foreground">{details.author}</span>
+                  </span>
+                  {details.lastUpdated && details.lastUpdated !== "—" && (
+                    <span className="flex items-center gap-1.5">
+                      <Calendar className="h-3.5 w-3.5" />
+                      <span>最后更新：</span>
+                      <span className="font-semibold text-foreground">{details.lastUpdated}</span>
+                    </span>
+                  )}
+                  {mod.Compatibility && (
+                    <span className="flex items-center gap-1.5">
+                      {renderStatusBadge(mod.Compatibility.Status)}
+                    </span>
+                  )}
+                </div>
+
+                {/* Compatibility Notice */}
+                <div className="bg-accent/10 border border-border/50 rounded-xl p-3.5 text-xs leading-relaxed space-y-1">
+                  <p className="font-bold text-foreground flex items-center gap-1.5">
+                    <Info className="h-3.5 w-3.5 text-primary shrink-0" />
+                    <span>{mod.Compatibility ? "兼容性报告" : "兼容性说明"}</span>
+                  </p>
+                  <p className="text-muted-foreground text-[11px]">
+                    {mod.Compatibility
+                      ? "此处的报告是经 SMAPI 社区及作者核验后的准确记录，用以替代落后的游戏日志检查。"
+                      : "该模组暂未收录在 SMAPI 兼容列表中，通常适用于不需要 SMAPI 兼容特殊报告的模组。"}
+                  </p>
+                </div>
+
+                {/* Description Section */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                      {showTranslated.desc ? "模组详细介绍 (已翻译)" : "模组详细介绍 (Description)"}
+                    </h4>
+                    <button
+                      onClick={handleTranslateDesc}
+                      disabled={translate.descLoading}
+                      className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] transition-colors cursor-pointer ${
+                        showTranslated.desc
+                          ? "bg-primary/15 text-primary hover:bg-primary/25 font-semibold"
+                          : "hover:bg-black/5 dark:hover:bg-white/5 text-muted-foreground hover:text-foreground"
+                      } ${translate.descLoading ? "opacity-50 cursor-wait" : ""}`}
+                    >
+                      {translate.descLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Languages className="h-3 w-3" />}
+                      <span>{showTranslated.desc ? "显示原文" : translate.descriptionTranslated ? "已翻译" : "翻译"}</span>
+                    </button>
+                  </div>
+                  {translate.error && (
+                    <div className="text-[11px] text-amber-500 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-1.5">
+                      {translate.error}
+                    </div>
+                  )}
+                  <div
+                    className="prose dark:prose-invert max-w-none text-xs leading-relaxed text-muted-foreground nexus-description"
+                    style={{ maxWidth: "100%", overflow: "hidden", overflowX: "hidden", minWidth: 0 }}
+                    dangerouslySetInnerHTML={{ __html: showTranslated.desc && translate.descriptionTranslated ? translate.descriptionTranslated : details.description }}
+                  />
+                  {details.condensedDescription && (
+                    <div className="space-y-1 pt-0.5">
+                      <div className="flex items-center justify-between">
+                        <h5 className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
+                          补充说明
+                        </h5>
+                        <button
+                          onClick={handleTranslateCondensedDesc}
+                          disabled={translate.condensedDescLoading}
+                          className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] transition-colors cursor-pointer ${
+                            showTranslated.condensedDesc
+                              ? "bg-primary/15 text-primary hover:bg-primary/25 font-semibold"
+                              : "hover:bg-black/5 dark:hover:bg-white/5 text-muted-foreground hover:text-foreground"
+                          } ${translate.condensedDescLoading ? "opacity-50 cursor-wait" : ""}`}
+                        >
+                          {translate.condensedDescLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Languages className="h-3 w-3" />}
+                          <span>{showTranslated.condensedDesc ? "显示原文" : translate.condensedDescriptionTranslated ? "已翻译" : "翻译"}</span>
+                        </button>
+                      </div>
+                      <div
+                        className="prose dark:prose-invert max-w-none text-xs leading-tight text-muted-foreground nexus-description"
+                        style={{ maxWidth: "100%", overflow: "hidden", overflowX: "hidden", minWidth: 0 }}
+                        dangerouslySetInnerHTML={{
+                          __html: showTranslated.condensedDesc && translate.condensedDescriptionTranslated
+                            ? translate.condensedDescriptionTranslated
+                            : details.condensedDescription
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+
+              </div>
             </div>
           </div>
         )}

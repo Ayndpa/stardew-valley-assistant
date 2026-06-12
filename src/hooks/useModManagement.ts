@@ -154,34 +154,11 @@ export function useModManagement() {
         setIsLoadingMods(true)
         invoke("list_installed_mods", { gameDir })
           .then(async (loadedMods: any) => {
-            // Fetch SMAPI compatibility data to resolve latest versions
-            try {
-              const compatMods = await invoke("fetch_smapi_compatibility_mods") as any[]
-              const versionMap = new Map<number, string>()
-              for (const cm of compatMods) {
-                if (cm.nexusId && cm.version) {
-                  versionMap.set(cm.nexusId, cm.version)
-                }
-              }
-              const enriched = loadedMods.map((m: any) => {
-                if (m.nexusId && versionMap.has(m.nexusId)) {
-                  return { ...m, latestVersion: versionMap.get(m.nexusId)! }
-                }
-                return m
-              })
-              setMods(enriched)
-              if (enriched.length > 0) {
-                setSelectedModId(enriched[0].id)
-              } else {
-                setSelectedModId("")
-              }
-            } catch {
-              setMods(loadedMods)
-              if (loadedMods.length > 0) {
-                setSelectedModId(loadedMods[0].id)
-              } else {
-                setSelectedModId("")
-              }
+            setMods(loadedMods)
+            if (loadedMods.length > 0) {
+              setSelectedModId(loadedMods[0].id)
+            } else {
+              setSelectedModId("")
             }
           })
           .catch((err: any) => {
