@@ -2,11 +2,14 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import { ThemeProvider } from "./lib/theme-provider";
+import { NexusProvider } from "./lib/nexus-provider";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <ThemeProvider>
-      <App />
+      <NexusProvider>
+        <App />
+      </NexusProvider>
     </ThemeProvider>
   </React.StrictMode>,
 );

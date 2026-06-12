@@ -69,10 +69,17 @@ fn create_nexus_webview(
 
 fn eval_js_timeout(win: &tauri::WebviewWindow, js: &str, timeout_secs: u64) -> Option<String> {
     let (tx, rx) = std::sync::mpsc::channel::<String>();
-    if win.eval_with_callback(js, move |result| { let _ = tx.send(result); }).is_err() {
+    if let Err(e) = win.eval_with_callback(js, move |result| { let _ = tx.send(result); }) {
+        println!("[eval_js_timeout] ({}) eval_with_callback error: {:?}", win.label(), e);
         return None;
     }
-    rx.recv_timeout(std::time::Duration::from_secs(timeout_secs)).ok()
+    match rx.recv_timeout(std::time::Duration::from_secs(timeout_secs)) {
+        Ok(res) => Some(res),
+        Err(e) => {
+            println!("[eval_js_timeout] ({}) recv_timeout error (timeout): {:?}", win.label(), e);
+            None
+        }
+    }
 }
 
 fn check_cloudflare_challenge(win: &tauri::WebviewWindow) -> bool {
@@ -83,16 +90,19 @@ fn check_cloudflare_challenge(win: &tauri::WebviewWindow) -> bool {
                 const h = location.href.toLowerCase();
                 const html = document.documentElement ? document.documentElement.outerHTML : '';
                 const x = document.body ? document.body.innerText : '';
+                const hasNormalContent = !!document.querySelector("a[href*='/users/login'], a[href*='/auth/sign_in'], [class*='login-btn'], [class*='sign-in'], a[href*='sign_out'], a[href*='logout'], a[href*='sign-out'], #section-mod-description, #pagetitle, .header-user, .logo, .nav-item");
                 const cf = t.includes('just a moment') || 
                            t.includes('checking your browser') || 
                            t.includes('attention required') || 
                            h.includes('captcha') || 
                            h.includes('challenge') || 
-                           html.includes('cf-turnstile') || 
-                           html.includes('challenges.cloudflare.com') || 
-                           html.includes('/cdn-cgi/challenge-platform/') || 
                            x.includes('checking if the site connection is secure') || 
-                           x.includes('verify you are human');
+                           x.includes('verify you are human') ||
+                           (!hasNormalContent && (
+                               html.includes('cf-turnstile') || 
+                               html.includes('challenges.cloudflare.com') || 
+                               html.includes('/cdn-cgi/challenge-platform/')
+                           ));
                 return cf;
             } catch(e) { return false; }
         })()
@@ -478,34 +488,50 @@ pub async fn open_nexus_login_window(app: tauri::AppHandle) -> Result<(), String
                             const title = (document.title || "").toLowerCase();
                             const html = document.documentElement ? document.documentElement.outerHTML : "";
                             const lowerHtml = html.toLowerCase();
+                            const bodyText = document.body ? document.body.innerText : "";
+                            const hasAlreadySignedInText = bodyText.toLowerCase().includes("you are already signed in");
+
                             // Check if still on login page
                             const isLoginPage = href.includes("/auth/sign_in") || href.includes("/users/login") || href.includes("/login");
+                            
+                            const hasLoginBtn = !!document.querySelector("a[href*='/users/login'], a[href*='/auth/sign_in'], [class*='login-btn'], [class*='sign-in']");
+                            const hasSignOutBtn = !!document.querySelector("a[href*='sign_out'], a[href*='logout'], a[href*='sign-out']");
+                            const hasUserElements = !!document.querySelector("[class*='user-avatar'], [class*='user-name'], .header-user, [class*='profile'], [data-user-id], #user-avatar, .member-avatar, .member-name");
+                            const hasNormalContent = hasAlreadySignedInText || hasLoginBtn || hasSignOutBtn || hasUserElements || !!document.querySelector(".logo, .nav-item");
+
                             // Check for Cloudflare challenge
                             const isChallenge =
                                 title.includes("just a moment") ||
                                 title.includes("checking your browser") ||
-                                lowerHtml.includes("cf-turnstile") ||
-                                lowerHtml.includes("challenges.cloudflare.com") ||
-                                lowerHtml.includes("/cdn-cgi/challenge-platform/");
-                            // Check if logged in: user is redirected away from login page,
-                            // or we can see profile/avatar elements
-                            const hasLoginBtn = !!document.querySelector("a[href*='/users/login'], a[href*='/auth/sign_in'], [class*='login-btn'], [class*='sign-in']");
-                            const hasSignOutBtn = !!document.querySelector("a[href*='sign_out'], a[href*='logout'], a[href*='sign-out']");
-                            const hasUserElements = !!document.querySelector("[class*='user-avatar'], [class*='user-name'], .header-user, [class*='profile'], [data-user-id], #user-avatar, .member-avatar, .member-name");
+                                (!hasNormalContent && (
+                                    lowerHtml.includes("cf-turnstile") ||
+                                    lowerHtml.includes("challenges.cloudflare.com") ||
+                                    lowerHtml.includes("/cdn-cgi/challenge-platform/")
+                                ));
+
+                            // Check if logged in
                             const isLoggedIn =
-                                !isLoginPage &&
+                                (hasAlreadySignedInText || !isLoginPage) &&
                                 !isChallenge &&
                                 (document.readyState === "complete" || document.readyState === "interactive") &&
                                 (
+                                    hasAlreadySignedInText ||
                                     hasSignOutBtn ||
                                     hasUserElements ||
                                     (!hasLoginBtn && (href.includes("/users/") || href.includes("/account") || href === "https://www.nexusmods.com/" || href === "https://www.nexusmods.com"))
                                 );
+
                             // Extract username if possible
                             let username = "";
                             const welcomeEl = document.querySelector("h1");
                             if (welcomeEl && welcomeEl.textContent.includes("Welcome back")) {
                                 username = welcomeEl.textContent.replace("Welcome back", "").trim();
+                            }
+                            if (!username) {
+                                const matchSignedIn = bodyText.match(/signed in as\s+([^\n\r!.]+)/i);
+                                if (matchSignedIn) {
+                                    username = matchSignedIn[1].trim();
+                                }
                             }
                             if (!username) {
                                 const userEl = document.querySelector("[class*='user-name'], .header-user a, [class*='username'], .member-name");
@@ -562,6 +588,8 @@ pub async fn open_nexus_login_window(app: tauri::AppHandle) -> Result<(), String
                     }
                 };
 
+                println!("[NexusLoginWindow] snapshot: {:?}", snapshot);
+
                 let is_logged_in = snapshot
                     .get("isLoggedIn")
                     .and_then(|v| v.as_bool())
@@ -595,18 +623,24 @@ pub async fn open_nexus_login_window(app: tauri::AppHandle) -> Result<(), String
 pub async fn check_nexus_login_status(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
     use tauri::Manager;
 
+    println!("[NexusLoginCheck] check_nexus_login_status command called");
+
     let data_dir = app
         .path()
         .app_data_dir()
         .ok()
         .map(|p| p.join("webview_data"));
 
+    println!("[NexusLoginCheck] data_dir resolved: {:?}", data_dir);
+
     // If no webview_data dir exists, we're definitely not logged in
     if let Some(ref dir) = data_dir {
         if !dir.exists() {
+            println!("[NexusLoginCheck] webview_data directory does not exist, returning not logged in.");
             return Ok(serde_json::json!({ "loggedIn": false, "username": "" }));
         }
     } else {
+        println!("[NexusLoginCheck] app_data_dir returned None, returning not logged in.");
         return Ok(serde_json::json!({ "loggedIn": false, "username": "" }));
     }
 
@@ -642,19 +676,26 @@ pub async fn check_nexus_login_status(app: tauri::AppHandle) -> Result<serde_jso
             let snapshot_json = match eval_js(&poll_window, r##"
                 (() => {
                     try {
-                        if (document.readyState !== "complete" && document.readyState !== "interactive") return { ready: false };
+                        if (document.readyState !== "complete" && document.readyState !== "interactive") {
+                            return { ready: false, isNotInteractive: true, documentReadyState: document.readyState, href: location.href };
+                        }
                         const href = location.href.toLowerCase();
                         const html = document.documentElement ? document.documentElement.outerHTML : "";
                         const lowerHtml = html.toLowerCase();
                         
+                        const hasSignOutBtn = !!document.querySelector("a[href*='sign_out'], a[href*='logout'], a[href*='sign-out']");
+                        const hasUserElements = !!document.querySelector("[class*='user-avatar'], [class*='user-name'], .header-user, [class*='profile'], [data-user-id], #user-avatar, .member-avatar, .member-name");
+                        const hasNormalContent = hasSignOutBtn || hasUserElements || !!document.querySelector("a[href*='/users/login'], a[href*='/auth/sign_in'], [class*='login-btn'], [class*='sign-in'], .logo, .nav-item");
+                        
                         // Still on challenge page
-                        if (lowerHtml.includes("cf-turnstile") || lowerHtml.includes("challenges.cloudflare.com") || lowerHtml.includes("/cdn-cgi/challenge-platform/")) {
-                            return { ready: false };
+                        if (!hasNormalContent && (lowerHtml.includes("cf-turnstile") || lowerHtml.includes("challenges.cloudflare.com") || lowerHtml.includes("/cdn-cgi/challenge-platform/"))) {
+                            return { ready: false, isChallenge: true, href: location.href };
                         }
                         
                         const bodyText = document.body ? document.body.innerText : "";
-                        const hasWelcome = bodyText.toLowerCase().includes("welcome back");
-                        const hasLogIn = bodyText.toLowerCase().includes("log in to nexus mods") || href.includes("/auth/sign_in") || href.includes("/login");
+                        const hasAlreadySignedIn = bodyText.toLowerCase().includes("you are already signed in");
+                        const hasWelcome = bodyText.toLowerCase().includes("welcome back") || hasAlreadySignedIn;
+                        const hasLogIn = !hasAlreadySignedIn && (bodyText.toLowerCase().includes("log in to nexus mods") || href.includes("/auth/sign_in") || href.includes("/login"));
                         
                         if (hasWelcome) {
                             let username = "";
@@ -662,6 +703,12 @@ pub async fn check_nexus_login_status(app: tauri::AppHandle) -> Result<serde_jso
                             const match = bodyText.match(/Welcome back[\s,]+([^\n\r!]+)/i);
                             if (match) {
                                 username = match[1].trim();
+                            }
+                            if (!username) {
+                                const matchSignedIn = bodyText.match(/signed in as\s+([^\n\r!.]+)/i);
+                                if (matchSignedIn) {
+                                    username = matchSignedIn[1].trim();
+                                }
                             }
                             if (!username) {
                                 const welcomeEl = document.querySelector("h1");
@@ -683,22 +730,38 @@ pub async fn check_nexus_login_status(app: tauri::AppHandle) -> Result<serde_jso
                         }
                         
                         if (document.readyState === "complete") {
-                            // If we are fully loaded but neither welcome nor log in matched, check for sign out button
-                            const hasSignOutBtn = !!document.querySelector("a[href*='sign_out'], a[href*='logout'], a[href*='sign-out']");
-                            if (hasSignOutBtn) {
+                            // If we are fully loaded but neither welcome nor log in matched, check for sign out button or already signed in
+                            if (hasSignOutBtn || hasAlreadySignedIn) {
                                 let username = "";
-                                const userEl = document.querySelector("[class*='user-name'], .header-user a, [class*='username'], .member-name");
-                                if (userEl) {
-                                    username = userEl.textContent.trim();
+                                const matchSignedIn = bodyText.match(/signed in as\s+([^\n\r!.]+)/i);
+                                if (matchSignedIn) {
+                                    username = matchSignedIn[1].trim();
+                                }
+                                if (!username) {
+                                    const userEl = document.querySelector("[class*='user-name'], .header-user a, [class*='username'], .member-name");
+                                    if (userEl) {
+                                        username = userEl.textContent.trim();
+                                    }
                                 }
                                 return { ready: true, loggedIn: true, username };
                             }
                             return { ready: true, loggedIn: false, username: "" };
                         }
                         
-                        return { ready: false };
+                        return {
+                            ready: false,
+                            href,
+                            hasSignOutBtn,
+                            hasUserElements,
+                            hasNormalContent,
+                            hasAlreadySignedIn,
+                            hasWelcome,
+                            hasLogIn,
+                            bodySnippet: bodyText.slice(0, 150),
+                            documentReadyState: document.readyState
+                        };
                     } catch (e) {
-                        return { ready: false };
+                        return { ready: false, error: e.toString() };
                     }
                 })()
             "##) {
@@ -717,10 +780,13 @@ pub async fn check_nexus_login_status(app: tauri::AppHandle) -> Result<serde_jso
                 }
             };
 
+            println!("[NexusLoginCheck] snapshot: {:?}", snapshot);
+
             let ready = snapshot.get("ready").and_then(|v| v.as_bool()).unwrap_or(false);
             if ready {
                 let logged_in = snapshot.get("loggedIn").and_then(|v| v.as_bool()).unwrap_or(false);
                 let username = snapshot.get("username").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+                println!("[NexusLoginCheck] result: ready=true, loggedIn={}, username={}", logged_in, username);
                 return serde_json::json!({ "loggedIn": logged_in, "username": username });
             }
 

@@ -139,7 +139,12 @@ function App() {
       case "calendar":
         return <Calendar selectedSaveId={selectedSaveId} />
       case "settings":
-        return <Settings selectedSaveId={selectedSaveId} />
+        return (
+          <Settings
+            selectedSaveId={selectedSaveId}
+            onRestartOnboarding={() => setShowOnboarding(true)}
+          />
+        )
       case "mods":
         return <Mods onNavigate={setCurrentPage} />
       case "onlineMods":

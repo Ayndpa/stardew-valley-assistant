@@ -39,7 +39,9 @@ interface OnboardingProps {
 export function Onboarding({ onComplete }: OnboardingProps) {
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1)
   const { themeMode, themeSeason, setThemeMode, setThemeSeason } = useTheme()
-  const [directory, setDirectory] = useState("")
+  const [directory, setDirectory] = useState(() => {
+    return localStorage.getItem("stardewGameDirectory") || ""
+  })
   const [isValidPath, setIsValidPath] = useState<boolean | null>(null)
   const [showNotification, setShowNotification] = useState<string | null>(null)
   const [showPresets, setShowPresets] = useState(false)
@@ -133,7 +135,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
       triggerNotification("请输入或选择一个文件夹路径")
       return
     }
-    setStep(3)
+    setStep(4)
   }
 
   return (
@@ -159,12 +161,12 @@ export function Onboarding({ onComplete }: OnboardingProps) {
             <div className={`h-[2px] flex-1 mx-2 transition-colors ${step >= 2 ? "bg-primary" : "bg-muted"}`}></div>
             <div className="flex items-center gap-2">
               <span className={`h-6 w-6 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${step >= 2 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>2</span>
-              <span className="text-xs font-medium">选择目录</span>
+              <span className="text-xs font-medium">外观选择</span>
             </div>
             <div className={`h-[2px] flex-1 mx-2 transition-colors ${step >= 3 ? "bg-primary" : "bg-muted"}`}></div>
             <div className="flex items-center gap-2">
               <span className={`h-6 w-6 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${step >= 3 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>3</span>
-              <span className="text-xs font-medium">外观选择</span>
+              <span className="text-xs font-medium">选择目录</span>
             </div>
             <div className={`h-[2px] flex-1 mx-2 transition-colors ${step >= 4 ? "bg-primary" : "bg-muted"}`}></div>
             <div className="flex items-center gap-2">
@@ -176,6 +178,16 @@ export function Onboarding({ onComplete }: OnboardingProps) {
           {/* Render Active Step */}
           {step === 1 && <OnboardingStep1 onNext={() => setStep(2)} />}
           {step === 2 && (
+            <OnboardingStep3
+              themeMode={themeMode}
+              themeSeason={themeSeason}
+              setThemeMode={setThemeMode}
+              setThemeSeason={setThemeSeason}
+              onPrev={() => setStep(1)}
+              onNext={() => setStep(3)}
+            />
+          )}
+          {step === 3 && (
             <OnboardingStep2
               directory={directory}
               setDirectory={setDirectory}
@@ -184,18 +196,8 @@ export function Onboarding({ onComplete }: OnboardingProps) {
               setShowPresets={setShowPresets}
               onBrowse={handleBrowse}
               onAutoDetect={handleAutoDetect}
-              onPrev={() => setStep(1)}
-              onConfirm={handleConfirm}
-            />
-          )}
-          {step === 3 && (
-            <OnboardingStep3
-              themeMode={themeMode}
-              themeSeason={themeSeason}
-              setThemeMode={setThemeMode}
-              setThemeSeason={setThemeSeason}
               onPrev={() => setStep(2)}
-              onNext={() => setStep(4)}
+              onConfirm={handleConfirm}
             />
           )}
           {step === 4 && (
