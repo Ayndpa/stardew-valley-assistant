@@ -67,107 +67,28 @@ const MOCK_RANKING: NexusRankedMod[] = [
   { rank: 10, name: "CJB Cheats Menu", author: "CJBok", imageUrl: "", downloads: "4.8M", endorsements: "35,200", nexusUrl: "https://www.nexusmods.com/stardewvalley/mods/4", nexusId: "4" },
 ]
 
-// Parse the NexusMods mods grid HTML to extract ranked mod list
-// New NexusMods structure uses data-e2eid attributes and .mods-grid container
-function parseRankingHtml(html: string): NexusRankedMod[] {
-  const parser = new DOMParser()
-  const doc = parser.parseFromString(html, "text/html")
-  const results: NexusRankedMod[] = []
+// Format a number into a human-readable string (e.g. 12500 -> "12.5K")
+function formatNumber(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, "") + "M"
+  if (n >= 1_000) return (n / 1_000).toFixed(1).replace(/\.0$/, "") + "K"
+  return n.toString()
+}
 
-  // Strategy 1: New NexusMods structure with data-e2eid="mod-tile"
-  const modTiles = doc.querySelectorAll('[data-e2eid="mod-tile"]')
-
-  let rank = 1
-  modTiles.forEach((el) => {
-    // Extract title and URL from [data-e2eid="mod-tile-title"]
-    const titleEl = el.querySelector('[data-e2eid="mod-tile-title"]')
-    const name = titleEl?.textContent?.trim() || ""
-    if (!name) return
-
-    const titleHref = titleEl?.getAttribute("href") || ""
-    const idMatch = titleHref.match(/\/mods\/(\d+)/)
-    const nexusId = idMatch ? idMatch[1] : ""
-    if (!nexusId) return
-
-    const fullUrl = titleHref.startsWith("http")
-      ? titleHref
-      : `https://www.nexusmods.com${titleHref}`
-
-    // Extract author from [data-e2eid="user-link"]
-    const authorEl = el.querySelector('[data-e2eid="user-link"] span')
-    const author = authorEl?.textContent?.trim() || "Unknown"
-
-    // Extract thumbnail image
-    const imgEl = el.querySelector("img[src*='staticdelivery'], img[src*='nexusmods']")
-    const imageUrl = imgEl?.getAttribute("src") || ""
-
-    // Try to extract download/endorsement stats if present
-    let downloads = "—"
-    let endorsements = "—"
-
-    // Look for stat-like elements with download/endorsement numbers
-    const allText = el.textContent || ""
-    const dlMatch = allText.match(/([\d,.]+[KMB]?)\s*(?:unique\s*)?downloads?/i)
-    if (dlMatch) downloads = dlMatch[1]
-    const endMatch = allText.match(/([\d,.]+[KMB]?)\s*endorsements?/i)
-    if (endMatch) endorsements = endMatch[1]
-
-    // Also try data-e2eid based stat selectors
-    const statEls = el.querySelectorAll("[data-e2eid]")
-    statEls.forEach((statEl) => {
-      const eid = statEl.getAttribute("data-e2eid") || ""
-      const text = statEl.textContent?.trim() || ""
-      if (eid.includes("download") && text) downloads = text
-      if (eid.includes("endorsement") && text) endorsements = text
-    })
-
-    results.push({
-      rank: rank++,
-      name,
-      author,
-      imageUrl,
-      downloads,
-      endorsements,
-      nexusUrl: fullUrl,
-      nexusId
-    })
-  })
-
-  // Strategy 2: Fallback - look for links to /stardewvalley/mods/{id} in generic containers
-  if (results.length === 0) {
-    const genericLinks = doc.querySelectorAll("a[href*='/stardewvalley/mods/']")
-    const seenIds = new Set<string>()
-    genericLinks.forEach((link) => {
-      const href = link.getAttribute("href") || ""
-      const idMatch = href.match(/\/mods\/(\d+)/)
-      if (!idMatch || seenIds.has(idMatch[1])) return
-      seenIds.add(idMatch[1])
-
-      const name = link.textContent?.trim() || ""
-      if (!name || name.length < 2 || name.length > 200) return
-
-      // Try to find parent tile container
-      const parent = link.closest('[data-e2eid], [class*="mod-tile"], [class*="mod-item"], article, li')
-      const authorEl = parent?.querySelector('[data-e2eid="user-link"] span, .author, [class*="author"]')
-      const author = authorEl?.textContent?.trim()?.replace(/^by\s+/i, "") || "—"
-
-      const imgEl = parent?.querySelector("img[src*='staticdelivery'], img[src*='nexusmods'], img")
-      const imageUrl = imgEl?.getAttribute("src") || ""
-
-      results.push({
-        rank: rank++,
-        name,
-        author,
-        imageUrl,
-        downloads: "—",
-        endorsements: "—",
-        nexusUrl: href.startsWith("http") ? href : `https://www.nexusmods.com${href}`,
-        nexusId: idMatch[1]
-      })
-    })
-  }
-
-  return results.slice(0, 50) // Limit to top 50
+// Map GraphQL ModsListing response nodes to NexusRankedMod[]
+function mapGraphQLToRanking(graphqlData: any): NexusRankedMod[] {
+  const nodes: any[] = graphqlData?.data?.mods?.nodes ?? graphqlData?.mods?.nodes ?? []
+  return nodes
+    .filter((n: any) => n.modId && n.name)
+    .map((node: any, idx: number) => ({
+      rank: idx + 1,
+      name: node.name || "Unknown",
+      author: node.uploader?.name || "Unknown",
+      imageUrl: node.thumbnailUrl || "",
+      downloads: formatNumber(node.downloads || 0),
+      endorsements: formatNumber(node.endorsements || 0),
+      nexusUrl: `https://www.nexusmods.com/stardewvalley/mods/${node.modId}`,
+      nexusId: String(node.modId),
+    }))
 }
 
 export function NexusModsRanking() {
@@ -194,7 +115,7 @@ export function NexusModsRanking() {
           unlistenRef.current = null
         }
 
-        const unlisten = await listen<{ html?: string; error?: string; status?: string }>("respond-nexus-ranking-html", (event) => {
+        const unlisten = await listen<{ mods?: any; error?: string; status?: string }>("respond-nexus-ranking-html", (event) => {
           if (event.payload.status === "challenge") {
             setScrapeStatus("challenge")
             return
@@ -214,8 +135,8 @@ export function NexusModsRanking() {
             return
           }
 
-          if (!event.payload.html) {
-            setError("未收到 Nexus 排行榜页面内容，请重试。")
+          if (!event.payload.mods) {
+            setError("未收到 Nexus GraphQL 数据，请重试。")
             setLoading(false)
             if (unlistenRef.current) {
               unlistenRef.current()
@@ -224,15 +145,15 @@ export function NexusModsRanking() {
             return
           }
 
-          console.log("[Ranking] Successfully received HTML payload!")
-          const parsed = parseRankingHtml(event.payload.html)
+          console.log("[Ranking] Successfully intercepted GraphQL response!")
+          const parsed = mapGraphQLToRanking(event.payload.mods)
           if (parsed.length > 0) {
             setRanking(parsed)
             try {
               localStorage.setItem("nexus_ranking_cache", JSON.stringify(parsed))
             } catch {}
           } else {
-            setError("成功获取页面但未能解析出排行榜数据。NexusMods 页面结构可能已变更。")
+            setError("成功获取 GraphQL 数据但未能解析出排行榜模组。")
             // Try cache
             const cached = localStorage.getItem("nexus_ranking_cache")
             if (cached) {
@@ -464,7 +385,7 @@ export function NexusModsRanking() {
         <div className="flex flex-col items-center justify-center py-8 text-muted-foreground border border-dashed border-border rounded-xl">
           <Trophy className="h-8 w-8 text-muted-foreground/40 mb-2" />
           <p className="text-xs font-medium">点击上方「获取排行榜」按钮</p>
-          <p className="text-[11px] text-muted-foreground/70 mt-1">将通过安全解析通道获取 NexusMods 热门下载排行</p>
+          <p className="text-[11px] text-muted-foreground/70 mt-1">将通过 GraphQL 拦截通道获取 NexusMods 热门下载排行</p>
         </div>
       )}
     </div>

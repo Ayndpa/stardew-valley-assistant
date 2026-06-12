@@ -22,6 +22,8 @@ import {
   Globe,
   LogOut,
   Loader2,
+  Copy,
+  KeyRound,
 } from "lucide-react"
 
 // Helper functions for dynamic imports to ensure web compatibility
@@ -122,6 +124,9 @@ export function Settings({ selectedSaveId }: { selectedSaveId: string }) {
   const [nexusUsername, setNexusUsername] = useState("")
   const [nexusChecking, setNexusChecking] = useState(false)
   const [nexusLoggingIn, setNexusLoggingIn] = useState(false)
+  const [nexusApiKey, setNexusApiKey] = useState("")
+  const [nexusApiKeyLoading, setNexusApiKeyLoading] = useState(false)
+  const [nexusApiKeyCopied, setNexusApiKeyCopied] = useState(false)
   
 
   const [detail, setDetail] = useState<SaveDetail | null>(null)
@@ -138,6 +143,18 @@ export function Settings({ selectedSaveId }: { selectedSaveId: string }) {
         setNexusLoggedIn(result.loggedIn)
         setNexusUsername(result.username || localStorage.getItem("nexusUsername") || "")
         if (result.username) localStorage.setItem("nexusUsername", result.username)
+        // If logged in, also try to load cached API key
+        if (result.loggedIn) {
+          try {
+            const keyResult = await invoke("fetch_nexus_api_key") as { apiKey: string; error?: string }
+            if (keyResult.apiKey) {
+              setNexusApiKey(keyResult.apiKey)
+              localStorage.setItem("nexusApiKey", keyResult.apiKey)
+            }
+          } catch (keyErr) {
+            console.error("Failed to fetch API key:", keyErr)
+          }
+        }
       } catch (err) {
         console.error("Failed to check NexusMods login status:", err)
       } finally {
@@ -154,13 +171,29 @@ export function Settings({ selectedSaveId }: { selectedSaveId: string }) {
       if (typeof window === "undefined" || !(window as any).__TAURI_INTERNALS__) return
       try {
         const { listen } = await import("@tauri-apps/api/event")
-        const unsub = await listen<{ status: string; username?: string }>("nexus-login-result", (event) => {
+        const unsub = await listen<{ status: string; username?: string }>("nexus-login-result", async (event) => {
           if (event.payload.status === "success") {
             setNexusLoggedIn(true)
             const name = event.payload.username || ""
             setNexusUsername(name)
             if (name) localStorage.setItem("nexusUsername", name)
             setNexusLoggingIn(false)
+            // Automatically fetch API key after successful login
+            try {
+              const invoke = await getTauriInvoke()
+              if (invoke) {
+                setNexusApiKeyLoading(true)
+                const keyResult = await invoke("fetch_nexus_api_key") as { apiKey: string; error?: string }
+                if (keyResult.apiKey) {
+                  setNexusApiKey(keyResult.apiKey)
+                  localStorage.setItem("nexusApiKey", keyResult.apiKey)
+                }
+                setNexusApiKeyLoading(false)
+              }
+            } catch (keyErr) {
+              console.error("Failed to auto-fetch API key:", keyErr)
+              setNexusApiKeyLoading(false)
+            }
           } else if (event.payload.status === "timeout") {
             setNexusLoggingIn(false)
           }
@@ -293,9 +326,41 @@ export function Settings({ selectedSaveId }: { selectedSaveId: string }) {
       await invoke("logout_nexus")
       setNexusLoggedIn(false)
       setNexusUsername("")
+      setNexusApiKey("")
       localStorage.removeItem("nexusUsername")
+      localStorage.removeItem("nexusApiKey")
     } catch (err) {
       console.error("Failed to logout NexusMods:", err)
+    }
+  }
+
+  const handleCopyApiKey = async () => {
+    if (!nexusApiKey) return
+    try {
+      await navigator.clipboard.writeText(nexusApiKey)
+      setNexusApiKeyCopied(true)
+      setTimeout(() => setNexusApiKeyCopied(false), 2000)
+    } catch (err) {
+      console.error("Failed to copy API key:", err)
+    }
+  }
+
+  const handleRefreshApiKey = async () => {
+    const invoke = await getTauriInvoke()
+    if (!invoke) return
+    setNexusApiKeyLoading(true)
+    try {
+      // Clear cache first to force re-fetch
+      localStorage.removeItem("nexusApiKey")
+      const keyResult = await invoke("fetch_nexus_api_key", { force: true }) as { apiKey: string; error?: string }
+      if (keyResult.apiKey) {
+        setNexusApiKey(keyResult.apiKey)
+        localStorage.setItem("nexusApiKey", keyResult.apiKey)
+      }
+    } catch (err) {
+      console.error("Failed to refresh API key:", err)
+    } finally {
+      setNexusApiKeyLoading(false)
     }
   }
 
@@ -466,30 +531,92 @@ export function Settings({ selectedSaveId }: { selectedSaveId: string }) {
                 <span>正在检查登录状态...</span>
               </div>
             ) : nexusLoggedIn ? (
-              <div className="flex items-center justify-between p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
-                <div className="flex items-center gap-3">
-                  <div className="h-9 w-9 rounded-full bg-emerald-500/15 flex items-center justify-center">
-                    <User className="h-4 w-4 text-emerald-500" />
+              <div className="space-y-4">
+                <div className="flex items-center justify-between p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
+                  <div className="flex items-center gap-3">
+                    <div className="h-9 w-9 rounded-full bg-emerald-500/15 flex items-center justify-center">
+                      <User className="h-4 w-4 text-emerald-500" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">
+                        {nexusUsername || "已登录"}
+                      </p>
+                      <p className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                        <CheckCircle2 className="h-3 w-3" />
+                        已登录 NexusMods
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-sm font-semibold text-foreground">
-                      {nexusUsername || "已登录"}
-                    </p>
-                    <p className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                      <CheckCircle2 className="h-3 w-3" />
-                      已登录 NexusMods
-                    </p>
-                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleNexusLogout}
+                    className="flex items-center gap-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    退出登录
+                  </Button>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleNexusLogout}
-                  className="flex items-center gap-2 text-destructive hover:text-destructive hover:bg-destructive/10"
-                >
-                  <LogOut className="h-4 w-4" />
-                  退出登录
-                </Button>
+
+                {/* API Key Section */}
+                <div className="p-3 rounded-lg bg-accent/30 border border-border/60 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <KeyRound className="h-4 w-4 text-orange-500" />
+                      <p className="text-sm font-medium">API Key</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {nexusApiKey && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleCopyApiKey}
+                          className="flex items-center gap-1.5 h-7 text-xs"
+                        >
+                          {nexusApiKeyCopied ? (
+                            <>
+                              <Check className="h-3 w-3 text-emerald-500" />
+                              <span className="text-emerald-500">已复制</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="h-3 w-3" />
+                              复制
+                            </>
+                          )}
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleRefreshApiKey}
+                        disabled={nexusApiKeyLoading}
+                        className="flex items-center gap-1.5 h-7 text-xs"
+                      >
+                        {nexusApiKeyLoading ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : null}
+                        刷新
+                      </Button>
+                    </div>
+                  </div>
+                  {nexusApiKeyLoading && !nexusApiKey ? (
+                    <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      <span>正在获取 API Key...</span>
+                    </div>
+                  ) : nexusApiKey ? (
+                    <div className="relative">
+                      <Input
+                        readOnly
+                        value={nexusApiKey}
+                        className="font-mono text-xs pr-2 bg-translucent-dark-400 opacity-70 truncate"
+                      />
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">未获取到 API Key，点击刷新重试</p>
+                  )}
+                </div>
               </div>
             ) : (
               <div className="flex items-center justify-between p-3 rounded-lg bg-accent/30 border border-border/60">

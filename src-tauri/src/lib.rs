@@ -6,7 +6,7 @@ mod saves;
 
 use crate::game::{auto_detect_game_dir, get_game_version};
 use crate::smapi::{check_smapi_status, install_smapi, uninstall_smapi};
-use crate::mods::{list_installed_mods, toggle_mod, save_mod_config, fetch_smapi_compatibility_mods, open_scraper_window, open_nexus_ranking_scraper, list_profiles, save_profile, delete_profile, apply_profile, export_profile, import_profile, export_profile_to_file, import_profile_from_file, open_nexus_login_window, check_nexus_login_status, logout_nexus};
+use crate::mods::{list_installed_mods, toggle_mod, save_mod_config, fetch_smapi_compatibility_mods, open_scraper_window, open_nexus_ranking_scraper, list_profiles, save_profile, delete_profile, apply_profile, export_profile, import_profile, export_profile_to_file, import_profile_from_file, open_nexus_login_window, check_nexus_login_status, logout_nexus, fetch_nexus_api_key};
 use crate::saves::{list_save_files, get_save_detail, get_planted_crops};
 use crate::utils::open_in_file_manager;
 
@@ -48,7 +48,8 @@ pub fn run() {
             import_profile_from_file,
             open_nexus_login_window,
             check_nexus_login_status,
-            logout_nexus
+            logout_nexus,
+            fetch_nexus_api_key
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

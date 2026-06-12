@@ -258,17 +258,22 @@ pub fn save_mod_config(game_dir: String, folder_name: String, config: serde_json
     Ok(())
 }
 
-#[tauri::command]
-pub async fn open_nexus_ranking_scraper(app: tauri::AppHandle) -> Result<(), String> {
+// ==================== WebView Helpers ====================
+
+fn create_nexus_webview(
+    app: &tauri::AppHandle,
+    label: &str,
+    title: &str,
+    url: tauri::Url,
+    always_visible: bool,
+) -> Result<tauri::WebviewWindow, String> {
     use tauri::Manager;
 
-    // NexusMods most downloaded mods page for Stardew Valley (all time)
-    let url_str = "https://www.nexusmods.com/games/stardewvalley/mods?sort=downloads&timeRange=allTime".to_string();
-    let url = url_str.parse::<tauri::Url>().map_err(|e| e.to_string())?;
+    // Destroy old window with same label if it exists
+    if let Some(old_window) = app.get_webview_window(label) {
+        let _ = old_window.destroy();
+    }
 
-    let handle = app.clone();
-
-    // Resolve persistent data directory for WebView cookie/localStorage persistence
     let data_dir = app
         .path()
         .app_data_dir()
@@ -278,217 +283,310 @@ pub async fn open_nexus_ranking_scraper(app: tauri::AppHandle) -> Result<(), Str
         let _ = fs::create_dir_all(dir);
     }
 
+    let is_dev = cfg!(debug_assertions);
+    let initially_visible = is_dev || always_visible;
+
+    let mut builder = tauri::WebviewWindowBuilder::new(
+        app,
+        label,
+        tauri::WebviewUrl::External(url)
+    )
+    .title(title)
+    .inner_size(960.0, 720.0)
+    .min_inner_size(760.0, 560.0)
+    .visible(initially_visible);
+
+    if let Some(dir) = data_dir {
+        builder = builder.data_directory(dir);
+    }
+
+    let window = builder.build().map_err(|e| format!("Failed to build WebView window ({}): {:?}", label, e))?;
+
+    if !initially_visible {
+        let _ = window.minimize();
+    }
+
+    let center_over_main = |win: &tauri::WebviewWindow, app_handle: &tauri::AppHandle| {
+        if let Some(main_window) = app_handle.get_webview_window("main") {
+            if let (Ok(main_pos), Ok(main_size), Ok(win_size)) = (
+                main_window.outer_position(),
+                main_window.inner_size(),
+                win.inner_size(),
+            ) {
+                let x = main_pos.x + ((main_size.width as i32 - win_size.width as i32) / 2);
+                let y = main_pos.y + ((main_size.height as i32 - win_size.height as i32) / 2);
+                let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
+                return;
+            }
+        }
+        let _ = win.center();
+    };
+
+    center_over_main(&window, app);
+
+    Ok(window)
+}
+
+fn eval_js_timeout(win: &tauri::WebviewWindow, js: &str, timeout_secs: u64) -> Option<String> {
+    let (tx, rx) = std::sync::mpsc::channel::<String>();
+    if win.eval_with_callback(js, move |result| { let _ = tx.send(result); }).is_err() {
+        return None;
+    }
+    rx.recv_timeout(std::time::Duration::from_secs(timeout_secs)).ok()
+}
+
+fn check_cloudflare_challenge(win: &tauri::WebviewWindow) -> bool {
+    let cf_check_js = r##"
+        (() => {
+            try {
+                const t = (document.title||'').toLowerCase();
+                const h = location.href.toLowerCase();
+                const html = document.documentElement ? document.documentElement.outerHTML : '';
+                const x = document.body ? document.body.innerText : '';
+                const cf = t.includes('just a moment') || 
+                           t.includes('checking your browser') || 
+                           t.includes('attention required') || 
+                           h.includes('captcha') || 
+                           h.includes('challenge') || 
+                           html.includes('cf-turnstile') || 
+                           html.includes('challenges.cloudflare.com') || 
+                           html.includes('/cdn-cgi/challenge-platform/') || 
+                           x.includes('checking if the site connection is secure') || 
+                           x.includes('verify you are human');
+                return cf;
+            } catch(e) { return false; }
+        })()
+    "##;
+    eval_js_timeout(win, cf_check_js, 2)
+        .and_then(|res| res.parse::<bool>().ok())
+        .unwrap_or(false)
+}
+
+fn update_window_visibility_for_cf(
+    win: &tauri::WebviewWindow,
+    app: &tauri::AppHandle,
+    is_cf: bool,
+    cf_shown: &mut bool,
+    always_visible: bool,
+    title_on_cf: &str,
+    title_on_clear: &str,
+) {
+    use tauri::Manager;
+    let is_dev = cfg!(debug_assertions);
+    if is_cf {
+        if !*cf_shown {
+            *cf_shown = true;
+            let _ = win.set_title(title_on_cf);
+            
+            let center_over_main = |w: &tauri::WebviewWindow, app_handle: &tauri::AppHandle| {
+                if let Some(main_window) = app_handle.get_webview_window("main") {
+                    if let (Ok(main_pos), Ok(main_size), Ok(win_size)) = (
+                        main_window.outer_position(),
+                        main_window.inner_size(),
+                        w.inner_size(),
+                    ) {
+                        let x = main_pos.x + ((main_size.width as i32 - win_size.width as i32) / 2);
+                        let y = main_pos.y + ((main_size.height as i32 - win_size.height as i32) / 2);
+                        let _ = w.set_position(tauri::PhysicalPosition::new(x, y));
+                        return;
+                    }
+                }
+                let _ = w.center();
+            };
+            center_over_main(win, app);
+            let _ = win.show();
+            let _ = win.unminimize();
+            let _ = win.set_focus();
+        }
+    } else {
+        if *cf_shown {
+            *cf_shown = false;
+            let _ = win.set_title(title_on_clear);
+            if !is_dev && !always_visible {
+                let _ = win.hide();
+            }
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn open_nexus_ranking_scraper(app: tauri::AppHandle) -> Result<(), String> {
+    // Lightweight page just to pass Cloudflare and obtain session cookies
+    let url_str = "https://www.nexusmods.com/robots.txt".to_string();
+    let url = url_str.parse::<tauri::Url>().map_err(|e| e.to_string())?;
+
+    let handle = app.clone();
+
     tauri::async_runtime::spawn(async move {
         use tauri::Emitter;
 
-        // Destroy old ranking scraper window if it exists
-        if let Some(old_window) = handle.get_webview_window("nexus-ranking-scraper") {
-            let _ = old_window.destroy();
-        }
-
-        let mut builder = tauri::WebviewWindowBuilder::new(
-            &handle,
-            "nexus-ranking-scraper",
-            tauri::WebviewUrl::External(url)
-        )
-        .title("Nexus 排行榜加载中...")
-        .inner_size(960.0, 720.0)
-        .min_inner_size(760.0, 560.0)
-        .center()
-        .visible(true);
-
-        // Set persistent data directory for cookie/localStorage support
-        if let Some(dir) = data_dir {
-            builder = builder.data_directory(dir);
-        }
-
-        let window = match builder.build() {
+        let window = match create_nexus_webview(&handle, "nexus-ranking-scraper", "Nexus 排行榜加载中...", url, false) {
             Ok(w) => w,
             Err(e) => {
-                println!("Failed to build ranking scraper window: {:?}", e);
+                println!("[RankingScraper] Failed to build ranking scraper window: {:?}", e);
                 return;
             }
         };
 
-        // Start minimized — only show when CF challenge needs user interaction
-        let _ = window.minimize();
-
-        let center_over_main = |win: &tauri::WebviewWindow, app_handle: &tauri::AppHandle| {
-            if let Some(main_window) = app_handle.get_webview_window("main") {
-                if let (Ok(main_pos), Ok(main_size), Ok(win_size)) = (
-                    main_window.outer_position(),
-                    main_window.inner_size(),
-                    win.inner_size(),
-                ) {
-                    let x = main_pos.x + ((main_size.width as i32 - win_size.width as i32) / 2);
-                    let y = main_pos.y + ((main_size.height as i32 - win_size.height as i32) / 2);
-                    let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
-                    return;
-                }
-            }
-            let _ = win.center();
-        };
-
-        center_over_main(&window, &handle);
-
-        // Poll from Rust side via eval()
         let poll_window = window.clone();
         let poll_handle = handle.clone();
+
         tauri::async_runtime::spawn(async move {
             let timeout = std::time::Instant::now() + std::time::Duration::from_secs(180);
             let mut cf_shown = false;
-            let mut last_title = String::new();
+            let mut graphql_requested = false;
 
             let eval_js = |win: &tauri::WebviewWindow, js: &str| -> Option<String> {
-                let (tx, rx) = std::sync::mpsc::channel::<String>();
-                if win.eval_with_callback(js, move |result| { let _ = tx.send(result); }).is_err() {
-                    return None;
-                }
-                rx.recv_timeout(std::time::Duration::from_secs(2)).ok()
+                eval_js_timeout(win, js, 10)
             };
 
+            // JS #1: fire the GraphQL fetch, store result in window variable
+            let mut graphql_fire_js = r##"
+                (() => {
+                    try {
+                        if (window.__nexusGraphQLDone || window.__nexusGraphQLFetching) return 'skip';
+                        window.__nexusGraphQLFetching = true;
+                        fetch('https://api-router.nexusmods.com/graphql', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'X-GraphQL-OperationName': 'ModsListing' },
+                            body: JSON.stringify({
+                                query: `
+                                    query ModsListing($count: Int = 0, $facets: ModsFacet, $filter: ModsFilter, $offset: Int, $postFilter: ModsFilter, $sort: [ModsSort!]) {
+                                      mods(count: $count, facets: $facets, filter: $filter, offset: $offset, postFilter: $postFilter, sort: $sort, viewUserBlockedContent: false) {
+                                        facetsData
+                                        nodes { ...ModTileFragment }
+                                        totalCount
+                                      }
+                                    }
+                                    fragment ModTileFragment on Mod {
+                                      adultContent createdAt downloads endorsements fileSize
+                                      game { domainName id name }
+                                      modCategory { categoryId name }
+                                      modId name status summary
+                                      thumbnailUrl thumbnailBlurredUrl uid updatedAt
+                                      uploader { avatar memberId name }
+                                      viewerDownloaded viewerEndorsed viewerTracked viewerUpdateAvailable viewerIsBlocked
+                                    }
+                                `,
+                                variables: {
+                                    count: 20,
+                                    facets: { categoryName: [], languageName: [], tag: [] },
+                                    filter: { adultContent: [{ op: "EQUALS", value: false }], filter: [], gameDomainName: [{ op: "EQUALS", value: "stardewvalley" }], name: [] },
+                                    offset: 0,
+                                    postFilter: {},
+                                    sort: { downloads: { direction: "DESC" } }
+                                },
+                                operationName: 'ModsListing'
+                            }),
+                            credentials: 'include'
+                        }).then(r => r.json()).then(json => {
+                            window.__nexusGraphQLData = JSON.stringify(json);
+                            window.__nexusGraphQLDone = true;
+                            //PLACEHOLDER_DEV_ALERT
+                        }).catch(e => {
+                            window.__nexusGraphQLError = String(e);
+                        });
+                        return 'started';
+                    } catch(e) { return 'error:' + String(e); }
+                })()
+            "##.to_string();
+
+            if cfg!(debug_assertions) {
+                graphql_fire_js = graphql_fire_js.replace(
+                    "//PLACEHOLDER_DEV_ALERT",
+                    "alert('GraphQL Response:\\n' + JSON.stringify(json, null, 2));"
+                );
+            }
+
+            // JS #2: check status (tiny return)
+            let graphql_status_js = r##"
+                (() => {
+                    if (window.__nexusGraphQLDone) return {s:"done"};
+                    if (window.__nexusGraphQLError) return {s:"error",e:window.__nexusGraphQLError};
+                    if (window.__nexusGraphQLFetching) return {s:"fetching"};
+                    return {s:"idle"};
+                })()
+            "##;
+
+            // JS #3: retrieve the data (called only once when status=done)
+            let graphql_retrieve_js = r##"
+                (() => { try { return JSON.parse(window.__nexusGraphQLData) || null; } catch(e) { return null; } })()
+            "##;
+
             loop {
+                // Timeout check
                 if std::time::Instant::now() > timeout {
-                    println!("[RankingScraper] Timeout reached, destroying window");
-                    let _ = poll_handle.emit("respond-nexus-ranking-html", serde_json::json!({
-                        "error": "加载超时，请重试"
-                    }));
+                    let _ = poll_handle.emit("respond-nexus-ranking-html", serde_json::json!({ "error": "加载超时，请重试" }));
                     let _ = poll_window.destroy();
                     return;
                 }
 
-                let snapshot_json = match eval_js(&poll_window, r##"
-                    (() => {
-                        try {
-                            const html = document.documentElement ? document.documentElement.outerHTML : "";
-                            const text = document.body ? document.body.innerText : "";
-                            const lowerHtml = html.toLowerCase();
-                            const lowerTitle = (document.title || "").toLowerCase();
-                            const lowerHref = location.href.toLowerCase();
-                            // Detect NexusMods new-style mod list page markers (data-e2eid and .mods-grid)
-                            const hasModListMarker =
-                                !!document.querySelector('[data-e2eid="mod-tile"], .mods-grid, [data-e2eid="result-count"]');
-                            const hasNexusListPage =
-                                location.hostname.endsWith("nexusmods.com") &&
-                                hasModListMarker &&
-                                !lowerTitle.includes("just a moment") &&
-                                !lowerTitle.includes("checking your browser") &&
-                                !lowerTitle.includes("attention required");
-                            const hasChallengeMarker =
-                                lowerTitle.includes("just a moment") ||
-                                lowerTitle.includes("checking your browser") ||
-                                lowerTitle.includes("attention required") ||
-                                lowerHref.includes("captcha") ||
-                                lowerHref.includes("challenge") ||
-                                lowerHtml.includes("cf-turnstile") ||
-                                lowerHtml.includes("challenges.cloudflare.com") ||
-                                lowerHtml.includes("/cdn-cgi/challenge-platform/") ||
-                                lowerHtml.includes("cf-challenge") ||
-                                lowerHtml.includes("cloudflare ray id") ||
-                                text.includes("Checking if the site connection is secure") ||
-                                text.includes("Verify you are human");
-                            const isChallenge = !hasNexusListPage && hasChallengeMarker;
-                            return {
-                                readyState: document.readyState,
-                                title: document.title || "",
-                                href: location.href,
-                                isChallenge,
-                                hasModList: hasNexusListPage,
-                                html
-                            };
-                        } catch (error) {
-                            return {
-                                readyState: "error",
-                                title: "",
-                                href: "",
-                                isChallenge: false,
-                                hasModList: false,
-                                html: "",
-                                error: String(error)
-                            };
+                // If GraphQL was requested, poll for its completion via lightweight status check
+                if graphql_requested {
+                    let status_res = eval_js(&poll_window, graphql_status_js);
+                    if cfg!(debug_assertions) {
+                        println!("[RankingScraper] GraphQL status raw result: {:?}", status_res);
+                    }
+                    if let Some(status_str) = status_res {
+                        if let Ok(status) = serde_json::from_str::<serde_json::Value>(&status_str) {
+                            let s = status.get("s").and_then(|v| v.as_str()).unwrap_or_default();
+                            match s {
+                                "done" => {
+                                    // Retrieve the actual data
+                                    if let Some(data_str) = eval_js(&poll_window, graphql_retrieve_js) {
+                                        if let Ok(data) = serde_json::from_str::<serde_json::Value>(&data_str) {
+                                            let _ = poll_window.set_title("Nexus 排行榜已获取");
+                                            println!("[RankingScraper] GraphQL data retrieved!");
+                                            let _ = poll_handle.emit("respond-nexus-ranking-html", serde_json::json!({ "mods": data }));
+                                        } else {
+                                            let _ = poll_handle.emit("respond-nexus-ranking-html", serde_json::json!({ "error": "GraphQL 数据解析失败" }));
+                                        }
+                                    } else {
+                                        let _ = poll_handle.emit("respond-nexus-ranking-html", serde_json::json!({ "error": "无法从 WebView 获取数据" }));
+                                    }
+                                    let _ = poll_window.destroy();
+                                    return;
+                                }
+                                "error" => {
+                                    let err = status.get("e").and_then(|v| v.as_str()).unwrap_or("unknown");
+                                    println!("[RankingScraper] GraphQL error: {}", err);
+                                    let _ = poll_handle.emit("respond-nexus-ranking-html", serde_json::json!({ "error": format!("GraphQL 请求失败: {}", err) }));
+                                    let _ = poll_window.destroy();
+                                    return;
+                                }
+                                _ => {} // still fetching, continue loop
+                            }
                         }
-                    })()
-                "##) {
-                    None => {
-                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                        continue;
                     }
-                    Some(s) => s,
-                };
-
-                let snapshot: serde_json::Value = match serde_json::from_str(&snapshot_json) {
-                    Ok(value) => value,
-                    Err(_) => {
-                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                        continue;
-                    }
-                };
-
-                let title = snapshot
-                    .get("title")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default();
-                let href = snapshot
-                    .get("href")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default();
-                let is_challenge = snapshot
-                    .get("isChallenge")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false)
-                    || title.contains("Just a moment")
-                    || title.contains("Checking your browser")
-                    || href.contains("captcha")
-                    || href.contains("challenge");
-
-                if is_challenge && !cf_shown {
-                    cf_shown = true;
-                    last_title = "Nexus 需要验证".to_string();
-                    let _ = poll_window.set_title(&last_title);
-                    center_over_main(&poll_window, &poll_handle);
-                    let _ = poll_window.show();
-                    let _ = poll_window.unminimize();
-                    let _ = poll_window.set_focus();
-                    let _ = poll_handle.emit("respond-nexus-ranking-html", serde_json::json!({
-                        "status": "challenge"
-                    }));
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                    continue;
                 }
 
-                if !is_challenge && cf_shown && last_title == "Nexus 需要验证" {
-                    last_title = "Nexus 排行榜页面加载中...".to_string();
-                    let _ = poll_window.set_title(&last_title);
-                    let _ = poll_handle.emit("respond-nexus-ranking-html", serde_json::json!({
-                        "status": "loading"
-                    }));
+                // CF challenge detection via unified helper
+                let is_cf = check_cloudflare_challenge(&poll_window);
+                if is_cf && !cf_shown {
+                    let _ = poll_handle.emit("respond-nexus-ranking-html", serde_json::json!({ "status": "challenge" }));
                 }
-
-                let ready_state = snapshot
-                    .get("readyState")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default();
-                let has_mod_list = snapshot
-                    .get("hasModList")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-                let html = snapshot
-                    .get("html")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .to_string();
-
-                if !is_challenge && ready_state == "complete" && has_mod_list {
-                    let _ = poll_window.set_title("Nexus 排行榜已获取");
-                    println!("[RankingScraper] Got HTML, length: {}", html.len());
-                    let _ = poll_handle.emit("respond-nexus-ranking-html", serde_json::json!({
-                        "html": html
-                    }));
-                    let _ = poll_window.destroy();
-                    return;
+                if !is_cf && cf_shown {
+                    let _ = poll_handle.emit("respond-nexus-ranking-html", serde_json::json!({ "status": "loading" }));
                 }
+                update_window_visibility_for_cf(
+                    &poll_window,
+                    &poll_handle,
+                    is_cf,
+                    &mut cf_shown,
+                    false,
+                    "Nexus 需要验证",
+                    "Nexus 排行榜加载中...",
+                );
 
-                if !is_challenge && last_title != "Nexus 排行榜页面加载中..." {
-                    last_title = "Nexus 排行榜页面加载中...".to_string();
-                    let _ = poll_window.set_title(&last_title);
+                // Page ready & no challenge → fire GraphQL fetch
+                if !is_cf {
+                    graphql_requested = true;
+                    println!("[RankingScraper] Page ready, firing GraphQL request...");
+                    let res = eval_js(&poll_window, &graphql_fire_js);
+                    println!("[RankingScraper] graphql_fire_js eval result: {:?}", res);
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                 }
 
                 tokio::time::sleep(std::time::Duration::from_millis(500)).await;
@@ -780,46 +878,15 @@ pub fn import_profile_from_file(app: tauri::AppHandle, file_path: String) -> Res
 
 #[tauri::command]
 pub async fn open_nexus_login_window(app: tauri::AppHandle) -> Result<(), String> {
-    use tauri::Manager;
-
-    let url_str = "https://www.nexusmods.com/users/login".to_string();
+    let url_str = "https://users.nexusmods.com/auth/sign_in".to_string();
     let url = url_str.parse::<tauri::Url>().map_err(|e| e.to_string())?;
 
     let handle = app.clone();
 
-    let data_dir = app
-        .path()
-        .app_data_dir()
-        .ok()
-        .map(|p| p.join("webview_data"));
-    if let Some(ref dir) = data_dir {
-        let _ = fs::create_dir_all(dir);
-    }
-
     tauri::async_runtime::spawn(async move {
         use tauri::Emitter;
 
-        // Destroy old login window if it exists
-        if let Some(old_window) = handle.get_webview_window("nexus-login") {
-            let _ = old_window.destroy();
-        }
-
-        let mut builder = tauri::WebviewWindowBuilder::new(
-            &handle,
-            "nexus-login",
-            tauri::WebviewUrl::External(url)
-        )
-        .title("NexusMods 登录")
-        .inner_size(960.0, 720.0)
-        .min_inner_size(760.0, 560.0)
-        .center()
-        .visible(true);
-
-        if let Some(dir) = data_dir {
-            builder = builder.data_directory(dir);
-        }
-
-        let window = match builder.build() {
+        let window = match create_nexus_webview(&handle, "nexus-login", "NexusMods 登录", url, true) {
             Ok(w) => w,
             Err(e) => {
                 println!("[NexusLogin] Failed to build login window: {:?}", e);
@@ -827,39 +894,14 @@ pub async fn open_nexus_login_window(app: tauri::AppHandle) -> Result<(), String
             }
         };
 
-        // Start minimized — will unminimize when page is ready for user interaction
-        let _ = window.minimize();
-
-        let center_over_main = |win: &tauri::WebviewWindow, app_handle: &tauri::AppHandle| {
-            if let Some(main_window) = app_handle.get_webview_window("main") {
-                if let (Ok(main_pos), Ok(main_size), Ok(win_size)) = (
-                    main_window.outer_position(),
-                    main_window.inner_size(),
-                    win.inner_size(),
-                ) {
-                    let x = main_pos.x + ((main_size.width as i32 - win_size.width as i32) / 2);
-                    let y = main_pos.y + ((main_size.height as i32 - win_size.height as i32) / 2);
-                    let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
-                    return;
-                }
-            }
-            let _ = win.center();
-        };
-
-        center_over_main(&window, &handle);
-
         let poll_window = window.clone();
         let poll_handle = handle.clone();
         tauri::async_runtime::spawn(async move {
             let timeout = std::time::Instant::now() + std::time::Duration::from_secs(300);
-            let mut page_shown = false;
+            let mut cf_shown = false;
 
             let eval_js = |win: &tauri::WebviewWindow, js: &str| -> Option<String> {
-                let (tx, rx) = std::sync::mpsc::channel::<String>();
-                if win.eval_with_callback(js, move |result| { let _ = tx.send(result); }).is_err() {
-                    return None;
-                }
-                rx.recv_timeout(std::time::Duration::from_secs(2)).ok()
+                eval_js_timeout(win, js, 2)
             };
 
             loop {
@@ -872,6 +914,18 @@ pub async fn open_nexus_login_window(app: tauri::AppHandle) -> Result<(), String
                     return;
                 }
 
+                // Check Cloudflare first
+                let is_cf = check_cloudflare_challenge(&poll_window);
+                update_window_visibility_for_cf(
+                    &poll_window,
+                    &poll_handle,
+                    is_cf,
+                    &mut cf_shown,
+                    true,
+                    "Nexus 需要验证",
+                    "NexusMods 登录",
+                );
+
                 let snapshot_json = match eval_js(&poll_window, r##"
                     (() => {
                         try {
@@ -880,7 +934,7 @@ pub async fn open_nexus_login_window(app: tauri::AppHandle) -> Result<(), String
                             const html = document.documentElement ? document.documentElement.outerHTML : "";
                             const lowerHtml = html.toLowerCase();
                             // Check if still on login page
-                            const isLoginPage = href.includes("/users/login") || href.includes("/login");
+                            const isLoginPage = href.includes("/auth/sign_in") || href.includes("/users/login") || href.includes("/login");
                             // Check for Cloudflare challenge
                             const isChallenge =
                                 title.includes("just a moment") ||
@@ -890,19 +944,43 @@ pub async fn open_nexus_login_window(app: tauri::AppHandle) -> Result<(), String
                                 lowerHtml.includes("/cdn-cgi/challenge-platform/");
                             // Check if logged in: user is redirected away from login page,
                             // or we can see profile/avatar elements
+                            const hasLoginBtn = !!document.querySelector("a[href*='/users/login'], a[href*='/auth/sign_in'], [class*='login-btn'], [class*='sign-in']");
+                            const hasSignOutBtn = !!document.querySelector("a[href*='sign_out'], a[href*='logout'], a[href*='sign-out']");
+                            const hasUserElements = !!document.querySelector("[class*='user-avatar'], [class*='user-name'], .header-user, [class*='profile'], [data-user-id], #user-avatar, .member-avatar, .member-name");
                             const isLoggedIn =
                                 !isLoginPage &&
                                 !isChallenge &&
-                                document.readyState === "complete" &&
+                                (document.readyState === "complete" || document.readyState === "interactive") &&
                                 (
-                                    !!document.querySelector("[class*='user-avatar'], [class*='user-name'], .header-user, [class*='profile'], [data-user-id]") ||
-                                    href.includes("/users/") ||
-                                    href.includes("/account")
+                                    hasSignOutBtn ||
+                                    hasUserElements ||
+                                    (!hasLoginBtn && (href.includes("/users/") || href.includes("/account") || href === "https://www.nexusmods.com/" || href === "https://www.nexusmods.com"))
                                 );
                             // Extract username if possible
                             let username = "";
-                            const userEl = document.querySelector("[class*='user-name'], .header-user a, [class*='username']");
-                            if (userEl) username = userEl.textContent.trim();
+                            const welcomeEl = document.querySelector("h1");
+                            if (welcomeEl && welcomeEl.textContent.includes("Welcome back")) {
+                                username = welcomeEl.textContent.replace("Welcome back", "").trim();
+                            }
+                            if (!username) {
+                                const userEl = document.querySelector("[class*='user-name'], .header-user a, [class*='username'], .member-name");
+                                if (userEl) {
+                                    username = userEl.textContent.trim();
+                                }
+                            }
+                            if (!username) {
+                                const profileLinks = document.querySelectorAll("a[href*='/users/']");
+                                for (const link of profileLinks) {
+                                    const linkHref = link.getAttribute("href") || "";
+                                    if (!linkHref.includes("myaccount") && !linkHref.includes("login") && !linkHref.includes("sign_out")) {
+                                        const txt = link.textContent.trim();
+                                        if (txt && !txt.includes("Manage") && !txt.includes("Review")) {
+                                            username = txt;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
                             return {
                                 readyState: document.readyState,
                                 href: location.href,
@@ -943,29 +1021,6 @@ pub async fn open_nexus_login_window(app: tauri::AppHandle) -> Result<(), String
                     .get("isLoggedIn")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
-
-                let is_challenge = snapshot
-                    .get("isChallenge")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-
-                let is_login_page = snapshot
-                    .get("isLoginPage")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-
-                let ready_state = snapshot
-                    .get("readyState")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default();
-
-                // Show window when login page is ready or CF challenge appears
-                if !page_shown && ready_state == "complete" && (is_login_page || is_challenge) {
-                    page_shown = true;
-                    let _ = poll_window.unminimize();
-                    let _ = poll_window.show();
-                    let _ = poll_window.set_focus();
-                }
 
                 let username = snapshot
                     .get("username")
@@ -1011,52 +1066,92 @@ pub async fn check_nexus_login_status(app: tauri::AppHandle) -> Result<serde_jso
     }
 
     let handle = app.clone();
-    let url_str = "https://www.nexusmods.com".to_string();
+    let url_str = "https://users.nexusmods.com/account/security".to_string();
     let url = url_str.parse::<tauri::Url>().map_err(|e| e.to_string())?;
 
-    // Create a hidden window to check login status
-    let mut builder = tauri::WebviewWindowBuilder::new(
-        &handle,
-        "nexus-login-check",
-        tauri::WebviewUrl::External(url)
-    )
-    .title("Checking NexusMods login...")
-    .inner_size(1.0, 1.0)
-    .visible(false);
-
-    if let Some(dir) = data_dir {
-        builder = builder.data_directory(dir);
-    }
-
-    let window = builder.build().map_err(|e| format!("Failed to create check window: {}", e))?;
+    // Create a hidden window using helper
+    let window = create_nexus_webview(&handle, "nexus-login-check", "Checking NexusMods login...", url, false)?;
 
     let poll_window = window.clone();
+    let poll_handle = handle.clone();
     let result = tokio::time::timeout(std::time::Duration::from_secs(30), async move {
         let eval_js = |win: &tauri::WebviewWindow, js: &str| -> Option<String> {
-            let (tx, rx) = std::sync::mpsc::channel::<String>();
-            if win.eval_with_callback(js, move |result| { let _ = tx.send(result); }).is_err() {
-                return None;
-            }
-            rx.recv_timeout(std::time::Duration::from_secs(3)).ok()
+            eval_js_timeout(win, js, 3)
         };
 
+        let mut cf_shown = false;
+
         loop {
+            // Check Cloudflare challenge
+            let is_cf = check_cloudflare_challenge(&poll_window);
+            update_window_visibility_for_cf(
+                &poll_window,
+                &poll_handle,
+                is_cf,
+                &mut cf_shown,
+                false,
+                "Nexus 需要验证",
+                "Checking NexusMods login...",
+            );
+
             let snapshot_json = match eval_js(&poll_window, r##"
                 (() => {
                     try {
-                        if (document.readyState !== "complete") return { ready: false };
+                        if (document.readyState !== "complete" && document.readyState !== "interactive") return { ready: false };
                         const href = location.href.toLowerCase();
-                        const lowerHtml = (document.documentElement ? document.documentElement.outerHTML : "").toLowerCase();
+                        const html = document.documentElement ? document.documentElement.outerHTML : "";
+                        const lowerHtml = html.toLowerCase();
+                        
                         // Still on challenge page
                         if (lowerHtml.includes("cf-turnstile") || lowerHtml.includes("challenges.cloudflare.com") || lowerHtml.includes("/cdn-cgi/challenge-platform/")) {
                             return { ready: false };
                         }
-                        let username = "";
-                        const userEl = document.querySelector("[class*='user-name'], .header-user a, [class*='username'], a[href*='/users/']");
-                        if (userEl) username = userEl.textContent.trim();
-                        const hasLoginBtn = !!document.querySelector("a[href*='/users/login'], [class*='login-btn'], [class*='sign-in']");
-                        const loggedIn = !hasLoginBtn && (username.length > 0 || !!document.querySelector("[class*='user-avatar'], [class*='profile']"));
-                        return { ready: true, loggedIn, username };
+                        
+                        const bodyText = document.body ? document.body.innerText : "";
+                        const hasWelcome = bodyText.toLowerCase().includes("welcome back");
+                        const hasLogIn = bodyText.toLowerCase().includes("log in to nexus mods") || href.includes("/auth/sign_in") || href.includes("/login");
+                        
+                        if (hasWelcome) {
+                            let username = "";
+                            // Try to match "Welcome back, {username}" or "Welcome back {username}"
+                            const match = bodyText.match(/Welcome back[\s,]+([^\n\r!]+)/i);
+                            if (match) {
+                                username = match[1].trim();
+                            }
+                            if (!username) {
+                                const welcomeEl = document.querySelector("h1");
+                                if (welcomeEl && welcomeEl.textContent.includes("Welcome back")) {
+                                    username = welcomeEl.textContent.replace(/Welcome back\s*,?\s*/i, "").trim();
+                                }
+                            }
+                            if (!username) {
+                                const userEl = document.querySelector("[class*='user-name'], .header-user a, [class*='username'], .member-name");
+                                if (userEl) {
+                                    username = userEl.textContent.trim();
+                                }
+                            }
+                            return { ready: true, loggedIn: true, username };
+                        }
+                        
+                        if (hasLogIn) {
+                            return { ready: true, loggedIn: false, username: "" };
+                        }
+                        
+                        if (document.readyState === "complete") {
+                            // If we are fully loaded but neither welcome nor log in matched, check for sign out button
+                            const hasSignOutBtn = !!document.querySelector("a[href*='sign_out'], a[href*='logout'], a[href*='sign-out']");
+                            if (hasSignOutBtn) {
+                                let username = "";
+                                const userEl = document.querySelector("[class*='user-name'], .header-user a, [class*='username'], .member-name");
+                                if (userEl) {
+                                    username = userEl.textContent.trim();
+                                }
+                                return { ready: true, loggedIn: true, username };
+                            }
+                            return { ready: true, loggedIn: false, username: "" };
+                        }
+                        
+                        return { ready: false };
                     } catch (e) {
                         return { ready: false };
                     }
@@ -1097,6 +1192,185 @@ pub async fn check_nexus_login_status(app: tauri::AppHandle) -> Result<serde_jso
 }
 
 #[tauri::command]
+pub async fn fetch_nexus_api_key(app: tauri::AppHandle, force: Option<bool>) -> Result<serde_json::Value, String> {
+    use tauri::Manager;
+
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to resolve app data: {}", e))?
+        .join("webview_data");
+
+    if !data_dir.exists() {
+        return Ok(serde_json::json!({ "apiKey": "", "error": "Not logged in" }));
+    }
+
+    // Check if we already have a cached API key
+    let api_key_path = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to resolve app data: {}", e))?
+        .join("nexus_api_key.txt");
+
+    if force.unwrap_or(false) {
+        if api_key_path.exists() {
+            let _ = fs::remove_file(&api_key_path);
+        }
+    } else if api_key_path.exists() {
+        if let Ok(cached_key) = fs::read_to_string(&api_key_path) {
+            let trimmed = cached_key.trim().to_string();
+            if trimmed.len() > 10 {
+                println!("[NexusApiKey] Using cached API key");
+                return Ok(serde_json::json!({ "apiKey": trimmed }));
+            }
+        }
+    }
+
+    let handle = app.clone();
+    let url_str = "https://www.nexusmods.com/robots.txt".to_string();
+    let url = url_str.parse::<tauri::Url>().map_err(|e| e.to_string())?;
+
+    // Create a hidden window using helper
+    let window = create_nexus_webview(&handle, "nexus-apikey-fetch", "获取 API Key中...", url, false)?;
+
+    let poll_window = window.clone();
+    let poll_handle = handle.clone();
+    let api_key_path_clone = api_key_path.clone();
+
+    let result = tokio::time::timeout(std::time::Duration::from_secs(60), async move {
+        let eval_js = |win: &tauri::WebviewWindow, js: &str| -> Option<String> {
+            eval_js_timeout(win, js, 3)
+        };
+
+        let mut cf_shown = false;
+        let mut graphql_requested = false;
+
+        let graphql_fire_js = r##"
+            (() => {
+                try {
+                    if (window.__nexusGraphQLDone || window.__nexusGraphQLFetching) return 'skip';
+                    window.__nexusGraphQLFetching = true;
+                    fetch('https://api-router.nexusmods.com/graphql', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-GraphQL-OperationName': 'PersonalApiKey'
+                        },
+                        body: JSON.stringify({
+                            query: `
+                                query PersonalApiKey {
+                                  personalApiKey {
+                                    applicationId
+                                    id
+                                    key
+                                    userId
+                                  }
+                                }
+                            `,
+                            operationName: 'PersonalApiKey'
+                        }),
+                        credentials: 'include'
+                    }).then(r => r.json()).then(json => {
+                        window.__nexusGraphQLData = JSON.stringify(json);
+                        window.__nexusGraphQLDone = true;
+                    }).catch(e => {
+                        window.__nexusGraphQLError = String(e);
+                    });
+                    return 'started';
+                } catch(e) { return 'error:' + String(e); }
+            })()
+        "##;
+
+        let graphql_status_js = r##"
+            (() => {
+                if (window.__nexusGraphQLDone) return {s:"done"};
+                if (window.__nexusGraphQLError) return {s:"error",e:window.__nexusGraphQLError};
+                if (window.__nexusGraphQLFetching) return {s:"fetching"};
+                return {s:"idle"};
+            })()
+        "##;
+
+        let graphql_retrieve_js = r##"
+            (() => { try { return JSON.parse(window.__nexusGraphQLData) || null; } catch(e) { return null; } })()
+        "##;
+
+        loop {
+            // If GraphQL was requested, poll for its completion
+            if graphql_requested {
+                if let Some(status_res) = eval_js(&poll_window, graphql_status_js) {
+                    if let Ok(status) = serde_json::from_str::<serde_json::Value>(&status_res) {
+                        let s = status.get("s").and_then(|v| v.as_str()).unwrap_or_default();
+                        match s {
+                            "done" => {
+                                if let Some(data_str) = eval_js(&poll_window, graphql_retrieve_js) {
+                                    if let Ok(data) = serde_json::from_str::<serde_json::Value>(&data_str) {
+                                        if let Some(key) = data.get("data")
+                                            .and_then(|d| d.get("personalApiKey"))
+                                            .and_then(|p| p.get("key"))
+                                            .and_then(|k| k.as_str())
+                                        {
+                                            let key_str = key.trim().to_string();
+                                            if !key_str.is_empty() {
+                                                return serde_json::json!({ "apiKey": key_str });
+                                            }
+                                        }
+                                        return serde_json::json!({ "apiKey": "", "error": "GraphQL 返回的数据中没有找到 API Key" });
+                                    } else {
+                                        return serde_json::json!({ "apiKey": "", "error": "GraphQL 数据解析失败" });
+                                    }
+                                } else {
+                                    return serde_json::json!({ "apiKey": "", "error": "无法获取 GraphQL 返回数据" });
+                                }
+                            }
+                            "error" => {
+                                let err = status.get("e").and_then(|v| v.as_str()).unwrap_or("unknown");
+                                return serde_json::json!({ "apiKey": "", "error": format!("GraphQL 请求失败: {}", err) });
+                            }
+                            _ => {} // still fetching
+                        }
+                    }
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                continue;
+            }
+
+            // Detect Cloudflare
+            let is_cf = check_cloudflare_challenge(&poll_window);
+            update_window_visibility_for_cf(
+                &poll_window,
+                &poll_handle,
+                is_cf,
+                &mut cf_shown,
+                false,
+                "Nexus 需要验证",
+                "获取 API Key中...",
+            );
+
+            if !is_cf {
+                graphql_requested = true;
+                let _ = eval_js(&poll_window, graphql_fire_js);
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            }
+
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+    }).await;
+
+    let _ = window.destroy();
+
+    match result {
+        Ok(val) => {
+            let api_key = val.get("apiKey").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+            if !api_key.is_empty() {
+                let _ = fs::write(&api_key_path_clone, &api_key);
+            }
+            Ok(val)
+        }
+        Err(_) => Ok(serde_json::json!({ "apiKey": "", "error": "获取 API Key 超时" })),
+    }
+}
+
+#[tauri::command]
 pub fn logout_nexus(app: tauri::AppHandle) -> Result<(), String> {
     use tauri::Manager;
 
@@ -1112,53 +1386,28 @@ pub fn logout_nexus(app: tauri::AppHandle) -> Result<(), String> {
         }
     }
 
+    // Also clear cached API key file
+    if let Some(app_data) = app.path().app_data_dir().ok() {
+        let api_key_path = app_data.join("nexus_api_key.txt");
+        if api_key_path.exists() {
+            let _ = fs::remove_file(&api_key_path);
+        }
+    }
+
     Ok(())
 }
 
 #[tauri::command]
 pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Result<(), String> {
-    use tauri::Manager;
-
     let url_str = format!("https://www.nexusmods.com/stardewvalley/mods/{}", mod_id);
     let url = url_str.parse::<tauri::Url>().map_err(|e| e.to_string())?;
 
     let handle = app.clone();
 
-    // Resolve persistent data directory for WebView cookie/localStorage persistence
-    let data_dir = app
-        .path()
-        .app_data_dir()
-        .ok()
-        .map(|p| p.join("webview_data"));
-    if let Some(ref dir) = data_dir {
-        let _ = fs::create_dir_all(dir);
-    }
-
     tauri::async_runtime::spawn(async move {
         use tauri::Emitter;
 
-        // Destroy old scraper window if it exists
-        if let Some(old_window) = handle.get_webview_window("nexus-scraper") {
-            let _ = old_window.destroy();
-        }
-
-        let mut builder = tauri::WebviewWindowBuilder::new(
-            &handle,
-            "nexus-scraper",
-            tauri::WebviewUrl::External(url)
-        )
-        .title("Nexus 验证中...")
-        .inner_size(960.0, 720.0)
-        .min_inner_size(760.0, 560.0)
-        .center()
-        .visible(true);
-
-        // Set persistent data directory for cookie/localStorage support
-        if let Some(dir) = data_dir {
-            builder = builder.data_directory(dir);
-        }
-
-        let window = match builder.build() {
+        let window = match create_nexus_webview(&handle, "nexus-scraper", "Nexus 验证中...", url, false) {
             Ok(w) => w,
             Err(e) => {
                 println!("Failed to build scraper window: {:?}", e);
@@ -1166,28 +1415,6 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
             }
         };
 
-        // Start minimized — only show when CF challenge needs user interaction
-        let _ = window.minimize();
-
-        let center_over_main = |win: &tauri::WebviewWindow, app_handle: &tauri::AppHandle| {
-            if let Some(main_window) = app_handle.get_webview_window("main") {
-                if let (Ok(main_pos), Ok(main_size), Ok(win_size)) = (
-                    main_window.outer_position(),
-                    main_window.inner_size(),
-                    win.inner_size(),
-                ) {
-                    let x = main_pos.x + ((main_size.width as i32 - win_size.width as i32) / 2);
-                    let y = main_pos.y + ((main_size.height as i32 - win_size.height as i32) / 2);
-                    let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
-                    return;
-                }
-            }
-            let _ = win.center();
-        };
-
-        center_over_main(&window, &handle);
-
-        // Poll from Rust side via eval() — no need for __TAURI__ in the webview
         let poll_window = window.clone();
         let poll_handle = handle.clone();
         tauri::async_runtime::spawn(async move {
@@ -1195,13 +1422,8 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
             let mut cf_shown = false;
             let mut last_title = String::new();
 
-            // Helper: eval JS and get result via channel
             let eval_js = |win: &tauri::WebviewWindow, js: &str| -> Option<String> {
-                let (tx, rx) = std::sync::mpsc::channel::<String>();
-                if win.eval_with_callback(js, move |result| { let _ = tx.send(result); }).is_err() {
-                    return None;
-                }
-                rx.recv_timeout(std::time::Duration::from_secs(2)).ok()
+                eval_js_timeout(win, js, 2)
             };
 
             loop {
@@ -1215,16 +1437,41 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
                     return;
                 }
 
+                // Check Cloudflare challenge
+                let is_challenge = check_cloudflare_challenge(&poll_window);
+                if is_challenge && !cf_shown {
+                    let _ = poll_handle.emit("respond-nexus-html", serde_json::json!({
+                        "status": "challenge"
+                    }));
+                }
+                if !is_challenge && cf_shown && last_title == "Nexus 需要验证" {
+                    let _ = poll_handle.emit("respond-nexus-html", serde_json::json!({
+                        "status": "loading"
+                    }));
+                }
+
+                update_window_visibility_for_cf(
+                    &poll_window,
+                    &poll_handle,
+                    is_challenge,
+                    &mut cf_shown,
+                    false,
+                    "Nexus 需要验证",
+                    "Nexus 页面加载中...",
+                );
+
+                if is_challenge {
+                    last_title = "Nexus 需要验证".to_string();
+                } else if last_title != "Nexus 页面加载中..." {
+                    last_title = "Nexus 页面加载中...".to_string();
+                }
+
                 // Check page state directly. This is more reliable than depending on an injected
                 // page script because Nexus/consent/challenge navigations can replace the document.
                 let snapshot_json = match eval_js(&poll_window, r##"
                     (() => {
                         try {
                             const html = document.documentElement ? document.documentElement.outerHTML : "";
-                            const text = document.body ? document.body.innerText : "";
-                            const lowerHtml = html.toLowerCase();
-                            const lowerTitle = (document.title || "").toLowerCase();
-                            const lowerHref = location.href.toLowerCase();
                             const ogTitle = document.querySelector("meta[property='og:title']")?.getAttribute("content") || "";
                             const ogDescription = document.querySelector("meta[property='og:description']")?.getAttribute("content") || "";
                             const hasNexusDetailMarker =
@@ -1232,42 +1479,22 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
                             const hasNexusPageMarker =
                                 location.hostname.endsWith("nexusmods.com") &&
                                 hasNexusDetailMarker &&
-                                !lowerTitle.includes("just a moment") &&
-                                !lowerTitle.includes("checking your browser") &&
-                                !lowerTitle.includes("attention required") &&
+                                !document.title.toLowerCase().includes("just a moment") &&
+                                !document.title.toLowerCase().includes("checking your browser") &&
+                                !document.title.toLowerCase().includes("attention required") &&
                                 (
                                     ogTitle.toLowerCase().includes("nexus") ||
                                     ogDescription.length > 0 ||
                                     !!document.querySelector("a[href*='/stardewvalley/mods/'], a[href*='/mods/']")
                                 );
-                            const hasChallengeMarker =
-                                lowerTitle.includes("just a moment") ||
-                                lowerTitle.includes("checking your browser") ||
-                                lowerTitle.includes("attention required") ||
-                                lowerHref.includes("captcha") ||
-                                lowerHref.includes("challenge") ||
-                                lowerHtml.includes("cf-turnstile") ||
-                                lowerHtml.includes("challenges.cloudflare.com") ||
-                                lowerHtml.includes("/cdn-cgi/challenge-platform/") ||
-                                lowerHtml.includes("cf-challenge") ||
-                                lowerHtml.includes("cloudflare ray id") ||
-                                text.includes("Checking if the site connection is secure") ||
-                                text.includes("Verify you are human");
-                            const isChallenge = !hasNexusPageMarker && hasChallengeMarker;
                             return {
                                 readyState: document.readyState,
-                                title: document.title || "",
-                                href: location.href,
-                                isChallenge,
                                 hasDetails: hasNexusPageMarker,
                                 html
                             };
                         } catch (error) {
                             return {
                                 readyState: "error",
-                                title: "",
-                                href: "",
-                                isChallenge: false,
                                 hasDetails: false,
                                 html: "",
                                 error: String(error)
@@ -1289,45 +1516,6 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
                         continue;
                     }
                 };
-
-                // Show window if Cloudflare challenge is active
-                let title = snapshot
-                    .get("title")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default();
-                let href = snapshot
-                    .get("href")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default();
-                let is_challenge = snapshot
-                    .get("isChallenge")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false)
-                    || title.contains("Just a moment")
-                    || title.contains("Checking your browser")
-                    || href.contains("captcha")
-                    || href.contains("challenge");
-
-                if is_challenge && !cf_shown {
-                    cf_shown = true;
-                    last_title = "Nexus 需要验证".to_string();
-                    let _ = poll_window.set_title(&last_title);
-                    center_over_main(&poll_window, &poll_handle);
-                    let _ = poll_window.show();
-                    let _ = poll_window.unminimize();
-                    let _ = poll_window.set_focus();
-                    let _ = poll_handle.emit("respond-nexus-html", serde_json::json!({
-                        "status": "challenge"
-                    }));
-                }
-
-                if !is_challenge && cf_shown && last_title == "Nexus 需要验证" {
-                    last_title = "Nexus 页面加载中...".to_string();
-                    let _ = poll_window.set_title(&last_title);
-                    let _ = poll_handle.emit("respond-nexus-html", serde_json::json!({
-                        "status": "loading"
-                    }));
-                }
 
                 // HTML ready — retrieve and emit. Nexus fills parts of the page asynchronously,
                 // so wait for detail markers instead of only DOMContentLoaded.
@@ -1353,11 +1541,6 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
                     }));
                     let _ = poll_window.destroy();
                     return;
-                }
-
-                if !is_challenge && last_title != "Nexus 页面加载中..." {
-                    last_title = "Nexus 页面加载中...".to_string();
-                    let _ = poll_window.set_title(&last_title);
                 }
 
                 tokio::time::sleep(std::time::Duration::from_millis(500)).await;
