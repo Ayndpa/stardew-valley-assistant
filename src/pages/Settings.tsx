@@ -19,6 +19,9 @@ import {
   Moon,
   Monitor,
   Check,
+  Globe,
+  LogOut,
+  Loader2,
 } from "lucide-react"
 
 // Helper functions for dynamic imports to ensure web compatibility
@@ -113,10 +116,63 @@ export function Settings({ selectedSaveId }: { selectedSaveId: string }) {
     return localStorage.getItem("stardewGameDirectory") || ""
   })
   const [isValidPath, setIsValidPath] = useState<boolean | null>(null)
+
+  // NexusMods login state
+  const [nexusLoggedIn, setNexusLoggedIn] = useState(false)
+  const [nexusUsername, setNexusUsername] = useState("")
+  const [nexusChecking, setNexusChecking] = useState(false)
+  const [nexusLoggingIn, setNexusLoggingIn] = useState(false)
   
 
   const [detail, setDetail] = useState<SaveDetail | null>(null)
   const [loading, setLoading] = useState(true)
+
+  // Check NexusMods login status on mount
+  useEffect(() => {
+    async function checkLogin() {
+      const invoke = await getTauriInvoke()
+      if (!invoke) return
+      setNexusChecking(true)
+      try {
+        const result = await invoke("check_nexus_login_status") as { loggedIn: boolean; username: string }
+        setNexusLoggedIn(result.loggedIn)
+        setNexusUsername(result.username || localStorage.getItem("nexusUsername") || "")
+        if (result.username) localStorage.setItem("nexusUsername", result.username)
+      } catch (err) {
+        console.error("Failed to check NexusMods login status:", err)
+      } finally {
+        setNexusChecking(false)
+      }
+    }
+    checkLogin()
+  }, [])
+
+  // Listen for login result events from Rust
+  useEffect(() => {
+    let unlisten: (() => void) | null = null
+    async function setupListener() {
+      if (typeof window === "undefined" || !(window as any).__TAURI_INTERNALS__) return
+      try {
+        const { listen } = await import("@tauri-apps/api/event")
+        const unsub = await listen<{ status: string; username?: string }>("nexus-login-result", (event) => {
+          if (event.payload.status === "success") {
+            setNexusLoggedIn(true)
+            const name = event.payload.username || ""
+            setNexusUsername(name)
+            if (name) localStorage.setItem("nexusUsername", name)
+            setNexusLoggingIn(false)
+          } else if (event.payload.status === "timeout") {
+            setNexusLoggingIn(false)
+          }
+        })
+        unlisten = unsub
+      } catch (err) {
+        console.error("Failed to setup login listener:", err)
+      }
+    }
+    setupListener()
+    return () => { if (unlisten) unlisten() }
+  }, [])
 
   useEffect(() => {
     async function fetchDetail() {
@@ -216,6 +272,31 @@ export function Settings({ selectedSaveId }: { selectedSaveId: string }) {
   const handleSaveDir = (val: string) => {
     setGameDir(val)
     localStorage.setItem("stardewGameDirectory", val)
+  }
+
+  const handleNexusLogin = async () => {
+    const invoke = await getTauriInvoke()
+    if (!invoke) return
+    setNexusLoggingIn(true)
+    try {
+      await invoke("open_nexus_login_window")
+    } catch (err) {
+      console.error("Failed to open NexusMods login:", err)
+      setNexusLoggingIn(false)
+    }
+  }
+
+  const handleNexusLogout = async () => {
+    const invoke = await getTauriInvoke()
+    if (!invoke) return
+    try {
+      await invoke("logout_nexus")
+      setNexusLoggedIn(false)
+      setNexusUsername("")
+      localStorage.removeItem("nexusUsername")
+    } catch (err) {
+      console.error("Failed to logout NexusMods:", err)
+    }
   }
 
   return (
@@ -362,6 +443,85 @@ export function Settings({ selectedSaveId }: { selectedSaveId: string }) {
           </CardContent>
         </Card>
 
+
+        {/* NexusMods Account */}
+        <Card className="overflow-hidden border border-border/80">
+          <CardHeader className="bg-gradient-to-r from-orange-500/10 via-transparent to-transparent pb-4">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-full bg-orange-500/10 flex items-center justify-center border border-orange-500/20 shrink-0">
+                <Globe className="h-5 w-5 text-orange-500" />
+              </div>
+              <div>
+                <CardTitle className="text-lg font-bold">NexusMods 账号</CardTitle>
+                <CardDescription>
+                  登录 NexusMods 以便下载模组时获取链接
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4 pt-2">
+            {nexusChecking ? (
+              <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>正在检查登录状态...</span>
+              </div>
+            ) : nexusLoggedIn ? (
+              <div className="flex items-center justify-between p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
+                <div className="flex items-center gap-3">
+                  <div className="h-9 w-9 rounded-full bg-emerald-500/15 flex items-center justify-center">
+                    <User className="h-4 w-4 text-emerald-500" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">
+                      {nexusUsername || "已登录"}
+                    </p>
+                    <p className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                      <CheckCircle2 className="h-3 w-3" />
+                      已登录 NexusMods
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleNexusLogout}
+                  className="flex items-center gap-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                >
+                  <LogOut className="h-4 w-4" />
+                  退出登录
+                </Button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between p-3 rounded-lg bg-accent/30 border border-border/60">
+                <div className="flex items-center gap-3">
+                  <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center">
+                    <Globe className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">未登录</p>
+                    <p className="text-xs text-muted-foreground">
+                      登录后可获取模组下载链接
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={handleNexusLogin}
+                  disabled={nexusLoggingIn}
+                  className="flex items-center gap-2"
+                >
+                  {nexusLoggingIn ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Globe className="h-4 w-4" />
+                  )}
+                  {nexusLoggingIn ? "等待登录..." : "登录 NexusMods"}
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Notification Settings */}
         <Card>

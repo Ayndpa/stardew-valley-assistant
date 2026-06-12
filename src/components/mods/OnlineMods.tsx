@@ -11,6 +11,7 @@ import {
   Eye
 } from "lucide-react"
 import { OnlineModDetailModal } from "./OnlineModDetailModal"
+import { NexusModsRanking } from "./NexusModsRanking"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card"
@@ -272,6 +273,9 @@ export function OnlineMods() {
 
   return (
     <div className="space-y-6">
+      {/* NexusMods Download Ranking */}
+      <NexusModsRanking />
+
       {/* Search and Filters */}
       <div className="flex flex-col md:flex-row gap-4 justify-between items-center bg-card border border-border p-4 rounded-xl shadow-sm">
         <div className="relative w-full md:max-w-md">

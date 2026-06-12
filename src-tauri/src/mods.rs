@@ -5,6 +5,23 @@ use serde::{Serialize, Deserialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
+pub struct ModStateEntry {
+    pub folder_name: String,
+    pub is_enabled: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ModProfile {
+    pub id: String,
+    pub name: String,
+    pub mod_states: Vec<ModStateEntry>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct ModConfigField {
     pub key: String,
     pub label: String,
@@ -242,6 +259,247 @@ pub fn save_mod_config(game_dir: String, folder_name: String, config: serde_json
 }
 
 #[tauri::command]
+pub async fn open_nexus_ranking_scraper(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+
+    // NexusMods most downloaded mods page for Stardew Valley (all time)
+    let url_str = "https://www.nexusmods.com/games/stardewvalley/mods?sort=downloads&timeRange=allTime".to_string();
+    let url = url_str.parse::<tauri::Url>().map_err(|e| e.to_string())?;
+
+    let handle = app.clone();
+
+    // Resolve persistent data directory for WebView cookie/localStorage persistence
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .ok()
+        .map(|p| p.join("webview_data"));
+    if let Some(ref dir) = data_dir {
+        let _ = fs::create_dir_all(dir);
+    }
+
+    tauri::async_runtime::spawn(async move {
+        use tauri::Emitter;
+
+        // Destroy old ranking scraper window if it exists
+        if let Some(old_window) = handle.get_webview_window("nexus-ranking-scraper") {
+            let _ = old_window.destroy();
+        }
+
+        let mut builder = tauri::WebviewWindowBuilder::new(
+            &handle,
+            "nexus-ranking-scraper",
+            tauri::WebviewUrl::External(url)
+        )
+        .title("Nexus 排行榜加载中...")
+        .inner_size(960.0, 720.0)
+        .min_inner_size(760.0, 560.0)
+        .center()
+        .visible(true);
+
+        // Set persistent data directory for cookie/localStorage support
+        if let Some(dir) = data_dir {
+            builder = builder.data_directory(dir);
+        }
+
+        let window = match builder.build() {
+            Ok(w) => w,
+            Err(e) => {
+                println!("Failed to build ranking scraper window: {:?}", e);
+                return;
+            }
+        };
+
+        // Start minimized — only show when CF challenge needs user interaction
+        let _ = window.minimize();
+
+        let center_over_main = |win: &tauri::WebviewWindow, app_handle: &tauri::AppHandle| {
+            if let Some(main_window) = app_handle.get_webview_window("main") {
+                if let (Ok(main_pos), Ok(main_size), Ok(win_size)) = (
+                    main_window.outer_position(),
+                    main_window.inner_size(),
+                    win.inner_size(),
+                ) {
+                    let x = main_pos.x + ((main_size.width as i32 - win_size.width as i32) / 2);
+                    let y = main_pos.y + ((main_size.height as i32 - win_size.height as i32) / 2);
+                    let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
+                    return;
+                }
+            }
+            let _ = win.center();
+        };
+
+        center_over_main(&window, &handle);
+
+        // Poll from Rust side via eval()
+        let poll_window = window.clone();
+        let poll_handle = handle.clone();
+        tauri::async_runtime::spawn(async move {
+            let timeout = std::time::Instant::now() + std::time::Duration::from_secs(180);
+            let mut cf_shown = false;
+            let mut last_title = String::new();
+
+            let eval_js = |win: &tauri::WebviewWindow, js: &str| -> Option<String> {
+                let (tx, rx) = std::sync::mpsc::channel::<String>();
+                if win.eval_with_callback(js, move |result| { let _ = tx.send(result); }).is_err() {
+                    return None;
+                }
+                rx.recv_timeout(std::time::Duration::from_secs(2)).ok()
+            };
+
+            loop {
+                if std::time::Instant::now() > timeout {
+                    println!("[RankingScraper] Timeout reached, destroying window");
+                    let _ = poll_handle.emit("respond-nexus-ranking-html", serde_json::json!({
+                        "error": "加载超时，请重试"
+                    }));
+                    let _ = poll_window.destroy();
+                    return;
+                }
+
+                let snapshot_json = match eval_js(&poll_window, r##"
+                    (() => {
+                        try {
+                            const html = document.documentElement ? document.documentElement.outerHTML : "";
+                            const text = document.body ? document.body.innerText : "";
+                            const lowerHtml = html.toLowerCase();
+                            const lowerTitle = (document.title || "").toLowerCase();
+                            const lowerHref = location.href.toLowerCase();
+                            // Detect NexusMods new-style mod list page markers (data-e2eid and .mods-grid)
+                            const hasModListMarker =
+                                !!document.querySelector('[data-e2eid="mod-tile"], .mods-grid, [data-e2eid="result-count"]');
+                            const hasNexusListPage =
+                                location.hostname.endsWith("nexusmods.com") &&
+                                hasModListMarker &&
+                                !lowerTitle.includes("just a moment") &&
+                                !lowerTitle.includes("checking your browser") &&
+                                !lowerTitle.includes("attention required");
+                            const hasChallengeMarker =
+                                lowerTitle.includes("just a moment") ||
+                                lowerTitle.includes("checking your browser") ||
+                                lowerTitle.includes("attention required") ||
+                                lowerHref.includes("captcha") ||
+                                lowerHref.includes("challenge") ||
+                                lowerHtml.includes("cf-turnstile") ||
+                                lowerHtml.includes("challenges.cloudflare.com") ||
+                                lowerHtml.includes("/cdn-cgi/challenge-platform/") ||
+                                lowerHtml.includes("cf-challenge") ||
+                                lowerHtml.includes("cloudflare ray id") ||
+                                text.includes("Checking if the site connection is secure") ||
+                                text.includes("Verify you are human");
+                            const isChallenge = !hasNexusListPage && hasChallengeMarker;
+                            return {
+                                readyState: document.readyState,
+                                title: document.title || "",
+                                href: location.href,
+                                isChallenge,
+                                hasModList: hasNexusListPage,
+                                html
+                            };
+                        } catch (error) {
+                            return {
+                                readyState: "error",
+                                title: "",
+                                href: "",
+                                isChallenge: false,
+                                hasModList: false,
+                                html: "",
+                                error: String(error)
+                            };
+                        }
+                    })()
+                "##) {
+                    None => {
+                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                        continue;
+                    }
+                    Some(s) => s,
+                };
+
+                let snapshot: serde_json::Value = match serde_json::from_str(&snapshot_json) {
+                    Ok(value) => value,
+                    Err(_) => {
+                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                        continue;
+                    }
+                };
+
+                let title = snapshot
+                    .get("title")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default();
+                let href = snapshot
+                    .get("href")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default();
+                let is_challenge = snapshot
+                    .get("isChallenge")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false)
+                    || title.contains("Just a moment")
+                    || title.contains("Checking your browser")
+                    || href.contains("captcha")
+                    || href.contains("challenge");
+
+                if is_challenge && !cf_shown {
+                    cf_shown = true;
+                    last_title = "Nexus 需要验证".to_string();
+                    let _ = poll_window.set_title(&last_title);
+                    center_over_main(&poll_window, &poll_handle);
+                    let _ = poll_window.show();
+                    let _ = poll_window.unminimize();
+                    let _ = poll_window.set_focus();
+                    let _ = poll_handle.emit("respond-nexus-ranking-html", serde_json::json!({
+                        "status": "challenge"
+                    }));
+                }
+
+                if !is_challenge && cf_shown && last_title == "Nexus 需要验证" {
+                    last_title = "Nexus 排行榜页面加载中...".to_string();
+                    let _ = poll_window.set_title(&last_title);
+                    let _ = poll_handle.emit("respond-nexus-ranking-html", serde_json::json!({
+                        "status": "loading"
+                    }));
+                }
+
+                let ready_state = snapshot
+                    .get("readyState")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default();
+                let has_mod_list = snapshot
+                    .get("hasModList")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                let html = snapshot
+                    .get("html")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+
+                if !is_challenge && ready_state == "complete" && has_mod_list {
+                    let _ = poll_window.set_title("Nexus 排行榜已获取");
+                    println!("[RankingScraper] Got HTML, length: {}", html.len());
+                    let _ = poll_handle.emit("respond-nexus-ranking-html", serde_json::json!({
+                        "html": html
+                    }));
+                    let _ = poll_window.destroy();
+                    return;
+                }
+
+                if !is_challenge && last_title != "Nexus 排行榜页面加载中..." {
+                    last_title = "Nexus 排行榜页面加载中...".to_string();
+                    let _ = poll_window.set_title(&last_title);
+                }
+
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            }
+        });
+    });
+
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn fetch_smapi_compatibility_mods(app: tauri::AppHandle) -> Result<Vec<serde_json::Value>, String> {
     use tauri::Manager;
 
@@ -325,6 +583,538 @@ fn extract_fetch_uri(html: &str) -> Option<String> {
     None
 }
 
+// ==================== Profile Management ====================
+
+fn get_profiles_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    use tauri::Manager;
+    let app_data = app.path().app_data_dir().map_err(|e| format!("Failed to resolve app data: {}", e))?;
+    let profiles_dir = app_data.join("profiles");
+    fs::create_dir_all(&profiles_dir).map_err(|e| format!("Failed to create profiles dir: {}", e))?;
+    Ok(profiles_dir)
+}
+
+#[tauri::command]
+pub fn list_profiles(app: tauri::AppHandle) -> Result<Vec<ModProfile>, String> {
+    let profiles_dir = get_profiles_dir(&app)?;
+    let mut profiles = Vec::new();
+
+    let entries = match fs::read_dir(&profiles_dir) {
+        Ok(e) => e,
+        Err(_) => return Ok(profiles),
+    };
+
+    for entry in entries {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) == Some("json") {
+            if let Ok(content) = fs::read_to_string(&path) {
+                if let Ok(profile) = serde_json::from_str::<ModProfile>(&content) {
+                    profiles.push(profile);
+                }
+            }
+        }
+    }
+
+    // Sort by updated_at descending
+    profiles.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    Ok(profiles)
+}
+
+#[tauri::command]
+pub fn save_profile(app: tauri::AppHandle, name: String, mod_states: Vec<ModStateEntry>) -> Result<ModProfile, String> {
+    let profiles_dir = get_profiles_dir(&app)?;
+    let now = chrono_now();
+    let id = sanitize_filename(&name);
+
+    // Check if profile with same name exists, update it
+    let profile_path = profiles_dir.join(format!("{}.json", id));
+    let created_at = if profile_path.exists() {
+        if let Ok(content) = fs::read_to_string(&profile_path) {
+            if let Ok(existing) = serde_json::from_str::<ModProfile>(&content) {
+                existing.created_at
+            } else {
+                now.clone()
+            }
+        } else {
+            now.clone()
+        }
+    } else {
+        now.clone()
+    };
+
+    let profile = ModProfile {
+        id: id.clone(),
+        name,
+        mod_states,
+        created_at,
+        updated_at: now,
+    };
+
+    let json_str = serde_json::to_string_pretty(&profile).map_err(|e| format!("Serialize error: {}", e))?;
+    fs::write(&profile_path, json_str.as_bytes()).map_err(|e| format!("Write error: {}", e))?;
+
+    Ok(profile)
+}
+
+#[tauri::command]
+pub fn delete_profile(app: tauri::AppHandle, profile_id: String) -> Result<(), String> {
+    let profiles_dir = get_profiles_dir(&app)?;
+    let profile_path = profiles_dir.join(format!("{}.json", profile_id));
+    if profile_path.exists() {
+        fs::remove_file(&profile_path).map_err(|e| format!("Delete error: {}", e))?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn apply_profile(game_dir: String, mod_states: Vec<ModStateEntry>) -> Result<Vec<(String, String)>, String> {
+    let mods_dir = Path::new(&game_dir).join("Mods");
+    if !mods_dir.exists() {
+        return Err("Mods folder does not exist".to_string());
+    }
+
+    let mut results = Vec::new();
+
+    for entry in &mod_states {
+        let clean_name = entry.folder_name.trim_start_matches('.').to_string();
+
+        // Try both enabled and disabled forms
+        let enabled_path = mods_dir.join(&clean_name);
+        let disabled_path = mods_dir.join(format!(".{}", clean_name));
+
+        if entry.is_enabled {
+            // Want enabled: if disabled exists, rename to enabled
+            if disabled_path.exists() && !enabled_path.exists() {
+                if let Err(e) = fs::rename(&disabled_path, &enabled_path) {
+                    println!("Failed to enable {}: {}", clean_name, e);
+                    continue;
+                }
+                results.push((clean_name, "enabled".to_string()));
+            }
+        } else {
+            // Want disabled: if enabled exists, rename to disabled
+            if enabled_path.exists() && !disabled_path.exists() {
+                if let Err(e) = fs::rename(&enabled_path, &disabled_path) {
+                    println!("Failed to disable {}: {}", clean_name, e);
+                    continue;
+                }
+                results.push((clean_name, "disabled".to_string()));
+            }
+        }
+    }
+
+    Ok(results)
+}
+
+#[tauri::command]
+pub fn export_profile(profile: ModProfile) -> Result<String, String> {
+    serde_json::to_string_pretty(&profile).map_err(|e| format!("Export error: {}", e))
+}
+
+#[tauri::command]
+pub fn import_profile(app: tauri::AppHandle, json_data: String) -> Result<ModProfile, String> {
+    let profile: ModProfile = serde_json::from_str(&json_data).map_err(|e| format!("Invalid profile JSON: {}", e))?;
+    // Re-save with a unique id to avoid conflicts
+    let profiles_dir = get_profiles_dir(&app)?;
+    let now = chrono_now();
+    let mut final_profile = profile;
+    final_profile.updated_at = now.clone();
+    if final_profile.created_at.is_empty() {
+        final_profile.created_at = now;
+    }
+
+    // Ensure unique id
+    let mut id = sanitize_filename(&final_profile.name);
+    let mut counter = 1;
+    while profiles_dir.join(format!("{}.json", id)).exists() {
+        id = format!("{}-{}", sanitize_filename(&final_profile.name), counter);
+        counter += 1;
+    }
+    final_profile.id = id.clone();
+
+    let json_str = serde_json::to_string_pretty(&final_profile).map_err(|e| format!("Serialize error: {}", e))?;
+    fs::write(profiles_dir.join(format!("{}.json", id)), json_str.as_bytes()).map_err(|e| format!("Write error: {}", e))?;
+
+    Ok(final_profile)
+}
+
+fn sanitize_filename(name: &str) -> String {
+    name.to_lowercase()
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string()
+}
+
+fn chrono_now() -> String {
+    // Simple ISO 8601 timestamp without external crate
+    use std::time::SystemTime;
+    let now = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    format!("{}", now)
+}
+
+#[tauri::command]
+pub fn export_profile_to_file(_app: tauri::AppHandle, profile: ModProfile, file_path: String) -> Result<String, String> {
+    let json_str = serde_json::to_string_pretty(&profile).map_err(|e| format!("Export error: {}", e))?;
+    let path = std::path::Path::new(&file_path);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Create dir error: {}", e))?;
+    }
+    let mut file = File::create(path).map_err(|e| format!("Create file error: {}", e))?;
+    file.write_all(json_str.as_bytes()).map_err(|e| format!("Write error: {}", e))?;
+    Ok(file_path)
+}
+
+#[tauri::command]
+pub fn import_profile_from_file(app: tauri::AppHandle, file_path: String) -> Result<ModProfile, String> {
+    let content = fs::read_to_string(&file_path).map_err(|e| format!("Read file error: {}", e))?;
+    import_profile(app, content)
+}
+
+#[tauri::command]
+pub async fn open_nexus_login_window(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+
+    let url_str = "https://www.nexusmods.com/users/login".to_string();
+    let url = url_str.parse::<tauri::Url>().map_err(|e| e.to_string())?;
+
+    let handle = app.clone();
+
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .ok()
+        .map(|p| p.join("webview_data"));
+    if let Some(ref dir) = data_dir {
+        let _ = fs::create_dir_all(dir);
+    }
+
+    tauri::async_runtime::spawn(async move {
+        use tauri::Emitter;
+
+        // Destroy old login window if it exists
+        if let Some(old_window) = handle.get_webview_window("nexus-login") {
+            let _ = old_window.destroy();
+        }
+
+        let mut builder = tauri::WebviewWindowBuilder::new(
+            &handle,
+            "nexus-login",
+            tauri::WebviewUrl::External(url)
+        )
+        .title("NexusMods 登录")
+        .inner_size(960.0, 720.0)
+        .min_inner_size(760.0, 560.0)
+        .center()
+        .visible(true);
+
+        if let Some(dir) = data_dir {
+            builder = builder.data_directory(dir);
+        }
+
+        let window = match builder.build() {
+            Ok(w) => w,
+            Err(e) => {
+                println!("[NexusLogin] Failed to build login window: {:?}", e);
+                return;
+            }
+        };
+
+        // Start minimized — will unminimize when page is ready for user interaction
+        let _ = window.minimize();
+
+        let center_over_main = |win: &tauri::WebviewWindow, app_handle: &tauri::AppHandle| {
+            if let Some(main_window) = app_handle.get_webview_window("main") {
+                if let (Ok(main_pos), Ok(main_size), Ok(win_size)) = (
+                    main_window.outer_position(),
+                    main_window.inner_size(),
+                    win.inner_size(),
+                ) {
+                    let x = main_pos.x + ((main_size.width as i32 - win_size.width as i32) / 2);
+                    let y = main_pos.y + ((main_size.height as i32 - win_size.height as i32) / 2);
+                    let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
+                    return;
+                }
+            }
+            let _ = win.center();
+        };
+
+        center_over_main(&window, &handle);
+
+        let poll_window = window.clone();
+        let poll_handle = handle.clone();
+        tauri::async_runtime::spawn(async move {
+            let timeout = std::time::Instant::now() + std::time::Duration::from_secs(300);
+            let mut page_shown = false;
+
+            let eval_js = |win: &tauri::WebviewWindow, js: &str| -> Option<String> {
+                let (tx, rx) = std::sync::mpsc::channel::<String>();
+                if win.eval_with_callback(js, move |result| { let _ = tx.send(result); }).is_err() {
+                    return None;
+                }
+                rx.recv_timeout(std::time::Duration::from_secs(2)).ok()
+            };
+
+            loop {
+                if std::time::Instant::now() > timeout {
+                    println!("[NexusLogin] Timeout reached, destroying window");
+                    let _ = poll_handle.emit("nexus-login-result", serde_json::json!({
+                        "status": "timeout"
+                    }));
+                    let _ = poll_window.destroy();
+                    return;
+                }
+
+                let snapshot_json = match eval_js(&poll_window, r##"
+                    (() => {
+                        try {
+                            const href = location.href.toLowerCase();
+                            const title = (document.title || "").toLowerCase();
+                            const html = document.documentElement ? document.documentElement.outerHTML : "";
+                            const lowerHtml = html.toLowerCase();
+                            // Check if still on login page
+                            const isLoginPage = href.includes("/users/login") || href.includes("/login");
+                            // Check for Cloudflare challenge
+                            const isChallenge =
+                                title.includes("just a moment") ||
+                                title.includes("checking your browser") ||
+                                lowerHtml.includes("cf-turnstile") ||
+                                lowerHtml.includes("challenges.cloudflare.com") ||
+                                lowerHtml.includes("/cdn-cgi/challenge-platform/");
+                            // Check if logged in: user is redirected away from login page,
+                            // or we can see profile/avatar elements
+                            const isLoggedIn =
+                                !isLoginPage &&
+                                !isChallenge &&
+                                document.readyState === "complete" &&
+                                (
+                                    !!document.querySelector("[class*='user-avatar'], [class*='user-name'], .header-user, [class*='profile'], [data-user-id]") ||
+                                    href.includes("/users/") ||
+                                    href.includes("/account")
+                                );
+                            // Extract username if possible
+                            let username = "";
+                            const userEl = document.querySelector("[class*='user-name'], .header-user a, [class*='username']");
+                            if (userEl) username = userEl.textContent.trim();
+                            return {
+                                readyState: document.readyState,
+                                href: location.href,
+                                isLoginPage,
+                                isChallenge,
+                                isLoggedIn,
+                                username
+                            };
+                        } catch (error) {
+                            return {
+                                readyState: "error",
+                                href: "",
+                                isLoginPage: false,
+                                isChallenge: false,
+                                isLoggedIn: false,
+                                username: "",
+                                error: String(error)
+                            };
+                        }
+                    })()
+                "##) {
+                    None => {
+                        tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+                        continue;
+                    }
+                    Some(s) => s,
+                };
+
+                let snapshot: serde_json::Value = match serde_json::from_str(&snapshot_json) {
+                    Ok(value) => value,
+                    Err(_) => {
+                        tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+                        continue;
+                    }
+                };
+
+                let is_logged_in = snapshot
+                    .get("isLoggedIn")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+
+                let is_challenge = snapshot
+                    .get("isChallenge")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+
+                let is_login_page = snapshot
+                    .get("isLoginPage")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+
+                let ready_state = snapshot
+                    .get("readyState")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default();
+
+                // Show window when login page is ready or CF challenge appears
+                if !page_shown && ready_state == "complete" && (is_login_page || is_challenge) {
+                    page_shown = true;
+                    let _ = poll_window.unminimize();
+                    let _ = poll_window.show();
+                    let _ = poll_window.set_focus();
+                }
+
+                let username = snapshot
+                    .get("username")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+
+                if is_logged_in {
+                    println!("[NexusLogin] Login successful, user: {}", username);
+                    let _ = poll_handle.emit("nexus-login-result", serde_json::json!({
+                        "status": "success",
+                        "username": username
+                    }));
+                    let _ = poll_window.destroy();
+                    return;
+                }
+
+                tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+            }
+        });
+    });
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn check_nexus_login_status(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    use tauri::Manager;
+
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .ok()
+        .map(|p| p.join("webview_data"));
+
+    // If no webview_data dir exists, we're definitely not logged in
+    if let Some(ref dir) = data_dir {
+        if !dir.exists() {
+            return Ok(serde_json::json!({ "loggedIn": false, "username": "" }));
+        }
+    } else {
+        return Ok(serde_json::json!({ "loggedIn": false, "username": "" }));
+    }
+
+    let handle = app.clone();
+    let url_str = "https://www.nexusmods.com".to_string();
+    let url = url_str.parse::<tauri::Url>().map_err(|e| e.to_string())?;
+
+    // Create a hidden window to check login status
+    let mut builder = tauri::WebviewWindowBuilder::new(
+        &handle,
+        "nexus-login-check",
+        tauri::WebviewUrl::External(url)
+    )
+    .title("Checking NexusMods login...")
+    .inner_size(1.0, 1.0)
+    .visible(false);
+
+    if let Some(dir) = data_dir {
+        builder = builder.data_directory(dir);
+    }
+
+    let window = builder.build().map_err(|e| format!("Failed to create check window: {}", e))?;
+
+    let poll_window = window.clone();
+    let result = tokio::time::timeout(std::time::Duration::from_secs(30), async move {
+        let eval_js = |win: &tauri::WebviewWindow, js: &str| -> Option<String> {
+            let (tx, rx) = std::sync::mpsc::channel::<String>();
+            if win.eval_with_callback(js, move |result| { let _ = tx.send(result); }).is_err() {
+                return None;
+            }
+            rx.recv_timeout(std::time::Duration::from_secs(3)).ok()
+        };
+
+        loop {
+            let snapshot_json = match eval_js(&poll_window, r##"
+                (() => {
+                    try {
+                        if (document.readyState !== "complete") return { ready: false };
+                        const href = location.href.toLowerCase();
+                        const lowerHtml = (document.documentElement ? document.documentElement.outerHTML : "").toLowerCase();
+                        // Still on challenge page
+                        if (lowerHtml.includes("cf-turnstile") || lowerHtml.includes("challenges.cloudflare.com") || lowerHtml.includes("/cdn-cgi/challenge-platform/")) {
+                            return { ready: false };
+                        }
+                        let username = "";
+                        const userEl = document.querySelector("[class*='user-name'], .header-user a, [class*='username'], a[href*='/users/']");
+                        if (userEl) username = userEl.textContent.trim();
+                        const hasLoginBtn = !!document.querySelector("a[href*='/users/login'], [class*='login-btn'], [class*='sign-in']");
+                        const loggedIn = !hasLoginBtn && (username.length > 0 || !!document.querySelector("[class*='user-avatar'], [class*='profile']"));
+                        return { ready: true, loggedIn, username };
+                    } catch (e) {
+                        return { ready: false };
+                    }
+                })()
+            "##) {
+                None => {
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                    continue;
+                }
+                Some(s) => s,
+            };
+
+            let snapshot: serde_json::Value = match serde_json::from_str(&snapshot_json) {
+                Ok(v) => v,
+                Err(_) => {
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                    continue;
+                }
+            };
+
+            let ready = snapshot.get("ready").and_then(|v| v.as_bool()).unwrap_or(false);
+            if ready {
+                let logged_in = snapshot.get("loggedIn").and_then(|v| v.as_bool()).unwrap_or(false);
+                let username = snapshot.get("username").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+                return serde_json::json!({ "loggedIn": logged_in, "username": username });
+            }
+
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+    }).await;
+
+    let _ = window.destroy();
+
+    match result {
+        Ok(val) => Ok(val),
+        Err(_) => Ok(serde_json::json!({ "loggedIn": false, "username": "" })),
+    }
+}
+
+#[tauri::command]
+pub fn logout_nexus(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .ok()
+        .map(|p| p.join("webview_data"));
+
+    if let Some(dir) = data_dir {
+        if dir.exists() {
+            fs::remove_dir_all(&dir).map_err(|e| format!("Failed to clear login data: {}", e))?;
+        }
+    }
+
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Result<(), String> {
     use tauri::Manager;
@@ -361,7 +1151,7 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
         .inner_size(960.0, 720.0)
         .min_inner_size(760.0, 560.0)
         .center()
-        .visible(tauri::is_dev());
+        .visible(true);
 
         // Set persistent data directory for cookie/localStorage support
         if let Some(dir) = data_dir {
@@ -375,6 +1165,9 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
                 return;
             }
         };
+
+        // Start minimized — only show when CF challenge needs user interaction
+        let _ = window.minimize();
 
         let center_over_main = |win: &tauri::WebviewWindow, app_handle: &tauri::AppHandle| {
             if let Some(main_window) = app_handle.get_webview_window("main") {

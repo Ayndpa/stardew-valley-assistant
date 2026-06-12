@@ -10,6 +10,7 @@ import { SmapiManager } from "@/components/mods/SmapiManager"
 import { ModList, Mod } from "@/components/mods/ModList"
 import { ModDetail } from "@/components/mods/ModDetail"
 import { AddModModal } from "@/components/mods/AddModModal"
+import { ModProfiles, ModStateEntry } from "@/components/mods/ModProfiles"
 
 // Category Translations
 const CATEGORY_MAP = {
@@ -628,6 +629,46 @@ export function Mods({ onNavigate }: { onNavigate?: (page: Page) => void }) {
     }
   }
 
+  // Apply a profile: toggle each mod to match the profile state
+  const handleApplyProfile = async (modStates: ModStateEntry[]) => {
+    const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+    const invoke = await getTauriInvoke()
+
+    if (invoke && gameDir) {
+      try {
+        await invoke("apply_profile", { gameDir, modStates })
+        // Update local mod states to match
+        const stateMap = new Map(modStates.map((s) => [s.folderName, s.isEnabled]))
+        setMods((prev) =>
+          prev.map((m) => {
+            const cleanFolder = m.folderName.replace(/^\./, "")
+            const wantEnabled = stateMap.get(cleanFolder)
+            if (wantEnabled !== undefined && m.isEnabled !== wantEnabled) {
+              const newFolderName = wantEnabled ? cleanFolder : `.${cleanFolder}`
+              return { ...m, isEnabled: wantEnabled, folderName: newFolderName, localPath: `Mods/${newFolderName}` }
+            }
+            return m
+          })
+        )
+      } catch (err: any) {
+        throw err
+      }
+    } else {
+      // Web mock
+      const stateMap = new Map(modStates.map((s) => [s.folderName, s.isEnabled]))
+      setMods((prev) =>
+        prev.map((m) => {
+          const cleanFolder = m.folderName.replace(/^\./, "")
+          const wantEnabled = stateMap.get(cleanFolder)
+          if (wantEnabled !== undefined) {
+            return { ...m, isEnabled: wantEnabled }
+          }
+          return m
+        })
+      )
+    }
+  }
+
   // Filter and search computation
   const filteredMods = mods.filter((m) => {
     const matchesSearch =
@@ -756,6 +797,13 @@ export function Mods({ onNavigate }: { onNavigate?: (page: Page) => void }) {
             smapiLatestVersion={smapiLatestVersion}
             onUninstall={handleUninstallSmapi}
           />
+          {/* Mod Profiles Section */}
+          <ModProfiles
+            currentMods={mods.map((m) => ({ folderName: m.folderName.replace(/^\./, ""), isEnabled: m.isEnabled, name: m.name }))}
+            onApplyProfile={handleApplyProfile}
+            showToast={showToast}
+          />
+
           {/* Main Split Layout */}
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
             {/* Left Area: Filter Tabs & Mod Cards */}
