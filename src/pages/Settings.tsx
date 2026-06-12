@@ -1,29 +1,11 @@
 import { useState, useEffect } from "react"
-import { cn } from "@/lib/utils"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
-import { useTheme, ThemeMode, ThemeSeason } from "@/lib/theme-provider"
+import { useTheme } from "@/lib/theme-provider"
 import {
-  User,
   Bell,
-  Palette,
   Database,
-  Info,
-  FolderOpen,
-  CheckCircle2,
-  AlertTriangle,
-  Search,
-  Sun,
-  Moon,
-  Monitor,
-  Check,
-  Globe,
-  LogOut,
-  Loader2,
-  Copy,
-  KeyRound,
 } from "lucide-react"
 
 // Helper functions for dynamic imports to ensure web compatibility
@@ -51,59 +33,31 @@ async function getTauriInvoke() {
   return null;
 }
 
-interface SaveSummary {
-  id: string
-  playerName: string
-  farmName: string
-  money: number
-  totalMoneyEarned: number
-  dayOfMonth: number
-  season: number // 0: Spring, 1: Summer, 2: Fall, 3: Winter
-  year: number
-  farmingLevel: number
-  miningLevel: number
-  combatLevel: number
-  foragingLevel: number
-  fishingLevel: number
-  deepestMineLevel: number
-  millisecondsPlayed: number
-  lastSaveTime: number
-}
-
-interface FriendshipInfo {
-  npcName: string
-  points: number
-}
-
-interface SaveDetail {
-  summary: SaveSummary
-  weatherToday: string
-  weatherTomorrow: string
-  museumPiecesCount: number
-  friendships: FriendshipInfo[]
-}
-
-const MOCK_SAVE_SUMMARY: SaveSummary = {
-  id: "MockCharacter_123456789",
-  playerName: "农夫阿星",
-  farmName: "桃源",
-  money: 125840,
-  totalMoneyEarned: 245000,
-  dayOfMonth: 15,
-  season: 0, // Spring
-  year: 2,
-  farmingLevel: 10,
-  miningLevel: 8,
-  combatLevel: 7,
-  foragingLevel: 8,
-  fishingLevel: 6,
-  deepestMineLevel: 120,
-  millisecondsPlayed: 45 * 3600 * 1000,
-  lastSaveTime: Date.now() / 1000,
-}
+import { SaveInfoCard, SaveDetail } from "@/components/settings/SaveInfoCard"
+import { GamePathCard } from "@/components/settings/GamePathCard"
+import { NexusAccountCard } from "@/components/settings/NexusAccountCard"
+import { AppearanceCard } from "@/components/settings/AppearanceCard"
+import { AboutCard } from "@/components/settings/AboutCard"
 
 const MOCK_SAVE_DETAIL: SaveDetail = {
-  summary: MOCK_SAVE_SUMMARY,
+  summary: {
+    id: "MockCharacter_123456789",
+    playerName: "农夫阿星",
+    farmName: "桃源",
+    money: 125840,
+    totalMoneyEarned: 245000,
+    dayOfMonth: 15,
+    season: 0, // Spring
+    year: 2,
+    farmingLevel: 10,
+    miningLevel: 8,
+    combatLevel: 7,
+    foragingLevel: 8,
+    fishingLevel: 6,
+    deepestMineLevel: 120,
+    millisecondsPlayed: 45 * 3600 * 1000,
+    lastSaveTime: Date.now() / 1000,
+  },
   weatherToday: "Sun",
   weatherTomorrow: "Rain",
   museumPiecesCount: 62,
@@ -375,280 +329,33 @@ export function Settings({ selectedSaveId }: { selectedSaveId: string }) {
       </div>
 
       <div className="max-w-2xl space-y-6">
-        {/* Active Save Profile Summary Card */}
-        <Card className="overflow-hidden border border-border/80">
-          <CardHeader className="bg-gradient-to-r from-primary/10 via-transparent to-transparent pb-4">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center border border-primary/20 shrink-0">
-                <User className="h-5 w-5 text-primary" />
-              </div>
-              <div>
-                <CardTitle className="text-lg font-bold">当前存档信息</CardTitle>
-                <CardDescription>
-                  自动从游戏存档文件中同步
-                </CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-6 pt-2">
-            {loading ? (
-              <div className="flex flex-col items-center justify-center py-6 space-y-2">
-                <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
-                <p className="text-xs text-muted-foreground">正在同步农场存档数据...</p>
-              </div>
-            ) : detail ? (
-              <>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
-                  <div className="border p-3 rounded-lg bg-accent/25 space-y-1">
-                    <p className="text-muted-foreground font-medium">农场主姓名</p>
-                    <p className="font-bold text-sm text-foreground truncate">{detail.summary.playerName}</p>
-                  </div>
-                  <div className="border p-3 rounded-lg bg-accent/25 space-y-1">
-                    <p className="text-muted-foreground font-medium">农场名称</p>
-                    <p className="font-bold text-sm text-foreground truncate">{detail.summary.farmName}农场</p>
-                  </div>
-                  <div className="border p-3 rounded-lg bg-accent/25 space-y-1">
-                    <p className="text-muted-foreground font-medium">游戏日期</p>
-                    <p className="font-bold text-sm text-foreground truncate">
-                      {SEASONS[detail.summary.season] || "春季"} {detail.summary.dayOfMonth}日 (第{detail.summary.year}年)
-                    </p>
-                  </div>
-                  <div className="border p-3 rounded-lg bg-accent/25 space-y-1">
-                    <p className="text-muted-foreground font-medium">持有金币</p>
-                    <p className="font-bold text-sm text-yellow-500 truncate">{detail.summary.money.toLocaleString()}g</p>
-                  </div>
-                </div>
+        <SaveInfoCard
+          loading={loading}
+          detail={detail}
+          seasons={SEASONS}
+        />
 
-                <div className="space-y-3">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                    技能等级 (Skills)
-                  </h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {[
-                      { name: "耕种 (Farming)", level: detail.summary.farmingLevel, color: "bg-green-500" },
-                      { name: "采矿 (Mining)", level: detail.summary.miningLevel, color: "bg-blue-500" },
-                      { name: "采集 (Foraging)", level: detail.summary.foragingLevel, color: "bg-emerald-500" },
-                      { name: "钓鱼 (Fishing)", level: detail.summary.fishingLevel, color: "bg-cyan-500" },
-                      { name: "战斗 (Combat)", level: detail.summary.combatLevel, color: "bg-red-500" },
-                    ].map((skill) => (
-                      <div key={skill.name} className="space-y-1 text-xs border p-2.5 rounded-lg bg-accent/10">
-                        <div className="flex justify-between items-center font-medium">
-                          <span>{skill.name}</span>
-                          <span className="font-bold">Lv.{skill.level}</span>
-                        </div>
-                        <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
-                          <div
-                            className={cn("h-full rounded-full", skill.color)}
-                            style={{ width: `${(skill.level / 10) * 100}%` }}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </>
-            ) : (
-              <p className="text-xs text-muted-foreground py-4 text-center">暂未选定存档文件</p>
-            )}
-          </CardContent>
-        </Card>
+        <GamePathCard
+          gameDir={gameDir}
+          isValidPath={isValidPath}
+          onAutoDetect={handleAutoDetect}
+          onBrowse={handleBrowse}
+          onChangeDir={handleSaveDir}
+        />
 
-        {/* Game Directory Settings */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <FolderOpen className="h-5 w-5" />
-              游戏目录配置
-            </CardTitle>
-            <CardDescription>配置星露谷物语安装文件夹，以读取游戏数据与模组</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">安装目录路径</label>
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <Input
-                    placeholder="输入或选择游戏目录"
-                    value={gameDir}
-                    onChange={(e) => handleSaveDir(e.target.value)}
-                    className="pr-10 font-mono text-sm"
-                  />
-                  {isValidPath !== null && (
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                      {isValidPath ? (
-                        <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                      ) : (
-                        <AlertTriangle className="h-4 w-4 text-amber-500" />
-                      )}
-                    </div>
-                  )}
-                </div>
-                <Button variant="default" onClick={handleAutoDetect} className="flex gap-2 font-medium bg-primary text-primary-foreground hover:bg-primary/95 shrink-0">
-                  <Search className="h-4 w-4" />
-                  自动检测
-                </Button>
-                <Button variant="outline" onClick={handleBrowse} className="flex gap-2 font-medium shrink-0">
-                  <FolderOpen className="h-4 w-4" />
-                  浏览
-                </Button>
-              </div>
-              {isValidPath === false && (
-                <p className="text-xs text-amber-500 flex items-center gap-1 mt-1 font-medium">
-                  <AlertTriangle className="h-3.5 w-3.5" />
-                  <span>路径格式可能不正确，标准路径通常包含 "Stardew Valley"</span>
-                </p>
-              )}
-              {isValidPath === true && (
-                <p className="text-xs text-emerald-500 flex items-center gap-1 mt-1 font-medium">
-                  <CheckCircle2 className="h-3.5 w-3.5" />
-                  <span>已识别到合法的星露谷物语目录</span>
-                </p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-
-        {/* NexusMods Account */}
-        <Card className="overflow-hidden border border-border/80">
-          <CardHeader className="bg-gradient-to-r from-orange-500/10 via-transparent to-transparent pb-4">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-full bg-orange-500/10 flex items-center justify-center border border-orange-500/20 shrink-0">
-                <Globe className="h-5 w-5 text-orange-500" />
-              </div>
-              <div>
-                <CardTitle className="text-lg font-bold">NexusMods 账号</CardTitle>
-                <CardDescription>
-                  登录 NexusMods 以便下载模组时获取链接
-                </CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4 pt-2">
-            {nexusChecking ? (
-              <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span>正在检查登录状态...</span>
-              </div>
-            ) : nexusLoggedIn ? (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
-                  <div className="flex items-center gap-3">
-                    <div className="h-9 w-9 rounded-full bg-emerald-500/15 flex items-center justify-center">
-                      <User className="h-4 w-4 text-emerald-500" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-foreground">
-                        {nexusUsername || "已登录"}
-                      </p>
-                      <p className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                        <CheckCircle2 className="h-3 w-3" />
-                        已登录 NexusMods
-                      </p>
-                    </div>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleNexusLogout}
-                    className="flex items-center gap-2 text-destructive hover:text-destructive hover:bg-destructive/10"
-                  >
-                    <LogOut className="h-4 w-4" />
-                    退出登录
-                  </Button>
-                </div>
-
-                {/* API Key Section */}
-                <div className="p-3 rounded-lg bg-accent/30 border border-border/60 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <KeyRound className="h-4 w-4 text-orange-500" />
-                      <p className="text-sm font-medium">API Key</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {nexusApiKey && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={handleCopyApiKey}
-                          className="flex items-center gap-1.5 h-7 text-xs"
-                        >
-                          {nexusApiKeyCopied ? (
-                            <>
-                              <Check className="h-3 w-3 text-emerald-500" />
-                              <span className="text-emerald-500">已复制</span>
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="h-3 w-3" />
-                              复制
-                            </>
-                          )}
-                        </Button>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={handleRefreshApiKey}
-                        disabled={nexusApiKeyLoading}
-                        className="flex items-center gap-1.5 h-7 text-xs"
-                      >
-                        {nexusApiKeyLoading ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : null}
-                        刷新
-                      </Button>
-                    </div>
-                  </div>
-                  {nexusApiKeyLoading && !nexusApiKey ? (
-                    <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      <span>正在获取 API Key...</span>
-                    </div>
-                  ) : nexusApiKey ? (
-                    <div className="relative">
-                      <Input
-                        readOnly
-                        value={nexusApiKey}
-                        className="font-mono text-xs pr-2 bg-translucent-dark-400 opacity-70 truncate"
-                      />
-                    </div>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">未获取到 API Key，点击刷新重试</p>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center justify-between p-3 rounded-lg bg-accent/30 border border-border/60">
-                <div className="flex items-center gap-3">
-                  <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center">
-                    <Globe className="h-4 w-4 text-muted-foreground" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">未登录</p>
-                    <p className="text-xs text-muted-foreground">
-                      登录后可获取模组下载链接
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  variant="default"
-                  size="sm"
-                  onClick={handleNexusLogin}
-                  disabled={nexusLoggingIn}
-                  className="flex items-center gap-2"
-                >
-                  {nexusLoggingIn ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Globe className="h-4 w-4" />
-                  )}
-                  {nexusLoggingIn ? "等待登录..." : "登录 NexusMods"}
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <NexusAccountCard
+          nexusChecking={nexusChecking}
+          nexusLoggedIn={nexusLoggedIn}
+          nexusUsername={nexusUsername}
+          nexusLoggingIn={nexusLoggingIn}
+          nexusApiKey={nexusApiKey}
+          nexusApiKeyLoading={nexusApiKeyLoading}
+          nexusApiKeyCopied={nexusApiKeyCopied}
+          onLogin={handleNexusLogin}
+          onLogout={handleNexusLogout}
+          onCopyApiKey={handleCopyApiKey}
+          onRefreshApiKey={handleRefreshApiKey}
+        />
 
         {/* Notification Settings */}
         <Card>
@@ -684,136 +391,12 @@ export function Settings({ selectedSaveId }: { selectedSaveId: string }) {
           </CardContent>
         </Card>
 
-        {/* Theme Settings */}
-        <Card className="border border-border/80 overflow-hidden">
-          <CardHeader className="bg-gradient-to-r from-primary/10 via-transparent to-transparent pb-4">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center border border-primary/20 shrink-0">
-                <Palette className="h-5 w-5 text-primary" />
-              </div>
-              <div>
-                <CardTitle className="text-lg font-bold">外观设置</CardTitle>
-                <CardDescription>自定义应用的主题模式与星露谷季节配色</CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-6 pt-6">
-            {/* Theme Mode */}
-            <div className="space-y-2">
-              <h4 className="text-sm font-semibold tracking-wide text-foreground">主题模式</h4>
-              <div className="grid grid-cols-3 gap-3">
-                {[
-                  { value: "light" as ThemeMode, label: "浅色", icon: Sun },
-                  { value: "dark" as ThemeMode, label: "深色", icon: Moon },
-                  { value: "system" as ThemeMode, label: "跟随系统", icon: Monitor },
-                ].map((item) => {
-                  const Icon = item.icon
-                  const isActive = themeMode === item.value
-                  return (
-                    <Button
-                      key={item.value}
-                      variant={isActive ? "default" : "outline"}
-                      onClick={() => setThemeMode(item.value)}
-                      className={cn(
-                        "flex items-center justify-center gap-2 py-4 h-auto transition-all duration-200 cursor-pointer",
-                        isActive ? "shadow-md scale-[1.02] font-semibold" : "hover:bg-accent/40"
-                      )}
-                    >
-                      <Icon className="h-4 w-4 shrink-0" />
-                      <span>{item.label}</span>
-                    </Button>
-                  )
-                })}
-              </div>
-            </div>
-
-            <Separator className="bg-border/60" />
-
-            {/* Season Themes */}
-            <div className="space-y-3">
-              <div className="flex flex-col gap-1">
-                <h4 className="text-sm font-semibold tracking-wide text-foreground">季节主题色</h4>
-                <p className="text-xs text-muted-foreground">精选星露谷物语四季标志性色彩，让应用与游戏同频共振</p>
-              </div>
-              
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                {[
-                  {
-                    value: "default" as ThemeSeason,
-                    label: "经典绿 (Classic Green)",
-                    desc: "星露谷的经典底色，自然生机盎然",
-                    gradient: "from-emerald-500/90 to-green-600/90",
-                    color: "bg-emerald-500",
-                  },
-                  {
-                    value: "spring" as ThemeSeason,
-                    label: "春季粉 (Spring Sakura)",
-                    desc: "粉色樱花瓣漫天飞舞，浪漫温柔",
-                    gradient: "from-pink-400/90 to-rose-500/90",
-                    color: "bg-pink-400",
-                  },
-                  {
-                    value: "summer" as ThemeSeason,
-                    label: "夏季黄 (Summer Gold)",
-                    desc: "金色向日葵傲然绽放，热情洋溢",
-                    gradient: "from-amber-400/90 to-yellow-500/90",
-                    color: "bg-amber-400",
-                  },
-                  {
-                    value: "fall" as ThemeSeason,
-                    label: "秋季橙 (Fall Maple)",
-                    desc: "红橙枫叶挂满枝头，丰收的喜悦",
-                    gradient: "from-orange-500/90 to-amber-600/90",
-                    color: "bg-orange-500",
-                  },
-                  {
-                    value: "winter" as ThemeSeason,
-                    label: "冬季蓝 (Winter Frost)",
-                    desc: "冰雪覆盖的幽静寒蓝，静谧纯洁",
-                    gradient: "from-sky-400/90 to-blue-500/90",
-                    color: "bg-sky-400",
-                  },
-                ].map((item) => {
-                  const isSelected = themeSeason === item.value
-                  return (
-                    <button
-                      key={item.value}
-                      onClick={() => setThemeSeason(item.value)}
-                      className={cn(
-                        "group relative flex flex-col justify-between text-left p-4 rounded-xl border transition-all duration-300 cursor-pointer overflow-hidden bg-card text-card-foreground",
-                        isSelected 
-                          ? "border-primary shadow-lg ring-2 ring-primary/20 scale-[1.01]" 
-                          : "border-border/60 hover:border-border-foreground/45 hover:shadow-md hover:scale-[1.005]"
-                      )}
-                    >
-                      {/* Left color bar decorator */}
-                      <div className={cn("absolute left-0 top-0 bottom-0 w-1.5 bg-gradient-to-b", item.gradient)} />
-                      
-                      <div className="pl-2.5 space-y-1.5 flex-1 pr-6">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-sm leading-tight text-foreground group-hover:text-primary transition-colors">
-                            {item.label}
-                          </span>
-                          <span className={cn("h-2 w-2 rounded-full", item.color)} />
-                        </div>
-                        <p className="text-xs text-muted-foreground leading-normal pr-4">
-                          {item.desc}
-                        </p>
-                      </div>
-
-                      {/* Check icon indicator */}
-                      {isSelected && (
-                        <div className="absolute right-3.5 top-3.5 h-5 w-5 rounded-full bg-primary flex items-center justify-center text-primary-foreground animate-in zoom-in-75 duration-200">
-                          <Check className="h-3.5 w-3.5 stroke-[3]" />
-                        </div>
-                      )}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <AppearanceCard
+          themeMode={themeMode}
+          themeSeason={themeSeason}
+          setThemeMode={setThemeMode}
+          setThemeSeason={setThemeSeason}
+        />
 
         {/* Data Settings */}
         <Card>
@@ -851,31 +434,7 @@ export function Settings({ selectedSaveId }: { selectedSaveId: string }) {
           </CardContent>
         </Card>
 
-        {/* About */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Info className="h-5 w-5" />
-              关于
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">应用版本</span>
-              <span>0.1.0</span>
-            </div>
-            <Separator />
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">框架</span>
-              <span>Tauri + React</span>
-            </div>
-            <Separator />
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">UI 框架</span>
-              <span>shadcn/ui</span>
-            </div>
-          </CardContent>
-        </Card>
+        <AboutCard />
       </div>
     </div>
   )
