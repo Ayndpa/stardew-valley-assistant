@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { Sidebar } from "@/components/Sidebar"
 import { Dashboard } from "@/pages/Dashboard"
 import { Crops } from "@/pages/Crops"
@@ -60,6 +60,50 @@ function App() {
   const [selectedSaveId, setSelectedSaveId] = useState<string>(() => {
     return localStorage.getItem("selectedSaveId") || ""
   })
+
+  // --- Sidebar collapsed state (synced across windows) ---
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    return localStorage.getItem("sidebarCollapsed") === "true"
+  })
+  const containerRef = useRef<HTMLDivElement>(null)
+  const channelRef = useRef<BroadcastChannel | null>(null)
+
+  const updateSidebarCollapsed = useCallback((value: boolean) => {
+    setSidebarCollapsed(value)
+    localStorage.setItem("sidebarCollapsed", String(value))
+    channelRef.current?.postMessage({ type: "sidebarCollapsed", value })
+  }, [])
+
+  const toggleSidebarCollapsed = useCallback(() => {
+    updateSidebarCollapsed(!sidebarCollapsed)
+  }, [sidebarCollapsed, updateSidebarCollapsed])
+
+  // BroadcastChannel: sync collapsed state across windows
+  useEffect(() => {
+    const channel = new BroadcastChannel("stardew-assistant")
+    channelRef.current = channel
+    channel.onmessage = (e) => {
+      if (e.data?.type === "sidebarCollapsed") {
+        setSidebarCollapsed(e.data.value)
+      }
+    }
+    return () => channel.close()
+  }, [])
+
+  // Auto-collapse when main content area is too narrow
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width
+      if (width === undefined) return
+      if (width < 700 && !sidebarCollapsed) {
+        updateSidebarCollapsed(true)
+      }
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [sidebarCollapsed, updateSidebarCollapsed])
 
   // Load list of saves
   useEffect(() => {
@@ -140,13 +184,15 @@ function App() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div ref={containerRef} className="flex h-screen overflow-hidden bg-background">
       <Sidebar
         currentPage={currentPage}
         onNavigate={setCurrentPage}
         saves={saves}
         selectedSaveId={selectedSaveId}
         onSaveChange={handleSaveChange}
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={toggleSidebarCollapsed}
       />
       <main className="flex-1 overflow-auto">
         {renderPage()}

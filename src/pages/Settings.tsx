@@ -19,9 +19,6 @@ import {
   Moon,
   Monitor,
   Check,
-  Key,
-  Eye,
-  EyeOff,
 } from "lucide-react"
 
 // Helper functions for dynamic imports to ensure web compatibility
@@ -117,15 +114,6 @@ export function Settings({ selectedSaveId }: { selectedSaveId: string }) {
   })
   const [isValidPath, setIsValidPath] = useState<boolean | null>(null)
   
-  const [apiKey, setApiKey] = useState(() => {
-    return localStorage.getItem("nexusModsApiKey") || ""
-  })
-  const [showApiKey, setShowApiKey] = useState(false)
-
-  const handleSaveApiKey = (val: string) => {
-    setApiKey(val)
-    localStorage.setItem("nexusModsApiKey", val)
-  }
 
   const [detail, setDetail] = useState<SaveDetail | null>(null)
   const [loading, setLoading] = useState(true)
@@ -374,54 +362,6 @@ export function Settings({ selectedSaveId }: { selectedSaveId: string }) {
           </CardContent>
         </Card>
 
-        {/* NexusMods API Settings */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Key className="h-5 w-5 text-primary" />
-              NexusMods API 配置
-            </CardTitle>
-            <CardDescription>配置您的 NexusMods 个人 API 密钥，以备将来启用一键下载等高级服务</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <label className="text-sm font-medium">API 密钥 (Personal API Key)</label>
-                <a 
-                  href="https://www.nexusmods.com/users/myaccount?tab=api" 
-                  target="_blank" 
-                  rel="noreferrer"
-                  className="text-xs text-primary hover:underline flex items-center gap-1 font-medium cursor-pointer"
-                >
-                  获取密钥
-                </a>
-              </div>
-              <div className="relative">
-                <Input
-                  type={showApiKey ? "text" : "password"}
-                  placeholder="输入您的 NexusMods API Key"
-                  value={apiKey}
-                  onChange={(e) => handleSaveApiKey(e.target.value)}
-                  className="pr-10 font-mono text-sm bg-card border-border rounded-lg"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowApiKey(!showApiKey)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer"
-                >
-                  {showApiKey ? (
-                    <EyeOff className="h-4 w-4" />
-                  ) : (
-                    <Eye className="h-4 w-4" />
-                  )}
-                </button>
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                密钥将仅安全地保存在您本地浏览器的 localStorage 中。未配置密钥时，应用将以 SMAPI.io 兼容性数据库作为常规模组列表检索源。
-              </p>
-            </div>
-          </CardContent>
-        </Card>
 
         {/* Notification Settings */}
         <Card>

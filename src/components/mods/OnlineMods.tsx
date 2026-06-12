@@ -4,12 +4,13 @@ import {
   Download, 
   CheckCircle2, 
   AlertTriangle, 
-  ExternalLink, 
   RefreshCw,
   ChevronLeft,
   ChevronRight,
-  Info
+  Info,
+  Eye
 } from "lucide-react"
+import { OnlineModDetailModal } from "./OnlineModDetailModal"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card"
@@ -142,6 +143,15 @@ export function OnlineMods() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   
+  // Modal State
+  const [selectedDetailMod, setSelectedDetailMod] = useState<SmapiMod | null>(null)
+  const [isDetailOpen, setIsDetailOpen] = useState(false)
+
+  const handleOpenDetail = (mod: SmapiMod) => {
+    setSelectedDetailMod(mod)
+    setIsDetailOpen(true)
+  }
+  
   // Filters & Search
   const [search, setSearch] = useState("")
   const [selectedStatus, setSelectedStatus] = useState<string>("all")
@@ -160,13 +170,38 @@ export function OnlineMods() {
         const list = await invoke("fetch_smapi_compatibility_mods") as SmapiMod[]
         if (list && list.length > 0) {
           setOnlineMods(list)
+          // Cache in localStorage as frontend fallback
+          try {
+            localStorage.setItem("smapi_mods_cache", JSON.stringify(list))
+          } catch {}
         } else {
-          setOnlineMods(POPULAR_MOCK_MODS)
+          // Try localStorage cache
+          const cached = localStorage.getItem("smapi_mods_cache")
+          if (cached) {
+            setOnlineMods(JSON.parse(cached))
+            setError("在线数据为空，已显示上次缓存的模组列表。")
+          } else {
+            setOnlineMods([])
+            setError("未获取到任何模组数据，请检查网络连接后重试。")
+          }
         }
       } catch (err: any) {
         console.error("Error loading SMAPI compatibility list:", err)
-        setError("获取在线模组数据失败，已切换至内置精选模组。原因: " + err)
-        setOnlineMods(POPULAR_MOCK_MODS)
+        // Backend already tries cache; if we're here, both online and cache failed
+        // Try frontend localStorage cache as last resort
+        const cached = localStorage.getItem("smapi_mods_cache")
+        if (cached) {
+          try {
+            setOnlineMods(JSON.parse(cached))
+            setError("获取在线模组数据失败，已显示上次缓存的数据。原因: " + err)
+          } catch {
+            setOnlineMods([])
+            setError("获取在线模组数据失败，且无可用缓存。原因: " + err)
+          }
+        } else {
+          setOnlineMods([])
+          setError("获取在线模组数据失败，且无可用缓存。原因: " + err)
+        }
       } finally {
         setLoading(false)
       }
@@ -231,10 +266,6 @@ export function OnlineMods() {
     }
   }
 
-  // Helper to extract Nexus Link
-  const getNexusLink = (mod: SmapiMod) => {
-    return mod.ModPages.find(page => page.Text === "Nexus" || page.Url.includes("nexusmods.com"))?.Url || ""
-  }
 
   return (
     <div className="space-y-6">
@@ -309,10 +340,6 @@ export function OnlineMods() {
           {paginatedMods.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-in fade-in duration-300">
               {paginatedMods.map((mod) => {
-                const nexusUrl = getNexusLink(mod)
-                const isNexus = !!nexusUrl
-                const nexusId = isNexus ? nexusUrl.split("/").pop() : ""
-
                 return (
                   <Card key={mod.Slug} className="border border-border/80 bg-card hover:border-primary/45 hover:shadow-md transition-all duration-300 flex flex-col justify-between overflow-hidden">
                     <CardHeader className="p-4 pb-2 space-y-1.5">
@@ -350,31 +377,15 @@ export function OnlineMods() {
 
                       {/* Footer Actions */}
                       <div className="flex gap-2">
-                        {isNexus ? (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="flex-1 text-[11px] h-8 rounded-lg gap-1 border-border/85 hover:bg-accent cursor-pointer"
-                            onClick={() => window.open(nexusUrl, "_blank")}
-                          >
-                            <ExternalLink className="h-3 w-3" />
-                            <span>Nexus ({nexusId})</span>
-                          </Button>
-                        ) : (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="flex-1 text-[11px] h-8 rounded-lg gap-1 border-border/85 hover:bg-accent cursor-pointer"
-                            onClick={() => {
-                              const page = mod.ModPages[0]
-                              if (page) window.open(page.Url, "_blank")
-                            }}
-                            disabled={mod.ModPages.length === 0}
-                          >
-                            <ExternalLink className="h-3 w-3" />
-                            <span>查看官网</span>
-                          </Button>
-                        )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 text-[11px] h-8 rounded-lg gap-1 border-border/85 hover:bg-accent cursor-pointer font-semibold"
+                          onClick={() => handleOpenDetail(mod)}
+                        >
+                          <Eye className="h-3 w-3" />
+                          <span>模组详情</span>
+                        </Button>
 
                         <Button
                           variant="secondary"
@@ -436,6 +447,12 @@ export function OnlineMods() {
           )}
         </>
       )}
+      {/* Online Mod Detail Modal */}
+      <OnlineModDetailModal
+        isOpen={isDetailOpen}
+        onClose={() => setIsDetailOpen(false)}
+        mod={selectedDetailMod}
+      />
     </div>
   )
 }

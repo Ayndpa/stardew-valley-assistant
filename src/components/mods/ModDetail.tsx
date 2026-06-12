@@ -1,4 +1,5 @@
 import { Card } from "@/components/ui/card"
+import { openUrl } from "@tauri-apps/plugin-opener"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
@@ -78,15 +79,13 @@ export function ModDetail({
             当前版本: <span className="font-semibold text-foreground">v{selectedMod.version}</span>
           </div>
           {selectedMod.nexusId && (
-            <a
-              href={`https://www.nexusmods.com/stardewvalley/mods/${selectedMod.nexusId}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary hover:underline flex items-center gap-0.5"
+            <button
+              onClick={() => openUrl(`https://www.nexusmods.com/stardewvalley/mods/${selectedMod.nexusId}`)}
+              className="text-primary hover:underline flex items-center gap-0.5 cursor-pointer"
             >
               Nexus ID: {selectedMod.nexusId}
               <ExternalLink className="h-3 w-3" />
-            </a>
+            </button>
           )}
         </div>
       </div>
@@ -174,7 +173,7 @@ export function ModDetail({
                   variant="link" 
                   className="text-amber-600 dark:text-amber-400 p-0 h-auto text-[11px] font-bold mt-1.5 hover:underline"
                   onClick={() => {
-                    window.open(`https://www.nexusmods.com/stardewvalley/mods/${selectedMod.nexusId}`, '_blank')
+                    openUrl(`https://www.nexusmods.com/stardewvalley/mods/${selectedMod.nexusId}`)
                   }}
                 >
                   前往 Nexus Mods 下载页面 &rarr;

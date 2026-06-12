@@ -1,4 +1,5 @@
 use std::fs;
+use std::io::Read;
 use std::path::Path;
 
 #[tauri::command]
@@ -36,49 +37,43 @@ pub fn open_in_file_manager(path: String) -> Result<(), String> {
 }
 
 pub fn download_file(url: &str, dest: &Path) -> Result<(), String> {
-    #[cfg(target_os = "windows")]
-    {
-        // Try Powershell first
-        let output = std::process::Command::new("powershell")
-            .args(&[
-                "-NoProfile",
-                "-Command",
-                &format!("Invoke-WebRequest -Uri '{}' -OutFile '{}'", url, dest.to_string_lossy())
-            ])
-            .output();
-        
-        if let Ok(out) = output {
-            if out.status.success() {
+    let agent = ureq::AgentBuilder::new()
+        .timeout_connect(std::time::Duration::from_secs(15))
+        .timeout_read(std::time::Duration::from_secs(60))
+        .build();
+
+    let max_retries = 3;
+    let mut last_err = String::new();
+
+    for attempt in 1..=max_retries {
+        match agent.get(url).call() {
+            Ok(response) => {
+                let mut bytes = Vec::new();
+                response
+                    .into_reader()
+                    .read_to_end(&mut bytes)
+                    .map_err(|e| format!("Failed to read response body: {}", e))?;
+
+                if let Some(parent) = dest.parent() {
+                    fs::create_dir_all(parent)
+                        .map_err(|e| format!("Failed to create parent directory: {}", e))?;
+                }
+
+                fs::write(dest, &bytes)
+                    .map_err(|e| format!("Failed to write file to {}: {}", dest.display(), e))?;
+
                 return Ok(());
             }
-        }
-        
-        // Fallback to curl
-        let output = std::process::Command::new("curl")
-            .args(&["-L", "-o", &dest.to_string_lossy(), url])
-            .output()
-            .map_err(|e| format!("Failed to run curl: {}", e))?;
-        
-        if output.status.success() {
-            Ok(())
-        } else {
-            Err(String::from_utf8_lossy(&output.stderr).to_string())
+            Err(e) => {
+                last_err = format!("HTTP request failed (attempt {}/{}): {}", attempt, max_retries, e);
+                if attempt < max_retries {
+                    std::thread::sleep(std::time::Duration::from_secs(2));
+                }
+            }
         }
     }
 
-    #[cfg(not(target_os = "windows"))]
-    {
-        let output = std::process::Command::new("curl")
-            .args(&["-L", "-o", &dest.to_string_lossy(), url])
-            .output()
-            .map_err(|e| format!("Failed to run curl: {}", e))?;
-        
-        if output.status.success() {
-            Ok(())
-        } else {
-            Err(String::from_utf8_lossy(&output.stderr).to_string())
-        }
-    }
+    Err(last_err)
 }
 
 pub fn extract_zip(zip_path: &Path, dest_dir: &Path) -> Result<(), String> {

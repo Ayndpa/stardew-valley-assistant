@@ -265,8 +265,8 @@ export function Mods() {
       }
     } catch (err) {
       console.error("Failed to fetch latest SMAPI version:", err)
-      setSmapiLatestVersion("4.0.8")
-      setSmapiDownloadUrl("https://github.com/Pathoschild/SMAPI/releases/download/4.0.8/SMAPI.4.0.8.installer.zip")
+      setSmapiLatestVersion("4.5.2")
+      setSmapiDownloadUrl("https://github.com/Pathoschild/SMAPI/releases/download/4.5.2/SMAPI-4.5.2-installer-double-zipped.zip")
     }
   }
 
@@ -311,12 +311,35 @@ export function Mods() {
         // Load installed mods
         setIsScanning(true)
         invoke("list_installed_mods", { gameDir })
-          .then((loadedMods: any) => {
-            setMods(loadedMods)
-            if (loadedMods.length > 0) {
-              setSelectedModId(loadedMods[0].id)
-            } else {
-              setSelectedModId("")
+          .then(async (loadedMods: any) => {
+            // Fetch SMAPI compatibility data to resolve latest versions
+            try {
+              const compatMods = await invoke("fetch_smapi_compatibility_mods") as any[]
+              const versionMap = new Map<number, string>()
+              for (const cm of compatMods) {
+                if (cm.nexusId && cm.version) {
+                  versionMap.set(cm.nexusId, cm.version)
+                }
+              }
+              const enriched = loadedMods.map((m: any) => {
+                if (m.nexusId && versionMap.has(m.nexusId)) {
+                  return { ...m, latestVersion: versionMap.get(m.nexusId)! }
+                }
+                return m
+              })
+              setMods(enriched)
+              if (enriched.length > 0) {
+                setSelectedModId(enriched[0].id)
+              } else {
+                setSelectedModId("")
+              }
+            } catch {
+              setMods(loadedMods)
+              if (loadedMods.length > 0) {
+                setSelectedModId(loadedMods[0].id)
+              } else {
+                setSelectedModId("")
+              }
             }
           })
           .catch((err: any) => {
@@ -431,17 +454,58 @@ export function Mods() {
     }
   }
 
-  const handleCheckUpdates = () => {
+  const handleCheckUpdates = async () => {
     setIsCheckingUpdates(true)
-    setTimeout(() => {
-      setIsCheckingUpdates(false)
-      const needsUpdateCount = mods.filter((m) => m.version !== m.latestVersion).length
-      if (needsUpdateCount > 0) {
-        showToast(`检查完毕！发现 ${needsUpdateCount} 个模组有新版本。请点击黄色卡片升级。`, "warning")
-      } else {
-        showToast("检查完毕！所有已载入模组均是最新版本。", "success")
+    const invoke = await getTauriInvoke()
+    if (invoke) {
+      try {
+        const compatMods = await invoke("fetch_smapi_compatibility_mods") as any[]
+        // Build a map: nexusId -> latest compatible version
+        const versionMap = new Map<number, string>()
+        for (const cm of compatMods) {
+          if (cm.nexusId && cm.version) {
+            versionMap.set(cm.nexusId, cm.version)
+          }
+        }
+        // Update latestVersion for each installed mod
+        setMods((prev) =>
+          prev.map((m) => {
+            if (m.nexusId && versionMap.has(m.nexusId)) {
+              return { ...m, latestVersion: versionMap.get(m.nexusId)! }
+            }
+            return m
+          })
+        )
+        const updatedMods = mods.map((m) => {
+          if (m.nexusId && versionMap.has(m.nexusId)) {
+            return { ...m, latestVersion: versionMap.get(m.nexusId)! }
+          }
+          return m
+        })
+        const needsUpdateCount = updatedMods.filter((m) => m.version !== m.latestVersion).length
+        setIsCheckingUpdates(false)
+        if (needsUpdateCount > 0) {
+          showToast(`检查完毕！发现 ${needsUpdateCount} 个模组有新版本。请点击黄色卡片升级。`, "warning")
+        } else {
+          showToast("检查完毕！所有已载入模组均是最新版本。", "success")
+        }
+      } catch (err: any) {
+        setIsCheckingUpdates(false)
+        console.error("Failed to check updates:", err)
+        showToast("检查更新失败: " + err, "warning")
       }
-    }, 1500)
+    } else {
+      // Web mock
+      setTimeout(() => {
+        setIsCheckingUpdates(false)
+        const needsUpdateCount = mods.filter((m) => m.version !== m.latestVersion).length
+        if (needsUpdateCount > 0) {
+          showToast(`检查完毕！发现 ${needsUpdateCount} 个模组有新版本。请点击黄色卡片升级。`, "warning")
+        } else {
+          showToast("检查完毕！所有已载入模组均是最新版本。", "success")
+        }
+      }, 1500)
+    }
   }
 
   const handleOpenFolder = async () => {
@@ -527,10 +591,10 @@ export function Mods() {
 
     let rawUrl = smapiDownloadUrl
     if (!rawUrl) {
-      rawUrl = "https://github.com/Pathoschild/SMAPI/releases/download/4.0.8/SMAPI.4.0.8.installer.zip"
+      rawUrl = "https://github.com/Pathoschild/SMAPI/releases/download/4.5.2/SMAPI-4.5.2-installer-double-zipped.zip"
     }
 
-    const downloadUrl = smapiMirror === "ghproxy" ? `https://mirror.ghproxy.com/${rawUrl}` : rawUrl
+    const downloadUrl = smapiMirror === "ghproxy" ? `https://gh-proxy.org/${rawUrl}` : rawUrl
     const invoke = await getTauriInvoke()
 
     if (invoke) {
@@ -762,22 +826,27 @@ export function Mods() {
             <div>
               <div className="flex items-center gap-3">
                 <h2 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-primary to-green-600 bg-clip-text text-transparent">模组管理</h2>
-                <Badge 
-                  variant="secondary" 
-                  className={`gap-1.5 px-3 py-1 font-semibold rounded-full border transition-all ${
-                    smapiStatus?.installed 
-                      ? "bg-primary/10 text-primary border-primary/20" 
-                      : "bg-red-500/10 text-red-500 border-red-500/20"
-                  }`}
-                >
-                  {smapiStatus === null ? (
-                    "正在检测 SMAPI..."
-                  ) : smapiStatus.installed ? (
-                    `SMAPI: v${smapiStatus.version || "已安装"} (加载完毕)`
-                  ) : (
-                    "SMAPI: 未安装"
-                  )}
-                </Badge>
+                {smapiStatus?.installed && !smapiStatus?.version ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-full border transition-all" style={{ backgroundColor: 'rgba(120,120,120,0.15)', color: '#888', borderColor: 'rgba(120,120,120,0.25)' }}>
+                    SMAPI: 已安装 (加载中)
+                  </span>
+                ) : (
+                  <Badge 
+                    className={`gap-1.5 px-3 py-1 font-semibold rounded-full border transition-all ${
+                      smapiStatus?.installed 
+                        ? "bg-primary/10 text-primary border-primary/20" 
+                        : "bg-red-500/10 text-red-500 border-red-500/20"
+                    }`}
+                  >
+                    {smapiStatus === null ? (
+                      "正在检测 SMAPI..."
+                    ) : smapiStatus.installed ? (
+                      `SMAPI: v${smapiStatus.version}`
+                    ) : (
+                      "SMAPI: 未安装"
+                    )}
+                  </Badge>
+                )}
                 {smapiStatus?.installed && (
                   <Button
                     variant="outline"

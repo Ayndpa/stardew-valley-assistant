@@ -242,39 +242,76 @@ pub fn save_mod_config(game_dir: String, folder_name: String, config: serde_json
 }
 
 #[tauri::command]
-pub async fn fetch_smapi_compatibility_mods() -> Result<Vec<serde_json::Value>, String> {
-    let temp_dir = std::env::temp_dir();
-    let temp_html_path = temp_dir.join("smapi_mods_temp.html");
-    let temp_json_path = temp_dir.join("smapi_mods_temp.json");
+pub async fn fetch_smapi_compatibility_mods(app: tauri::AppHandle) -> Result<Vec<serde_json::Value>, String> {
+    use tauri::Manager;
 
-    // 1. Download smapi.io HTML page
-    let html_url = "https://smapi.io/mods";
-    crate::utils::download_file(html_url, &temp_html_path)
-        .map_err(|e| format!("Failed to download SMAPI compatibility HTML: {}", e))?;
+    // Determine cache path in app data directory
+    let cache_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to resolve app data directory: {}", e))?;
+    let _ = fs::create_dir_all(&cache_dir);
+    let cache_path = cache_dir.join("smapi_mods_cache.json");
 
-    // 2. Read HTML content to find the JSON link
-    let html_content = fs::read_to_string(&temp_html_path)
-        .map_err(|e| format!("Failed to read temporary HTML file: {}", e))?;
+    // Use a temp dir inside app data for intermediate downloads
+    let download_dir = cache_dir.join("downloads");
+    let _ = fs::create_dir_all(&download_dir);
+    let temp_html_path = download_dir.join("smapi_mods_temp.html");
+    let temp_json_path = download_dir.join("smapi_mods_temp.json");
 
-    let fetch_uri = extract_fetch_uri(&html_content)
-        .ok_or_else(|| "Could not find fetchUri inside smapi.io/mods page. The page format may have changed.".to_string())?;
+    // Try to fetch fresh data
+    let fetch_result = (|| -> Result<Vec<serde_json::Value>, String> {
+        // 1. Download smapi.io HTML page
+        let html_url = "https://smapi.io/mods";
+        crate::utils::download_file(html_url, &temp_html_path)
+            .map_err(|e| format!("Failed to download SMAPI compatibility HTML: {}", e))?;
 
-    // 3. Download JSON file
-    crate::utils::download_file(&fetch_uri, &temp_json_path)
-        .map_err(|e| format!("Failed to download SMAPI compatibility JSON: {}", e))?;
+        // 2. Read HTML content to find the JSON link
+        let html_content = fs::read_to_string(&temp_html_path)
+            .map_err(|e| format!("Failed to read temporary HTML file: {}", e))?;
 
-    // 4. Read and parse JSON content
-    let json_content = fs::read_to_string(&temp_json_path)
-        .map_err(|e| format!("Failed to read temporary JSON file: {}", e))?;
+        let fetch_uri = extract_fetch_uri(&html_content)
+            .ok_or_else(|| "Could not find fetchUri inside smapi.io/mods page. The page format may have changed.".to_string())?;
 
-    let parsed_json: Vec<serde_json::Value> = serde_json::from_str(&json_content)
-        .map_err(|e| format!("Failed to parse SMAPI compatibility JSON: {}", e))?;
+        // 3. Download JSON file
+        crate::utils::download_file(&fetch_uri, &temp_json_path)
+            .map_err(|e| format!("Failed to download SMAPI compatibility JSON: {}", e))?;
 
-    // 5. Clean up temporary files
+        // 4. Read and parse JSON content
+        let json_content = fs::read_to_string(&temp_json_path)
+            .map_err(|e| format!("Failed to read temporary JSON file: {}", e))?;
+
+        let parsed_json: Vec<serde_json::Value> = serde_json::from_str(&json_content)
+            .map_err(|e| format!("Failed to parse SMAPI compatibility JSON: {}", e))?;
+
+        Ok(parsed_json)
+    })();
+
+    // Clean up temp download files
     let _ = fs::remove_file(&temp_html_path);
     let _ = fs::remove_file(&temp_json_path);
+    let _ = fs::remove_dir(&download_dir);
 
-    Ok(parsed_json)
+    match fetch_result {
+        Ok(mods) => {
+            // Save to cache on success
+            let json_str = serde_json::to_string(&mods).unwrap_or_default();
+            let _ = fs::write(&cache_path, &json_str);
+            Ok(mods)
+        }
+        Err(e) => {
+            // Try to load from cache on failure
+            if cache_path.exists() {
+                if let Ok(cached) = fs::read_to_string(&cache_path) {
+                    if let Ok(mods) = serde_json::from_str::<Vec<serde_json::Value>>(&cached) {
+                        println!("Using cached SMAPI mods data due to fetch failure: {}", e);
+                        return Ok(mods);
+                    }
+                }
+            }
+            Err(e)
+        }
+    }
 }
 
 fn extract_fetch_uri(html: &str) -> Option<String> {
@@ -286,4 +323,182 @@ fn extract_fetch_uri(html: &str) -> Option<String> {
         }
     }
     None
+}
+
+#[tauri::command]
+pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Result<(), String> {
+    use tauri::Manager;
+
+    let url_str = format!("https://www.nexusmods.com/stardewvalley/mods/{}", mod_id);
+    let url = url_str.parse::<tauri::Url>().map_err(|e| e.to_string())?;
+
+    let handle = app.clone();
+
+    // Resolve persistent data directory for WebView cookie/localStorage persistence
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .ok()
+        .map(|p| p.join("webview_data"));
+    if let Some(ref dir) = data_dir {
+        let _ = fs::create_dir_all(dir);
+    }
+
+    tauri::async_runtime::spawn(async move {
+        use tauri::Emitter;
+
+        // Destroy old scraper window if it exists
+        if let Some(old_window) = handle.get_webview_window("nexus-scraper") {
+            let _ = old_window.destroy();
+        }
+
+        let mut builder = tauri::WebviewWindowBuilder::new(
+            &handle,
+            "nexus-scraper",
+            tauri::WebviewUrl::External(url)
+        )
+        .title("Nexus 验证中...")
+        .visible(tauri::is_dev());
+
+        // Set persistent data directory for cookie/localStorage support
+        if let Some(dir) = data_dir {
+            builder = builder.data_directory(dir);
+        }
+
+        let window = match builder.build() {
+            Ok(w) => w,
+            Err(e) => {
+                println!("Failed to build scraper window: {:?}", e);
+                return;
+            }
+        };
+
+        // Poll from Rust side via eval() — no need for __TAURI__ in the webview
+        let poll_window = window.clone();
+        let poll_handle = handle.clone();
+        tauri::async_runtime::spawn(async move {
+            let timeout = std::time::Instant::now() + std::time::Duration::from_secs(180);
+            let mut cf_shown = false;
+            let mut last_title = String::new();
+
+            // Helper: eval JS and get result via channel
+            let eval_js = |win: &tauri::WebviewWindow, js: &str| -> Option<String> {
+                let (tx, rx) = std::sync::mpsc::channel::<String>();
+                if win.eval_with_callback(js, move |result| { let _ = tx.send(result); }).is_err() {
+                    return None;
+                }
+                rx.recv_timeout(std::time::Duration::from_secs(2)).ok()
+            };
+
+            loop {
+                // Timeout: destroy window and notify frontend
+                if std::time::Instant::now() > timeout {
+                    println!("[Scraper] Timeout reached, destroying window");
+                    let _ = poll_handle.emit("respond-nexus-html", serde_json::json!({
+                        "error": "加载超时，请重试"
+                    }));
+                    let _ = poll_window.destroy();
+                    return;
+                }
+
+                // Check page state directly. This is more reliable than depending on an injected
+                // page script because Nexus/consent/challenge navigations can replace the document.
+                let snapshot_json = match eval_js(&poll_window, r##"
+                    (() => {
+                        try {
+                            const html = document.documentElement ? document.documentElement.outerHTML : "";
+                            return {
+                                readyState: document.readyState,
+                                title: document.title || "",
+                                href: location.href,
+                                hasDetails:
+                                    !!document.querySelector("#description-content, #section-mod-description, .mod-description, #description, #pagetitle h1, h1, meta[property='og:title'], meta[property='og:description']"),
+                                html
+                            };
+                        } catch (error) {
+                            return {
+                                readyState: "error",
+                                title: "",
+                                href: "",
+                                hasDetails: false,
+                                html: "",
+                                error: String(error)
+                            };
+                        }
+                    })()
+                "##) {
+                    None => {
+                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                        continue;
+                    }
+                    Some(s) => s,
+                };
+
+                let snapshot: serde_json::Value = match serde_json::from_str(&snapshot_json) {
+                    Ok(value) => value,
+                    Err(_) => {
+                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                        continue;
+                    }
+                };
+
+                // Show window if Cloudflare challenge is active
+                let title = snapshot
+                    .get("title")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default();
+                let href = snapshot
+                    .get("href")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default();
+                let is_challenge = title.contains("Just a moment")
+                    || title.contains("Checking your browser")
+                    || href.contains("captcha")
+                    || href.contains("challenge");
+
+                if is_challenge && !cf_shown {
+                    cf_shown = true;
+                    last_title = "Nexus 需要验证".to_string();
+                    let _ = poll_window.set_title(&last_title);
+                    let _ = poll_window.show();
+                    let _ = poll_window.set_focus();
+                }
+
+                // HTML ready — retrieve and emit. Nexus fills parts of the page asynchronously,
+                // so wait for detail markers instead of only DOMContentLoaded.
+                let ready_state = snapshot
+                    .get("readyState")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default();
+                let has_details = snapshot
+                    .get("hasDetails")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                let html = snapshot
+                    .get("html")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+
+                if !is_challenge && (has_details || (ready_state == "complete" && html.len() > 20_000)) {
+                    let _ = poll_window.set_title("Nexus 信息已获取");
+                    println!("[Scraper] Got HTML, length: {}", html.len());
+                    let _ = poll_handle.emit("respond-nexus-html", serde_json::json!({
+                        "html": html
+                    }));
+                    let _ = poll_window.destroy();
+                    return;
+                }
+
+                if !is_challenge && last_title != "Nexus 页面加载中..." {
+                    last_title = "Nexus 页面加载中...".to_string();
+                    let _ = poll_window.set_title(&last_title);
+                }
+
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            }
+        });
+    });
+
+    Ok(())
 }

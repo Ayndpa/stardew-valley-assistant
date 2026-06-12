@@ -98,7 +98,7 @@ export function SmapiInstaller({
                         : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
-                    GHProxy 加速 (推荐)
+                    加速镜像 (推荐)
                   </button>
                   <button
                     onClick={() => setSmapiMirror("official")}

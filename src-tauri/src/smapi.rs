@@ -33,26 +33,25 @@ pub fn check_smapi_status(game_dir: String) -> SmapiStatus {
 
     let mut version = None;
     if installed {
+        // Strategy 1: Read from SMAPI log file (most accurate, reflects actual runtime version)
         let log_path = get_smapi_log_path();
         if let Some(path) = log_path {
             if path.exists() {
-                if let Ok(file) = File::open(path) {
-                    let reader = BufReader::new(file);
-                    for line in reader.lines() {
-                        if let Ok(line_str) = line {
-                            if line_str.contains("INFO  SMAPI] SMAPI") {
-                                if let Some(ver_idx) = line_str.find("SMAPI ") {
-                                    let rest = &line_str[ver_idx + 6..];
-                                    let parts: Vec<&str> = rest.split_whitespace().collect();
-                                    if !parts.is_empty() {
-                                        version = Some(parts[0].to_string());
-                                    }
-                                }
-                                break;
-                            }
-                        }
-                    }
-                }
+                version = read_version_from_log(&path);
+            }
+        }
+
+        // Strategy 2 (Windows): Read from EXE file version info
+        #[cfg(target_os = "windows")]
+        if version.is_none() {
+            version = read_version_from_exe(&api_exe);
+        }
+
+        // Strategy 3: Read from StardewModdingAPI.deps.json
+        if version.is_none() {
+            let deps_json = game_path.join("StardewModdingAPI.deps.json");
+            if deps_json.exists() {
+                version = read_version_from_deps_json(&deps_json);
             }
         }
     }
@@ -62,6 +61,97 @@ pub fn check_smapi_status(game_dir: String) -> SmapiStatus {
         version,
         path: if installed { Some(api_exe.to_string_lossy().to_string()) } else { None },
     }
+}
+
+/// Read version from SMAPI-latest.txt log file
+fn read_version_from_log(path: &Path) -> Option<String> {
+    let file = File::open(path).ok()?;
+    let reader = BufReader::new(file);
+    for line in reader.lines() {
+        if let Ok(line_str) = line {
+            if line_str.contains("INFO  SMAPI]") {
+                if let Some(ver_idx) = line_str.find("SMAPI ") {
+                    let rest = &line_str[ver_idx + 6..];
+                    let parts: Vec<&str> = rest.split_whitespace().collect();
+                    if !parts.is_empty() {
+                        return Some(parts[0].to_string());
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Read version from EXE file version info (Windows only)
+#[cfg(target_os = "windows")]
+fn read_version_from_exe(exe_path: &Path) -> Option<String> {
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
+    use std::ptr;
+
+    #[link(name = "version")]
+    extern "system" {
+        fn GetFileVersionInfoSizeW(lptstrFilename: *const u16, lpdwHandle: *mut u32) -> u32;
+        fn GetFileVersionInfoW(lptstrFilename: *const u16, dwHandle: u32, dwLen: u32, lpData: *mut std::ffi::c_void) -> i32;
+        fn VerQueryValueW(pBlock: *const std::ffi::c_void, lpSubBlock: *const u16, lplpBuffer: *mut *const std::ffi::c_void, puLen: *mut u32) -> i32;
+    }
+
+    let wide_path: Vec<u16> = OsStr::new(exe_path).encode_wide().chain(std::iter::once(0)).collect();
+    let mut handle: u32 = 0;
+    let size = unsafe { GetFileVersionInfoSizeW(wide_path.as_ptr(), &mut handle) };
+    if size == 0 { return None; }
+
+    let mut buffer = vec![0u8; size as usize];
+    let ok = unsafe { GetFileVersionInfoW(wide_path.as_ptr(), handle, size, buffer.as_mut_ptr() as *mut std::ffi::c_void) };
+    if ok == 0 { return None; }
+
+    // Query available translations to find the correct language/codepage
+    let translation_block: Vec<u16> = OsStr::new("\\VarFileInfo\\Translation")
+        .encode_wide().chain(std::iter::once(0)).collect();
+    let mut trans_ptr: *const std::ffi::c_void = ptr::null();
+    let mut trans_len: u32 = 0;
+    let ok = unsafe { VerQueryValueW(buffer.as_ptr() as *const std::ffi::c_void, translation_block.as_ptr(), &mut trans_ptr, &mut trans_len) };
+    if ok == 0 || trans_ptr.is_null() || trans_len < 4 { return None; }
+
+    // Read the first translation entry (language + codepage)
+    let trans_slice = unsafe { std::slice::from_raw_parts(trans_ptr as *const u8, trans_len as usize) };
+    let lang = u16::from_le_bytes([trans_slice[0], trans_slice[1]]);
+    let codepage = u16::from_le_bytes([trans_slice[2], trans_slice[3]]);
+
+    let query = format!("\\StringFileInfo\\{:04x}{:04x}\\FileVersion\0", lang, codepage);
+    let query_wide: Vec<u16> = OsStr::new(&query)
+        .encode_wide().chain(std::iter::once(0)).collect();
+
+    let mut ptr: *const std::ffi::c_void = ptr::null();
+    let mut len: u32 = 0;
+    let ok = unsafe { VerQueryValueW(buffer.as_ptr() as *const std::ffi::c_void, query_wide.as_ptr(), &mut ptr, &mut len) };
+    if ok == 0 || ptr.is_null() { return None; }
+
+    let slice = unsafe { std::slice::from_raw_parts(ptr as *const u16, len as usize) };
+    let version_str = String::from_utf16_lossy(slice).trim_end_matches('\0').to_string();
+    if version_str.is_empty() { return None; }
+    // Strip trailing ".0" segments (e.g. "4.5.2.0" -> "4.5.2")
+    let mut parts: Vec<&str> = version_str.split('.').collect();
+    while parts.len() > 1 && parts.last() == Some(&"0") {
+        parts.pop();
+    }
+    Some(parts.join("."))
+}
+
+/// Read version from StardewModdingAPI.deps.json
+fn read_version_from_deps_json(path: &Path) -> Option<String> {
+    let content = fs::read_to_string(path).ok()?;
+    // Look for "SMAPI/x.y.z" pattern in the deps.json
+    if let Some(idx) = content.find("SMAPI/") {
+        let rest = &content[idx + 6..];
+        let end = rest.find(|c: char| !c.is_ascii_digit() && c != '.').unwrap_or(rest.len());
+        let ver = &rest[..end];
+        if !ver.is_empty() {
+            return Some(ver.to_string());
+        }
+    }
+    None
 }
 
 pub fn get_smapi_log_path() -> Option<PathBuf> {
@@ -95,10 +185,38 @@ pub async fn install_smapi(game_dir: String, download_url: String) -> Result<(),
     // Download
     download_file(&download_url, &zip_path)?;
 
-    // Extract
+    // Extract (handle double-zipped installers)
     let extract_dir = temp_dir.join("extracted");
     fs::create_dir_all(&extract_dir).map_err(|e| format!("无法创建解压文件夹: {}", e))?;
     extract_zip(&zip_path, &extract_dir)?;
+
+    // Check for inner zip files (double-zipped format)
+    fn find_zip(dir: &Path) -> Option<PathBuf> {
+        if dir.is_dir() {
+            if let Ok(entries) = fs::read_dir(dir) {
+                for entry in entries.flatten() {
+                    let p = entry.path();
+                    if p.extension().map_or(false, |ext| ext.to_string_lossy().to_lowercase() == "zip") {
+                        return Some(p);
+                    }
+                    if let Some(inner) = find_zip(&p) {
+                        return Some(inner);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    if let Some(inner_zip) = find_zip(&extract_dir) {
+        let inner_extract_dir = temp_dir.join("extracted_inner");
+        fs::create_dir_all(&inner_extract_dir).map_err(|e| format!("无法创建内层解压文件夹: {}", e))?;
+        extract_zip(&inner_zip, &inner_extract_dir)?;
+        // Replace extract_dir contents by removing old and renaming
+        let _ = fs::remove_dir_all(&extract_dir);
+        fs::rename(&inner_extract_dir, &extract_dir)
+            .map_err(|e| format!("内层解压目录替换失败: {}", e))?;
+    }
 
     // Search for internal folder
     fn find_internal(dir: &Path) -> Option<PathBuf> {
@@ -143,8 +261,20 @@ pub async fn install_smapi(game_dir: String, download_url: String) -> Result<(),
 
     let plat_path = platform_path.unwrap_or(found_internal);
 
-    // Copy to game folder
-    copy_dir_all(&plat_path, game_path)
+    // Find install.dat inside the platform folder (it's a zip archive containing the actual SMAPI files)
+    let install_dat = plat_path.join("install.dat");
+    if !install_dat.exists() {
+        let _ = fs::remove_dir_all(&temp_dir);
+        return Err(format!("在平台目录中未找到 install.dat: {}", plat_path.display()));
+    }
+
+    // Extract install.dat (it's a zip) to get the actual SMAPI files
+    let install_extract_dir = temp_dir.join("install_files");
+    fs::create_dir_all(&install_extract_dir).map_err(|e| format!("无法创建 install.dat 解压文件夹: {}", e))?;
+    extract_zip(&install_dat, &install_extract_dir)?;
+
+    // Copy the extracted SMAPI files to game folder
+    copy_dir_all(&install_extract_dir, game_path)
         .map_err(|e| format!("拷贝文件到游戏目录失败: {}", e))?;
 
     // Cleanup
