@@ -3,6 +3,7 @@ pub mod crops;
 pub mod fishing;
 pub mod image_utils;
 pub mod items;
+pub mod map_names;
 pub mod npc;
 pub mod tbin;
 pub mod xnb;

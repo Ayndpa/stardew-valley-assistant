@@ -50,7 +50,6 @@ pub struct RawLocationFishEntry {
 
 #[derive(Debug, Clone, Default)]
 pub struct RawLocationFishingData {
-    pub display_name: String,
     pub fish_areas: HashMap<String, RawLocationFishArea>,
     pub fish: Vec<RawLocationFishEntry>,
 }
@@ -396,7 +395,7 @@ impl<'a> XnbPayloadReader<'a> {
     }
 
     pub fn read_location_fishing_data(&mut self) -> Result<RawLocationFishingData, String> {
-        let display_name = self.read_object_string_any()?;
+        let _display_name = self.read_object_string_any()?;
         self.skip_nullable_point()?;
         let _exclude_from_npc_pathfinding = self.read_bool()?;
         self.skip_nullable_create_location_data()?;
@@ -426,11 +425,7 @@ impl<'a> XnbPayloadReader<'a> {
         let _music_is_town_theme = self.read_bool()?;
         self.skip_nullable_string_dictionary()?;
 
-        Ok(RawLocationFishingData {
-            display_name,
-            fish_areas,
-            fish,
-        })
+        Ok(RawLocationFishingData { fish_areas, fish })
     }
 
     fn skip_character_data_tail(&mut self) -> Result<(), String> {

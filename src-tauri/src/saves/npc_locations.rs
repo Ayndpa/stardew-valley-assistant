@@ -6,10 +6,8 @@ use tokio::task;
 
 use super::parser::{parse_weather, SaveSummary};
 use super::xml_utils::extract_tag_i32;
-use crate::game_data::calendar::resolve_localized_text;
-use crate::game_data::xnb::{
-    load_localized_string_tables, load_location_fishing_xnb, load_string_dictionary_xnb,
-};
+use crate::game_data::map_names::map_display_name;
+use crate::game_data::xnb::load_string_dictionary_xnb;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -92,7 +90,7 @@ fn get_npc_locations_sync(
 
 fn read_realtime_locations(
     save_id: Option<String>,
-    game_dir: Option<String>,
+    _game_dir: Option<String>,
 ) -> Result<NpcLocationsResult, String> {
     let path = realtime_snapshot_path()
         .ok_or_else(|| "无法定位星露谷用户数据目录，不能读取实时 NPC 位置。".to_string())?;
@@ -105,19 +103,13 @@ fn read_realtime_locations(
     let game_time = snapshot.game_time;
     let generated_at = snapshot.generated_at.clone();
     let snapshot_save_id = snapshot.save_id.clone();
-    let location_names = game_dir
-        .as_deref()
-        .and_then(|dir| crate::game_data::locate_content_dir(Some(dir)).ok())
-        .map(|content| load_location_display_names(&content))
-        .unwrap_or_default();
     let locations = snapshot
         .npcs
         .into_iter()
         .map(|npc| NpcLocationInfo {
             npc_name: npc.npc_name,
-            location_display_name: location_names
-                .get(&npc.location)
-                .cloned()
+            location_display_name: map_display_name(&npc.location)
+                .map(str::to_string)
                 .unwrap_or_else(|| npc.location.clone()),
             location: npc.location,
             tile_x: Some(npc.tile_x),
@@ -199,7 +191,6 @@ fn estimate_locations_from_schedule(
     let (weather_today, _) = parse_weather(&main_xml);
 
     let content_dir = crate::game_data::locate_content_dir(game_dir.as_deref())?;
-    let location_names = load_location_display_names(&content_dir);
     let schedules_dir = content_dir.join("Characters").join("schedules");
     let mut locations = Vec::new();
 
@@ -221,14 +212,9 @@ fn estimate_locations_from_schedule(
             Ok(value) => value,
             Err(_) => continue,
         };
-        if let Some(location) = estimate_npc_location(
-            npc_name,
-            &schedule,
-            &summary,
-            &weather_today,
-            current_time,
-            &location_names,
-        ) {
+        if let Some(location) =
+            estimate_npc_location(npc_name, &schedule, &summary, &weather_today, current_time)
+        {
             locations.push(location);
         }
     }
@@ -250,15 +236,13 @@ fn estimate_npc_location(
     summary: &SaveSummary,
     weather: &str,
     current_time: i32,
-    location_names: &HashMap<String, String>,
 ) -> Option<NpcLocationInfo> {
     let (key, line) = choose_schedule_line(schedule, summary, weather)?;
     let (time, location, x, y, direction) =
         parse_schedule_destination(schedule, &line, current_time)?;
 
-    let location_display_name = location_names
-        .get(&location)
-        .cloned()
+    let location_display_name = map_display_name(&location)
+        .map(str::to_string)
         .unwrap_or_else(|| location.clone());
 
     Some(NpcLocationInfo {
@@ -274,25 +258,6 @@ fn estimate_npc_location(
         confidence: "估算".to_string(),
         updated_at: None,
     })
-}
-
-fn load_location_display_names(content_dir: &Path) -> HashMap<String, String> {
-    let localized_tables = load_localized_string_tables(
-        content_dir,
-        &["Locations", "StringsFromCSFiles", "UI", "1_6_Strings"],
-    );
-    let Ok(locations) = load_location_fishing_xnb(&content_dir.join("Data").join("Locations.xnb"))
-    else {
-        return HashMap::new();
-    };
-
-    locations
-        .into_iter()
-        .filter_map(|(key, location)| {
-            let display_name = resolve_localized_text(&location.display_name, &localized_tables);
-            (!display_name.trim().is_empty()).then_some((key, display_name))
-        })
-        .collect()
 }
 
 fn normalize_time(time: i32) -> i32 {
