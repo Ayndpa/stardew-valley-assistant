@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react"
+import type { PointerEvent as ReactPointerEvent, PointerEventHandler, WheelEventHandler } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import {
@@ -10,8 +11,11 @@ import {
   Layers,
   Loader2,
   Map as MapIcon,
+  Minus,
   RefreshCw,
+  RotateCcw,
   Search,
+  Plus,
   Waves,
 } from "lucide-react"
 
@@ -53,14 +57,7 @@ interface TileRun {
   hidden: boolean
 }
 
-const depthColors = [
-  "#38bdf8",
-  "#22c55e",
-  "#eab308",
-  "#f97316",
-  "#ef4444",
-  "#a855f7",
-]
+const depthColors = ["#38bdf8", "#22c55e", "#facc15", "#fb923c", "#ef4444", "#a855f7"]
 
 function formatCount(value: number) {
   return value.toLocaleString("zh-CN")
@@ -71,6 +68,8 @@ function tileColor(depth: number) {
 }
 
 export function FishingMap() {
+  const viewportRef = useRef<HTMLDivElement | null>(null)
+  const dragStateRef = useRef<{ pointerId: number; x: number; y: number } | null>(null)
   const [data, setData] = useState<FishingMapData>({ maps: [], cached: false })
   const [selectedMap, setSelectedMap] = useState<FishingMapDetail | null>(null)
   const [selectedId, setSelectedId] = useState("")
@@ -82,6 +81,10 @@ export function FishingMap() {
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [detailError, setDetailError] = useState<string | null>(null)
+  const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 })
+  const [zoom, setZoom] = useState(1)
+  const [offset, setOffset] = useState({ x: 0, y: 0 })
+  const [isDragging, setIsDragging] = useState(false)
 
   const loadMaps = async (forceRefresh = false) => {
     setLoading(true)
@@ -122,6 +125,20 @@ export function FishingMap() {
 
   useEffect(() => {
     loadMaps()
+  }, [])
+
+  useEffect(() => {
+    const viewport = viewportRef.current
+    if (!viewport) return
+
+    const observer = new ResizeObserver((entries) => {
+      const rect = entries[0]?.contentRect
+      if (!rect) return
+      setViewportSize({ width: rect.width, height: rect.height })
+    })
+
+    observer.observe(viewport)
+    return () => observer.disconnect()
   }, [])
 
   useEffect(() => {
@@ -185,8 +202,26 @@ export function FishingMap() {
   }, [data.maps, searchTerm])
 
   const selectedSummary = useMemo(() => {
-    return data.maps.find((map) => map.id === selectedId) || data.maps[0] || null
-  }, [data.maps, selectedId])
+    return data.maps.find((map) => map.id === selectedId) || filteredMaps[0] || data.maps[0] || null
+  }, [data.maps, filteredMaps, selectedId])
+
+  useEffect(() => {
+    if (!selectedId && filteredMaps[0]) {
+      setSelectedId(filteredMaps[0].id)
+      return
+    }
+
+    if (selectedId && filteredMaps.length > 0 && !filteredMaps.some((map) => map.id === selectedId)) {
+      setSelectedId(filteredMaps[0].id)
+    }
+  }, [filteredMaps, selectedId])
+
+  useEffect(() => {
+    setZoom(1)
+    setOffset({ x: 0, y: 0 })
+    dragStateRef.current = null
+    setIsDragging(false)
+  }, [selectedId])
 
   const visibleTiles = useMemo(() => {
     if (!selectedMap) return []
@@ -237,266 +272,398 @@ export function FishingMap() {
   const totalFishable = data.maps.reduce((sum, map) => sum + map.fishableTiles, 0)
   const maxDepth = selectedSummary?.maxDepth ?? selectedMap?.maxDepth ?? 0
   const visibleFishableCount = selectedMap ? visibleTiles.length : selectedSummary?.fishableTiles || 0
+  const sceneSize = useMemo(() => {
+    if (!selectedMap || viewportSize.width <= 0 || viewportSize.height <= 0) {
+      return { width: 0, height: 0 }
+    }
+
+    const availableWidth = Math.max(0, viewportSize.width - 80)
+    const availableHeight = Math.max(0, viewportSize.height - 80)
+    const widthRatio = availableWidth / selectedMap.width
+    const heightRatio = availableHeight / selectedMap.height
+    const fitScale = Math.min(widthRatio, heightRatio)
+
+    return {
+      width: Math.max(240, selectedMap.width * fitScale),
+      height: Math.max(180, selectedMap.height * fitScale),
+    }
+  }, [selectedMap, viewportSize])
+
+  const clampZoom = (value: number) => Math.max(0.6, value)
+
+  const zoomAtPoint = (nextZoom: number, clientX?: number, clientY?: number) => {
+    const viewport = viewportRef.current
+    if (!viewport) {
+      setZoom(clampZoom(nextZoom))
+      return
+    }
+
+    const clamped = clampZoom(nextZoom)
+    const rect = viewport.getBoundingClientRect()
+    const centerX = rect.left + rect.width / 2
+    const centerY = rect.top + rect.height / 2
+    const anchorX = clientX ?? centerX
+    const anchorY = clientY ?? centerY
+    const pointerX = anchorX - centerX
+    const pointerY = anchorY - centerY
+
+    setOffset((current) => {
+      const worldX = (pointerX - current.x) / zoom
+      const worldY = (pointerY - current.y) / zoom
+      return {
+        x: pointerX - worldX * clamped,
+        y: pointerY - worldY * clamped,
+      }
+    })
+    setZoom(clamped)
+  }
+
+  const handleWheel: WheelEventHandler<HTMLDivElement> = (event) => {
+    event.preventDefault()
+    const factor = event.deltaY < 0 ? 1.12 : 0.9
+    zoomAtPoint(zoom * factor, event.clientX, event.clientY)
+  }
+
+  const handlePointerDown: PointerEventHandler<HTMLDivElement> = (event) => {
+    if (event.button !== 0) return
+    event.preventDefault()
+    dragStateRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY }
+    event.currentTarget.setPointerCapture(event.pointerId)
+    setIsDragging(true)
+  }
+
+  const handlePointerMove: PointerEventHandler<HTMLDivElement> = (event) => {
+    const dragState = dragStateRef.current
+    if (!dragState || dragState.pointerId !== event.pointerId) return
+    event.preventDefault()
+
+    const deltaX = event.clientX - dragState.x
+    const deltaY = event.clientY - dragState.y
+    dragStateRef.current = { ...dragState, x: event.clientX, y: event.clientY }
+
+    setOffset((current) => ({
+      x: current.x + deltaX,
+      y: current.y + deltaY,
+    }))
+  }
+
+  const endDrag = (event?: ReactPointerEvent<HTMLDivElement>) => {
+    if (event && dragStateRef.current && event.currentTarget.hasPointerCapture(dragStateRef.current.pointerId)) {
+      event.currentTarget.releasePointerCapture(dragStateRef.current.pointerId)
+    }
+    dragStateRef.current = null
+    setIsDragging(false)
+  }
 
   return (
-    <div className="p-8 space-y-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">钓鱼地图</h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            {loading ? "正在解析地图..." : `${formatCount(data.maps.length)} 张地图 · ${formatCount(totalFishable)} 个可钓鱼格`}
-          </p>
+    <section className="relative h-full min-h-[720px] overflow-hidden select-none bg-background text-foreground">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,color-mix(in_oklab,var(--primary)_10%,transparent)_0%,transparent_58%)]" />
+      <div className="absolute inset-0 bg-[linear-gradient(180deg,color-mix(in_oklab,var(--background)_78%,transparent)_0%,var(--background)_100%)]" />
+
+      <div className="absolute left-4 right-4 top-4 z-20">
+        <div className="rounded-lg border border-border/70 bg-background/82 px-3 py-3 shadow-2xl backdrop-blur-xl">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex min-w-0 flex-1 flex-col gap-3 lg:flex-row lg:items-center">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary/12 text-primary">
+                  <MapIcon className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <div className="truncate text-base font-semibold">游戏地图</div>
+                  <div className="truncate text-xs text-muted-foreground">
+                    {loading
+                      ? "正在解析地图..."
+                      : `${formatCount(data.maps.length)} 张地图 · ${formatCount(totalFishable)} 个可钓鱼格`}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid min-w-0 flex-1 grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_220px_132px]">
+                <div className="relative min-w-0">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={searchTerm}
+                    onChange={(event) => setSearchTerm(event.currentTarget.value)}
+                    placeholder="搜索地图"
+                    className="h-10 border-border/70 bg-background/80 pl-9 placeholder:text-muted-foreground"
+                  />
+                </div>
+
+                <select
+                  value={selectedId}
+                  onChange={(event) => setSelectedId(event.currentTarget.value)}
+                  className="h-10 min-w-0 rounded-md border border-border/70 bg-background/80 px-3 text-sm text-foreground outline-none"
+                >
+                  {filteredMaps.length === 0 ? (
+                    <option value="">没有匹配地图</option>
+                  ) : (
+                    filteredMaps.map((map) => (
+                      <option key={map.id} value={map.id}>
+                        {map.name}
+                      </option>
+                    ))
+                  )}
+                </select>
+
+                <select
+                  value={minDepth}
+                  onChange={(event) => setMinDepth(Number(event.currentTarget.value))}
+                  className="h-10 rounded-md border border-border/70 bg-background/80 px-3 text-sm text-foreground outline-none"
+                >
+                  {Array.from({ length: Math.max(1, maxDepth + 1) }, (_, depth) => (
+                    <option key={depth} value={depth}>
+                      {`深度 >= ${depth}`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1 rounded-md border border-border/70 bg-background/80 p-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  type="button"
+                  onClick={() => zoomAtPoint(zoom / 1.12)}
+                  className="h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground"
+                >
+                  <Minus className="h-4 w-4" />
+                </Button>
+                <div className="min-w-12 text-center text-xs font-medium text-muted-foreground">
+                  {Math.round(zoom * 100)}%
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  type="button"
+                  onClick={() => zoomAtPoint(zoom * 1.12)}
+                  className="h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground"
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  type="button"
+                  onClick={() => {
+                    setZoom(1)
+                    setOffset({ x: 0, y: 0 })
+                  }}
+                  className="h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                </Button>
+              </div>
+              <label className="flex h-10 items-center gap-2 rounded-md border border-border/70 bg-background/80 px-3 text-sm text-foreground">
+                <Checkbox checked={showFishingOverlay} onCheckedChange={(value) => setShowFishingOverlay(Boolean(value))} className="border-border data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground" />
+                <Layers className="h-4 w-4 text-primary" />
+                叠层
+              </label>
+              <label className="flex h-10 items-center gap-2 rounded-md border border-border/70 bg-background/80 px-3 text-sm text-foreground">
+                <Checkbox checked={showHidden} onCheckedChange={(value) => setShowHidden(Boolean(value))} className="border-border data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground" />
+                隐藏水域
+              </label>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => loadMaps(true)}
+                disabled={loading}
+                className="h-10 border-border/70 bg-background/80 px-3"
+              >
+                {loading ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+                刷新
+              </Button>
+            </div>
+          </div>
         </div>
-        <Button variant="outline" size="sm" onClick={() => loadMaps(true)} disabled={loading}>
-          {loading ? <Loader2 className="animate-spin" /> : <RefreshCw />}
-          重新解析
-        </Button>
       </div>
 
-      {error && (
-        <Card className="border-amber-500/30 bg-amber-500/5">
-          <CardContent className="py-4 text-sm text-amber-700 dark:text-amber-200">
-            {error}
-          </CardContent>
-        </Card>
-      )}
-
-      <div className="grid grid-cols-1 xl:grid-cols-[340px_minmax(0,1fr)] gap-6">
-        <Card className="xl:sticky xl:top-8 xl:self-start">
-          <CardHeader className="pb-4">
-            <CardTitle className="text-base flex items-center gap-2">
-              <MapIcon className="h-4 w-4 text-primary" />
-              地图
-            </CardTitle>
-            <div className="relative pt-2">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.currentTarget.value)}
-                placeholder="搜索地图"
-                className="pl-9"
-              />
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-2 max-h-[calc(100vh-260px)] overflow-y-auto pr-3">
-            {loading ? (
-              <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                解析中
-              </div>
-            ) : filteredMaps.length === 0 ? (
-              <div className="py-8 text-sm text-muted-foreground">没有匹配的地图</div>
-            ) : (
-              filteredMaps.map((map) => (
-                <button
-                  key={map.id}
-                  type="button"
-                  onClick={() => setSelectedId(map.id)}
-                  className={cn(
-                    "w-full rounded-md border px-3 py-2 text-left transition-colors",
-                    selectedSummary?.id === map.id
-                      ? "border-primary/50 bg-primary/10"
-                      : "border-border hover:bg-accent/50"
-                  )}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="min-w-0 truncate text-sm font-semibold">{map.name}</span>
-                    <Badge variant="secondary" className="shrink-0 text-[10px]">
-                      {formatCount(map.fishableTiles)}
-                    </Badge>
-                  </div>
-                  <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-                    <span className="truncate">{map.id}</span>
-                    <span className="shrink-0">{map.width}x{map.height}</span>
-                  </div>
-                </button>
-              ))
+      <div className="absolute inset-0 flex items-center justify-center px-4 pb-4 pt-28">
+        <div className="relative h-full w-full overflow-hidden rounded-lg border border-border/70 bg-card shadow-2xl">
+          <div
+            ref={viewportRef}
+            className={cn(
+              "absolute inset-0 overflow-hidden touch-none select-none",
+              isDragging ? "cursor-grabbing" : "cursor-grab"
             )}
-          </CardContent>
-        </Card>
+            onWheel={handleWheel}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={endDrag}
+            onPointerCancel={endDrag}
+            onPointerLeave={(event) => {
+              if (dragStateRef.current?.pointerId === event.pointerId) {
+                endDrag(event)
+              }
+            }}
+          >
+            {selectedMap && sceneSize.width > 0 && sceneSize.height > 0 && (
+              <div
+                className="absolute left-1/2 top-1/2"
+                style={{
+                  width: `${sceneSize.width}px`,
+                  height: `${sceneSize.height}px`,
+                  transform: `translate(calc(-50% + ${offset.x}px), calc(-50% + ${offset.y}px)) scale(${zoom})`,
+                  transformOrigin: "center center",
+                }}
+              >
+                {selectedMap.mapImageDataUrl ? (
+                  <img
+                    src={selectedMap.mapImageDataUrl}
+                    alt=""
+                    className="absolute inset-0 h-full w-full object-fill [image-rendering:pixelated]"
+                    draggable={false}
+                    onDragStart={(event) => event.preventDefault()}
+                  />
+                ) : (
+                  <svg
+                    className="absolute inset-0 h-full w-full"
+                    viewBox={`0 0 ${selectedMap.width} ${selectedMap.height}`}
+                    preserveAspectRatio="none"
+                    aria-hidden="true"
+                  >
+                    <defs>
+                      <pattern id="fishing-map-grid" width="8" height="8" patternUnits="userSpaceOnUse">
+                        <path d="M 8 0 L 0 0 0 8" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="0.4" />
+                      </pattern>
+                    </defs>
+                    <rect width={selectedMap.width} height={selectedMap.height} fill="color-mix(in oklab, var(--card) 82%, black)" />
+                    <rect width={selectedMap.width} height={selectedMap.height} fill="url(#fishing-map-grid)" />
+                  </svg>
+                )}
 
-        <div className="space-y-6 min-w-0">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
-                  <Waves className="h-4 w-4 text-sky-500" />
-                  水域格
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{formatCount(selectedSummary?.waterTiles || 0)}</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
-                  <Fish className="h-4 w-4 text-emerald-500" />
-                  可钓鱼格
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  {loadingDetail ? "..." : formatCount(visibleFishableCount)}
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm text-muted-foreground flex items-center gap-2">
-                  <Gauge className="h-4 w-4 text-orange-500" />
-                  最深距离
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{maxDepth}</div>
-              </CardContent>
-            </Card>
+                {showFishingOverlay && (
+                  <svg
+                    className="absolute inset-0 h-full w-full"
+                    viewBox={`0 0 ${selectedMap.width} ${selectedMap.height}`}
+                    preserveAspectRatio="none"
+                    aria-hidden="true"
+                  >
+                    {visibleRuns.map((tile) => (
+                      <rect
+                        key={`${tile.x}:${tile.y}:${tile.width}:${tile.depth}:${tile.hidden}`}
+                        x={tile.x}
+                        y={tile.y}
+                        width={tile.width}
+                        height="1"
+                        fill={tileColor(tile.depth)}
+                        opacity={tile.hidden ? 0.26 : 0.46}
+                      >
+                        <title>
+                          {`(${tile.x}, ${tile.y}) 深度 ${tile.depth}${tile.hidden ? " · 隐藏水域" : ""}`}
+                        </title>
+                      </rect>
+                    ))}
+                  </svg>
+                )}
+              </div>
+            )}
           </div>
 
-          <Card>
-            <CardHeader className="gap-4">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          {(loadingDetail || loading) && (
+            <div className="absolute inset-0 flex items-center justify-center bg-background/45 backdrop-blur-[2px]">
+              <div className="flex items-center gap-3 rounded-md border border-border/70 bg-popover/92 px-4 py-3 text-sm text-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                正在加载地图
+              </div>
+            </div>
+          )}
+
+          {!loading && !selectedMap && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="rounded-md border border-border/70 bg-popover/92 px-4 py-3 text-sm text-muted-foreground">
+                没有可显示的地图
+              </div>
+            </div>
+          )}
+
+          <div className="pointer-events-none absolute inset-x-4 bottom-4 z-10 flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+            <div className="pointer-events-auto max-w-[min(540px,100%)] rounded-lg border border-border/70 bg-background/86 px-4 py-3 shadow-xl backdrop-blur-xl">
+              <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <CardTitle className="text-xl truncate">
+                  <div className="truncate text-lg font-semibold">
                     {selectedSummary?.name || "未选择地图"}
-                  </CardTitle>
+                  </div>
                   {selectedSummary && (
-                    <p className="text-xs text-muted-foreground mt-1 truncate">
+                    <div className="mt-1 truncate text-xs text-muted-foreground">
                       {selectedSummary.relativePath}
-                    </p>
+                    </div>
                   )}
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <select
-                    value={minDepth}
-                    onChange={(event) => setMinDepth(Number(event.currentTarget.value))}
-                    className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-                  >
-                    {Array.from({ length: Math.max(1, maxDepth + 1) }, (_, depth) => (
-                      <option key={depth} value={depth}>
-                        {`深度 >= ${depth}`}
-                      </option>
-                    ))}
-                  </select>
-                  <Button
-                    type="button"
-                    variant={showFishingOverlay ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setShowFishingOverlay((value) => !value)}
-                  >
-                    <Layers className="h-4 w-4" />
-                    钓点叠层
-                  </Button>
-                  <Button
-                    type="button"
-                    variant={showHidden ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setShowHidden((value) => !value)}
-                  >
-                    {showHidden ? "包含隐藏水域" : "排除隐藏水域"}
-                  </Button>
+                <Badge variant="secondary" className="border border-border/60 bg-secondary/80 text-secondary-foreground">
+                  {selectedSummary ? `${selectedSummary.width} x ${selectedSummary.height}` : "无尺寸"}
+                </Badge>
+              </div>
+
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                <div className="rounded-md border border-border/60 bg-card/70 px-3 py-2">
+                  <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                    <Waves className="h-3.5 w-3.5 text-primary" />
+                    水域格
+                  </div>
+                  <div className="mt-1 text-lg font-semibold">{formatCount(selectedSummary?.waterTiles || 0)}</div>
+                </div>
+                <div className="rounded-md border border-border/60 bg-card/70 px-3 py-2">
+                  <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                    <Fish className="h-3.5 w-3.5 text-primary" />
+                    可钓鱼格
+                  </div>
+                  <div className="mt-1 text-lg font-semibold">{formatCount(visibleFishableCount)}</div>
+                </div>
+                <div className="rounded-md border border-border/60 bg-card/70 px-3 py-2">
+                  <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                    <Gauge className="h-3.5 w-3.5 text-primary" />
+                    最深距离
+                  </div>
+                  <div className="mt-1 text-lg font-semibold">{maxDepth}</div>
                 </div>
               </div>
-              {depthSummary.length > 0 && (
-                <div className="flex flex-wrap gap-2">
+            </div>
+
+            {depthSummary.length > 0 && (
+              <div className="pointer-events-auto max-w-full rounded-lg border border-border/70 bg-background/86 px-3 py-3 shadow-xl backdrop-blur-xl">
+                <div className="mb-2 text-xs text-muted-foreground">深度图例</div>
+                <div className="flex max-w-full flex-wrap gap-2">
                   {depthSummary.map(([depth, count]) => (
-                    <Badge key={depth} variant="outline" className="gap-1.5">
-                      <span
-                        className="h-2.5 w-2.5 rounded-sm"
-                        style={{ backgroundColor: tileColor(depth) }}
-                      />
+                    <Badge
+                      key={depth}
+                      variant="outline"
+                      className={cn(
+                        "gap-1.5 border-border/70 bg-card/70 text-foreground",
+                        minDepth === depth && "border-primary/60 bg-primary/10"
+                      )}
+                    >
+                      <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: tileColor(depth) }} />
                       {depth}: {formatCount(count)}
                     </Badge>
                   ))}
                 </div>
+              </div>
+            )}
+          </div>
+
+          {(error || detailError || selectedMap?.mapImageError) && (
+            <div className="absolute left-4 right-4 top-4 z-10 space-y-2">
+              {error && (
+                <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-200">
+                  {error}
+                </div>
               )}
-            </CardHeader>
-            <CardContent>
               {detailError && (
-                <div className="mb-3 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-sm text-amber-700 dark:text-amber-200">
+                <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-200">
                   {detailError}
                 </div>
               )}
               {selectedMap?.mapImageError && (
-                <div className="mb-3 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-sm text-amber-700 dark:text-amber-200">
+                <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-200">
                   游戏底图渲染失败：{selectedMap.mapImageError}
                 </div>
               )}
-              <div className="overflow-auto rounded-md border bg-slate-950">
-                {loadingDetail ? (
-                  <div className="flex min-h-[420px] items-center justify-center gap-2 text-sm text-slate-300">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    正在加载当前地图钓点
-                  </div>
-                ) : selectedMap ? (
-                  <div
-                    className="relative min-h-[420px] w-full overflow-hidden bg-slate-950"
-                    role="img"
-                    aria-label={`${selectedMap.name} 地图与钓鱼地点`}
-                    style={{
-                      aspectRatio: `${selectedMap.width} / ${selectedMap.height}`,
-                      minWidth: Math.min(Math.max(selectedMap.width * 8, 720), 1400),
-                    }}
-                  >
-                    {selectedMap.mapImageDataUrl ? (
-                      <img
-                        src={selectedMap.mapImageDataUrl}
-                        alt=""
-                        className="absolute inset-0 h-full w-full object-fill [image-rendering:pixelated]"
-                        draggable={false}
-                      />
-                    ) : (
-                      <svg
-                        className="absolute inset-0 h-full w-full"
-                        viewBox={`0 0 ${selectedMap.width} ${selectedMap.height}`}
-                        preserveAspectRatio="none"
-                        aria-hidden="true"
-                      >
-                        <defs>
-                          <pattern id="fishing-map-grid" width="8" height="8" patternUnits="userSpaceOnUse">
-                            <path d="M 8 0 L 0 0 0 8" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="0.4" />
-                          </pattern>
-                        </defs>
-                        <rect width={selectedMap.width} height={selectedMap.height} fill="#0f172a" />
-                        <rect width={selectedMap.width} height={selectedMap.height} fill="url(#fishing-map-grid)" />
-                      </svg>
-                    )}
-                    {showFishingOverlay && (
-                      <svg
-                        className="absolute inset-0 h-full w-full"
-                        viewBox={`0 0 ${selectedMap.width} ${selectedMap.height}`}
-                        preserveAspectRatio="none"
-                        aria-hidden="true"
-                      >
-                        {visibleRuns.map((tile) => (
-                          <rect
-                            key={`${tile.x}:${tile.y}:${tile.width}:${tile.depth}:${tile.hidden}`}
-                            x={tile.x}
-                            y={tile.y}
-                            width={tile.width}
-                            height="1"
-                            fill={tileColor(tile.depth)}
-                            opacity={tile.hidden ? 0.25 : 0.42}
-                          >
-                            <title>
-                              {`(${tile.x}, ${tile.y}) 深度 ${tile.depth}${tile.hidden ? " · 隐藏水域" : ""}`}
-                            </title>
-                          </rect>
-                        ))}
-                      </svg>
-                    )}
-                  </div>
-                ) : (
-                  <div className="flex min-h-[420px] items-center justify-center text-sm text-slate-300">
-                    没有可显示的地图
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+            </div>
+          )}
         </div>
       </div>
-    </div>
+    </section>
   )
 }

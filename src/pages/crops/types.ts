@@ -23,12 +23,14 @@ export interface PlantedCrop {
 export interface Crop {
   seedId?: string
   harvestId?: string
+  internalName?: string
   name: string
   icon?: string | null
   season: string
   seasons?: string[]
   growDays: number
   sellPrice: number
+  categoryKey?: string
   regrows: boolean
   regrowDays?: number
   needsWatering?: boolean

@@ -20,12 +20,14 @@ pub struct CropLookup {
 pub struct CropEncyclopediaEntry {
     pub seed_id: String,
     pub harvest_id: String,
+    pub internal_name: String,
     pub name: String,
     pub icon: Option<String>,
     pub season: String,
     pub seasons: Vec<String>,
     pub grow_days: i32,
     pub sell_price: i32,
+    pub category_key: String,
     pub regrows: bool,
     pub regrow_days: Option<i32>,
     pub needs_watering: bool,
@@ -80,12 +82,14 @@ pub fn get_crop_game_data(game_dir: Option<String>) -> Result<CropGameData, Stri
         let entry = CropEncyclopediaEntry {
             seed_id: seed_id.clone(),
             harvest_id: crop.harvest_item_id.clone(),
+            internal_name: obj.name.clone(),
             name: name.clone(),
             icon: icon.clone(),
             season,
             seasons,
             grow_days,
             sell_price: obj.price,
+            category_key: classify_crop_category_key(obj.category),
             regrows,
             regrow_days,
             needs_watering: crop.needs_watering,
@@ -160,4 +164,14 @@ pub fn derive_season_filters() -> Vec<String> {
         "春夏秋".to_string(),
         "全季".to_string(),
     ]
+}
+
+fn classify_crop_category_key(category: i32) -> String {
+    match category {
+        -75 => "vegetable".to_string(),
+        -76 => "flower".to_string(),
+        -77 => "forage".to_string(),
+        -78 => "fruit".to_string(),
+        _ => "other".to_string(),
+    }
 }
