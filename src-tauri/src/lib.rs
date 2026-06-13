@@ -19,8 +19,9 @@ use crate::game_data::{
 use crate::mods::{
     apply_profile, check_nexus_login_status, close_scraper_window, delete_mod, delete_profile,
     export_profile, export_profile_to_file, fetch_nexus_api_key, fetch_nexus_download_metadata,
-    fetch_smapi_compatibility_mods, import_profile, import_profile_from_file, install_mod_from_zip,
-    install_nexus_mod, list_installed_mods, list_profiles, logout_nexus, open_nexus_login_window,
+    fetch_smapi_compatibility_mods, import_profile, import_profile_from_file,
+    install_bundled_npc_locations_mod, install_mod_from_zip, install_nexus_mod,
+    list_installed_mods, list_profiles, logout_nexus, open_nexus_login_window,
     open_nexus_ranking_scraper, open_scraper_window, save_mod_config, save_profile, toggle_mod,
 };
 use crate::saves::{
@@ -320,6 +321,7 @@ pub fn run() {
             pause_download_task,
             resume_download_task,
             install_mod_from_zip,
+            install_bundled_npc_locations_mod,
             get_npc_portraits
         ])
         .setup(|app| {

@@ -13,6 +13,7 @@ import {
   Gift,
   MapPin,
   Radar,
+  PackagePlus,
 } from "lucide-react"
 
 interface FriendshipInfo {
@@ -186,6 +187,7 @@ const seasonOptions = [
 interface NPCsProps {
   selectedSaveId: string
   onNavigateToItem: (itemName: string) => void
+  onInstallNpcLocationsMod: () => void | Promise<void>
 }
 
 function NPCPortrait({
@@ -222,7 +224,7 @@ function NPCPortrait({
   )
 }
 
-export function NPCs({ selectedSaveId, onNavigateToItem }: NPCsProps) {
+export function NPCs({ selectedSaveId, onNavigateToItem, onInstallNpcLocationsMod }: NPCsProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedNpcId, setSelectedNpcId] = useState<string | null>(null)
   const [friendships, setFriendships] = useState<Record<string, FriendshipInfo>>({})
@@ -637,8 +639,20 @@ export function NPCs({ selectedSaveId, onNavigateToItem }: NPCsProps) {
       </div>
 
       {locationError && (
-        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
-          {locationError}
+        <div className="flex flex-col gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-3 text-sm text-amber-700 dark:text-amber-300 md:flex-row md:items-center md:justify-between">
+          <span>{locationError}</span>
+          {locationSource === "mod" && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 shrink-0 gap-2 border-amber-500/40 bg-background/80 text-amber-700 hover:bg-amber-500/10 dark:text-amber-300"
+              onClick={() => void onInstallNpcLocationsMod()}
+            >
+              <PackagePlus className="h-4 w-4" />
+              一键安装实时位置 Mod
+            </Button>
+          )}
         </div>
       )}
 

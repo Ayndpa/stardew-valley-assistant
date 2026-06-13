@@ -167,6 +167,32 @@ function App() {
   // Custom hooks for launcher, deep link and drag and drop
   const { isGameRunning, handleLaunchGame } = useGameLauncher({ ensureGameDirectoryReady, showGlobalToast })
 
+  const handleInstallNpcLocationsMod = useCallback(async () => {
+    if (isGameRunning) {
+      showGlobalToast("游戏运行中不能安装模组，请退出游戏后再试。", "warning")
+      return
+    }
+
+    const gameDir = await ensureGameDirectoryReady()
+    if (!gameDir) return
+
+    if (typeof window === "undefined" || !(window as any).__TAURI_INTERNALS__) {
+      showGlobalToast("当前运行环境不支持安装内置模组，请在桌面应用中运行。", "warning")
+      return
+    }
+
+    try {
+      const { invoke } = await import("@tauri-apps/api/core")
+      await invoke("install_bundled_npc_locations_mod", { gameDir })
+      setModListRefreshSignal((value) => value + 1)
+      setCurrentPage("mods")
+      showGlobalToast("已安装 NPC 实时位置模组。请通过 SMAPI 启动游戏后再回到村民关系查看实时位置。", "success")
+    } catch (err) {
+      console.error("Failed to install bundled NPC locations mod:", err)
+      showGlobalToast("安装 NPC 实时位置模组失败: " + String(err), "warning")
+    }
+  }, [ensureGameDirectoryReady, isGameRunning, showGlobalToast])
+
   const {
     tasks: downloadTasks,
     stats: downloadStats,
@@ -244,6 +270,7 @@ function App() {
                 setItemNavigationTarget(itemName)
                 setCurrentPage("items")
               }}
+              onInstallNpcLocationsMod={handleInstallNpcLocationsMod}
             />
           </Suspense>
         )
@@ -284,6 +311,7 @@ function App() {
             refreshSignal={modListRefreshSignal}
             isGameRunning={isGameRunning}
             onQueueSmapiDownload={queueSmapiDownload}
+            onInstallNpcLocationsMod={handleInstallNpcLocationsMod}
           />
         )
       case "downloads":

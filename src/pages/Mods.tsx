@@ -1,7 +1,7 @@
 import { Badge } from "@/components/ui/badge"
 import { useModManagement } from "@/hooks/useModManagement"
 import { Button } from "@/components/ui/button"
-import { Sliders, CheckCircle2, AlertTriangle, Info, X } from "lucide-react"
+import { Sliders, CheckCircle2, AlertTriangle, Info, X, PackagePlus } from "lucide-react"
 import type { Page } from "@/App"
 
 // Import subcomponents
@@ -26,9 +26,10 @@ type ModsProps = {
   refreshSignal?: number
   isGameRunning?: boolean
   onQueueSmapiDownload?: (request: QueueSmapiDownloadRequest) => { ok: boolean; message: string }
+  onInstallNpcLocationsMod?: () => void | Promise<void>
 }
 
-export function Mods({ onNavigate, refreshSignal, isGameRunning = false, onQueueSmapiDownload }: ModsProps) {
+export function Mods({ onNavigate, refreshSignal, isGameRunning = false, onQueueSmapiDownload, onInstallNpcLocationsMod }: ModsProps) {
   const {
     mods,
     isLoadingMods,
@@ -200,6 +201,19 @@ export function Mods({ onNavigate, refreshSignal, isGameRunning = false, onQueue
                   <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20 gap-1.5 px-3 py-1 font-semibold rounded-full">
                     游戏运行中：已锁定修改
                   </Badge>
+                )}
+                {onInstallNpcLocationsMod && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 rounded-lg text-xs gap-1.5 hover:bg-accent border-border font-semibold shadow-sm"
+                    onClick={() => void onInstallNpcLocationsMod()}
+                    disabled={isGameRunning}
+                    title={isGameRunning ? "游戏运行中，不能安装模组" : "安装村民关系实时位置读取 Mod"}
+                  >
+                    <PackagePlus className="h-3.5 w-3.5 text-emerald-600" />
+                    安装实时位置 Mod
+                  </Button>
                 )}
               </div>
               <p className="text-muted-foreground mt-2 text-sm max-w-xl">

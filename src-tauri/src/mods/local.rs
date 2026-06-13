@@ -7,6 +7,9 @@ use std::io::{BufReader, Write};
 use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+const NPC_LOCATIONS_MOD_ZIP: &[u8] =
+    include_bytes!("../../bundled-mods/StardewValleyAssistantNpcLocations.zip");
+
 #[derive(Deserialize, Debug)]
 struct Manifest {
     #[serde(alias = "Name", alias = "name")]
@@ -392,4 +395,28 @@ pub async fn install_mod_from_zip(game_dir: String, zip_path: String) -> Result<
     tokio::task::spawn_blocking(move || install_mod_from_zip_sync(game_dir, zip_path))
         .await
         .map_err(|err| format!("安装任务执行失败: {}", err))?
+}
+
+#[tauri::command]
+pub async fn install_bundled_npc_locations_mod(game_dir: String) -> Result<Value, String> {
+    tokio::task::spawn_blocking(move || {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_else(|_| std::time::Duration::from_secs(0))
+            .as_millis();
+        let working_dir = std::env::temp_dir().join(format!("sv_assistant_npc_mod_{}", timestamp));
+        let zip_path = working_dir.join("StardewValleyAssistantNpcLocations.zip");
+
+        fs::create_dir_all(&working_dir).map_err(|e| format!("创建临时目录失败: {}", e))?;
+        if let Err(err) = fs::write(&zip_path, NPC_LOCATIONS_MOD_ZIP) {
+            let _ = fs::remove_dir_all(&working_dir);
+            return Err(format!("写入内置 NPC 位置模组失败: {}", err));
+        }
+
+        let result = install_mod_from_zip_sync(game_dir, zip_path.to_string_lossy().to_string());
+        let _ = fs::remove_dir_all(&working_dir);
+        result
+    })
+    .await
+    .map_err(|err| format!("安装任务执行失败: {}", err))?
 }
