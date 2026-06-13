@@ -116,6 +116,7 @@ export function Sidebar({
   }, [])
 
   const currentSave = saves.find((s) => s.id === selectedSaveId) || saves[0]
+  const activeDownloadCount = downloadStats.queued + downloadStats.running
 
   const handleSelectSave = (id: string) => {
     onSaveChange(id)
@@ -289,7 +290,7 @@ export function Sidebar({
             )}
           </div>
           {navItems.map((item) => {
-            const showDownloadCount = item.id === "downloads" && downloadStats.total > 0
+            const showDownloadCount = item.id === "downloads" && activeDownloadCount > 0
             return (
               <Button
                 key={item.id}
@@ -310,7 +311,7 @@ export function Sidebar({
                     <span className="min-w-0 flex-1 text-left">{item.label}</span>
                     {showDownloadCount && (
                       <span className="ml-auto min-w-5 rounded-full bg-primary px-1.5 text-center text-[10px] font-bold leading-5 text-primary-foreground">
-                        {downloadStats.total}
+                        {activeDownloadCount}
                       </span>
                     )}
                   </>

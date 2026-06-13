@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::UNIX_EPOCH;
 
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
@@ -133,7 +133,22 @@ struct CachedFishingMaps {
     maps: Vec<FishingMapDetail>,
 }
 
-static FISHING_MAP_CACHE: OnceLock<Mutex<HashMap<String, CachedFishingMaps>>> = OnceLock::new();
+#[derive(Debug, Clone, Default)]
+struct CachedFishingMapPreview {
+    data_url: Option<String>,
+    error: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct CachedFishingMapPreviews {
+    fingerprint: FishingMapCacheFingerprint,
+    previews: HashMap<String, CachedFishingMapPreview>,
+}
+
+static FISHING_MAP_CACHE: OnceLock<Mutex<HashMap<String, Arc<CachedFishingMaps>>>> =
+    OnceLock::new();
+static FISHING_MAP_PREVIEW_CACHE: OnceLock<Mutex<HashMap<String, CachedFishingMapPreviews>>> =
+    OnceLock::new();
 
 #[tauri::command]
 pub fn get_crop_game_data(game_dir: Option<String>) -> Result<CropGameData, String> {
@@ -256,6 +271,7 @@ fn get_fishing_map_detail_sync(
     force_refresh: Option<bool>,
 ) -> Result<FishingMapDetail, String> {
     let content_dir = locate_content_dir(game_dir.as_deref())?;
+    let cache_key = content_cache_key(&content_dir);
     let (cache, cached) =
         get_or_build_fishing_map_cache(&content_dir, force_refresh.unwrap_or(false))?;
     let mut detail = cache
@@ -264,17 +280,15 @@ fn get_fishing_map_detail_sync(
         .find(|map| map.id == map_id)
         .cloned()
         .ok_or_else(|| format!("未找到地图 {}", map_id))?;
-    let map_path = content_dir.join(Path::new(&detail.relative_path));
-    match render_tbin_map_preview(&content_dir, &map_path) {
-        Ok(data_url) => {
-            detail.map_image_data_url = Some(data_url);
-            detail.map_image_error = None;
-        }
-        Err(err) => {
-            detail.map_image_data_url = None;
-            detail.map_image_error = Some(err);
-        }
-    }
+    let preview = get_or_render_fishing_map_preview(
+        &content_dir,
+        &cache_key,
+        &cache.fingerprint,
+        &detail.id,
+        &detail.relative_path,
+    );
+    detail.map_image_data_url = preview.data_url;
+    detail.map_image_error = preview.error;
     detail.cached = cached;
     Ok(detail)
 }
@@ -371,22 +385,18 @@ impl FishingMapDetail {
 fn get_or_build_fishing_map_cache(
     content_dir: &Path,
     force_refresh: bool,
-) -> Result<(CachedFishingMaps, bool), String> {
+) -> Result<(Arc<CachedFishingMaps>, bool), String> {
     let maps_dir = content_dir.join("Maps");
     let paths = collect_xnb_files(&maps_dir)?;
     let fingerprint = fingerprint_fishing_map_files(&paths)?;
-    let cache_key = content_dir
-        .canonicalize()
-        .unwrap_or_else(|_| content_dir.to_path_buf())
-        .to_string_lossy()
-        .to_string();
+    let cache_key = content_cache_key(content_dir);
     let cache = FISHING_MAP_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
 
     if !force_refresh {
         if let Ok(guard) = cache.lock() {
             if let Some(existing) = guard.get(&cache_key) {
                 if existing.fingerprint == fingerprint {
-                    return Ok((existing.clone(), true));
+                    return Ok((Arc::clone(existing), true));
                 }
             }
         }
@@ -408,12 +418,69 @@ fn get_or_build_fishing_map_cache(
             .then_with(|| a.name.cmp(&b.name))
     });
 
-    let built = CachedFishingMaps { fingerprint, maps };
+    let built = Arc::new(CachedFishingMaps { fingerprint, maps });
     let mut guard = cache
         .lock()
         .map_err(|_| "钓鱼地图缓存被占用，请稍后重试。".to_string())?;
-    guard.insert(cache_key, built.clone());
+    guard.insert(cache_key, Arc::clone(&built));
     Ok((built, false))
+}
+
+fn content_cache_key(content_dir: &Path) -> String {
+    content_dir
+        .canonicalize()
+        .unwrap_or_else(|_| content_dir.to_path_buf())
+        .to_string_lossy()
+        .to_string()
+}
+
+fn get_or_render_fishing_map_preview(
+    content_dir: &Path,
+    cache_key: &str,
+    fingerprint: &FishingMapCacheFingerprint,
+    map_id: &str,
+    relative_path: &str,
+) -> CachedFishingMapPreview {
+    let preview_cache = FISHING_MAP_PREVIEW_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+
+    if let Ok(guard) = preview_cache.lock() {
+        if let Some(entry) = guard.get(cache_key) {
+            if entry.fingerprint == *fingerprint {
+                if let Some(preview) = entry.previews.get(map_id) {
+                    return preview.clone();
+                }
+            }
+        }
+    }
+
+    let map_path = content_dir.join(Path::new(relative_path));
+    let preview = match render_tbin_map_preview(content_dir, &map_path) {
+        Ok(data_url) => CachedFishingMapPreview {
+            data_url: Some(data_url),
+            error: None,
+        },
+        Err(err) => CachedFishingMapPreview {
+            data_url: None,
+            error: Some(err),
+        },
+    };
+
+    if let Ok(mut guard) = preview_cache.lock() {
+        let entry =
+            guard
+                .entry(cache_key.to_string())
+                .or_insert_with(|| CachedFishingMapPreviews {
+                    fingerprint: *fingerprint,
+                    previews: HashMap::new(),
+                });
+        if entry.fingerprint != *fingerprint {
+            entry.fingerprint = *fingerprint;
+            entry.previews.clear();
+        }
+        entry.previews.insert(map_id.to_string(), preview.clone());
+    }
+
+    preview
 }
 
 fn fingerprint_fishing_map_files(paths: &[PathBuf]) -> Result<FishingMapCacheFingerprint, String> {

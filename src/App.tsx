@@ -1,8 +1,7 @@
-import { useState, useEffect, useRef, useCallback, type DragEvent } from "react"
+import { lazy, Suspense, useState, useEffect, useRef, useCallback, type DragEvent } from "react"
 import { Sidebar } from "@/components/Sidebar"
 import { Dashboard } from "@/pages/Dashboard"
 import { Crops } from "@/pages/Crops"
-import { NPCs } from "@/pages/NPCs"
 import { Calendar } from "@/pages/Calendar"
 import { FishingMap } from "@/pages/FishingMap"
 import { Settings } from "@/pages/Settings"
@@ -35,6 +34,16 @@ export interface SaveSummary {
   farmerAvatar?: string | null
   farmerAvatarError?: string | null
 }
+
+interface NexusDownloadMetadata {
+  modName: string
+  author: string
+}
+
+const NPCs = lazy(async () => {
+  const mod = await import("@/pages/NPCs")
+  return { default: mod.NPCs }
+})
 
 function App() {
   const [currentPage, setCurrentPage] = useState<Page>("dashboard")
@@ -330,17 +339,30 @@ function App() {
 
     isHandlingNxmRef.current = true
     lastHandledNxmRef.current = { sig: signature, at: now }
-    const result = queueNexusDownload({
-      modName: "NexusMods 模组",
-      author: source,
-      downloadUrl: normalizedUrl,
-    })
-    if (result.ok) {
-      showGlobalToast("NexusMods 下载已加入下载管理", "info")
-    } else {
-      showGlobalToast(result.message, "warning")
+    try {
+      let metadata: NexusDownloadMetadata | null = null
+      try {
+        const invokeModule = await import("@tauri-apps/api/core")
+        metadata = await invokeModule.invoke<NexusDownloadMetadata>("fetch_nexus_download_metadata", {
+          downloadUrl: normalizedUrl,
+        })
+      } catch (err) {
+        console.debug("Failed to resolve Nexus download metadata:", err)
+      }
+
+      const result = queueNexusDownload({
+        modName: metadata?.modName || "NexusMods 模组",
+        author: metadata?.author || "",
+        downloadUrl: normalizedUrl,
+      })
+      if (result.ok) {
+        showGlobalToast("NexusMods 下载已加入下载管理", "info")
+      } else {
+        showGlobalToast(result.message, "warning")
+      }
+    } finally {
+      isHandlingNxmRef.current = false
     }
-    isHandlingNxmRef.current = false
   }, [isGameRunning, queueNexusDownload, showGlobalToast])
 
   const handleNxmUrls = useCallback(async (urls: string[], source: string) => {
@@ -504,7 +526,20 @@ function App() {
       case "crops":
         return <Crops selectedSaveId={selectedSaveId} />
       case "npcs":
-        return <NPCs selectedSaveId={selectedSaveId} />
+        return (
+          <Suspense
+            fallback={
+              <div className="p-8">
+                <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 rounded-lg border bg-accent/10">
+                  <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
+                  <p className="text-sm text-muted-foreground">正在异步加载村民关系页面...</p>
+                </div>
+              </div>
+            }
+          >
+            <NPCs selectedSaveId={selectedSaveId} />
+          </Suspense>
+        )
       case "calendar":
         return <Calendar selectedSaveId={selectedSaveId} />
       case "fishingMap":

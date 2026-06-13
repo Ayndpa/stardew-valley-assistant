@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+use std::time::Instant;
 use tokio::task;
 
 use crate::farmer_avatar::{render_farmer_avatar, FarmerAppearance};
@@ -96,6 +97,184 @@ fn extract_tag_string(xml: &str, tag: &str) -> String {
     get_tag_value(xml, tag)
         .map(|v| v.to_string())
         .unwrap_or_else(|| "".to_string())
+}
+
+fn get_direct_child_tag_value<'a>(xml: &'a str, tag: &str) -> Option<&'a str> {
+    let open_tag = format!("<{}", tag);
+    let close_tag = format!("</{}>", tag);
+    let mut depth = 0usize;
+    let mut pos = 0usize;
+    let bytes = xml.as_bytes();
+
+    while pos < xml.len() {
+        let Some(rel_start) = xml[pos..].find('<') else {
+            break;
+        };
+        let start = pos + rel_start;
+        let Some(rel_end) = xml[start..].find('>') else {
+            break;
+        };
+        let end = start + rel_end;
+        let token = &xml[start..=end];
+
+        if token.starts_with("</") {
+            depth = depth.saturating_sub(1);
+        } else {
+            if depth == 1 && token.starts_with(&open_tag) {
+                let value_start = end + 1;
+                let value_end_rel = xml[value_start..].find(&close_tag)?;
+                let value_end = value_start + value_end_rel;
+                if !xml[value_start..value_end].contains('<') {
+                    return Some(xml[value_start..value_end].trim());
+                }
+            }
+
+            let self_closing = bytes.get(end.saturating_sub(1)).is_some_and(|b| *b == b'/');
+            if !self_closing && !token.starts_with("<?") && !token.starts_with("<!") {
+                depth += 1;
+            }
+        }
+
+        pos = end + 1;
+    }
+
+    None
+}
+
+fn extract_game_location_blocks(xml: &str) -> Vec<&str> {
+    let Some(locations_start) = xml.find("<locations>") else {
+        eprintln!("[get_planted_crops] no <locations> section found");
+        return Vec::new();
+    };
+    let Some(locations_end_rel) = xml[locations_start..].find("</locations>") else {
+        eprintln!("[get_planted_crops] no </locations> terminator found");
+        return Vec::new();
+    };
+    let locations_end = locations_start + locations_end_rel;
+    let locations_xml = &xml[locations_start..locations_end];
+    eprintln!(
+        "[get_planted_crops] locations section bytes={} start={}",
+        locations_xml.len(),
+        locations_start
+    );
+
+    let mut blocks = Vec::new();
+    let mut pos = 0usize;
+    let open_tag = "<GameLocation";
+    let close_tag = "</GameLocation>";
+    let mut location_index = 0usize;
+
+    while let Some(start_rel) = locations_xml[pos..].find(open_tag) {
+        let start = pos + start_rel;
+        let Some(open_end_rel) = locations_xml[start..].find('>') else {
+            eprintln!(
+                "[get_planted_crops] malformed GameLocation opening tag at byte {}",
+                start
+            );
+            break;
+        };
+        let mut search = start + open_end_rel + 1;
+        let mut depth = 1usize;
+        location_index += 1;
+        if location_index <= 10 || location_index % 25 == 0 {
+            eprintln!(
+                "[get_planted_crops] scanning GameLocation #{} at local byte {}",
+                location_index, start
+            );
+        }
+
+        while depth > 0 {
+            let next_open = locations_xml[search..]
+                .find(open_tag)
+                .map(|idx| search + idx);
+            let next_close = locations_xml[search..]
+                .find(close_tag)
+                .map(|idx| search + idx);
+
+            match (next_open, next_close) {
+                (_, None) => {
+                    eprintln!(
+                        "[get_planted_crops] unterminated GameLocation #{} search={}",
+                        location_index, search
+                    );
+                    return blocks;
+                }
+                (Some(open_idx), Some(close_idx)) if open_idx < close_idx => {
+                    depth += 1;
+                    search = open_idx + open_tag.len();
+                }
+                (_, Some(close_idx)) => {
+                    depth -= 1;
+                    search = close_idx + close_tag.len();
+                }
+            }
+        }
+
+        blocks.push(&locations_xml[start..search]);
+        if location_index <= 10 || location_index % 25 == 0 {
+            eprintln!(
+                "[get_planted_crops] captured GameLocation #{} bytes={}",
+                location_index,
+                search - start
+            );
+        }
+        pos = search;
+    }
+
+    eprintln!(
+        "[get_planted_crops] extracted {} GameLocation blocks",
+        blocks.len()
+    );
+
+    blocks
+}
+
+fn extract_direct_child_blocks<'a>(xml: &'a str, child_tag: &str) -> Vec<&'a str> {
+    let open_tag = format!("<{}", child_tag);
+    let close_tag = format!("</{}>", child_tag);
+    let mut blocks = Vec::new();
+    let mut depth = 0usize;
+    let mut pos = 0usize;
+    let mut current_start: Option<usize> = None;
+    let bytes = xml.as_bytes();
+
+    while pos < xml.len() {
+        let Some(rel_start) = xml[pos..].find('<') else {
+            break;
+        };
+        let start = pos + rel_start;
+        let Some(rel_end) = xml[start..].find('>') else {
+            break;
+        };
+        let end = start + rel_end;
+        let token = &xml[start..=end];
+
+        if token.starts_with("</") {
+            if depth == 2 && token == close_tag {
+                if let Some(block_start) = current_start.take() {
+                    blocks.push(&xml[block_start..start + close_tag.len()]);
+                }
+            }
+            depth = depth.saturating_sub(1);
+        } else {
+            let self_closing = bytes.get(end.saturating_sub(1)).is_some_and(|b| *b == b'/');
+            if depth == 1 && token.starts_with(&open_tag) {
+                current_start = Some(start);
+                if self_closing {
+                    blocks.push(&xml[start..=end]);
+                    current_start = None;
+                }
+            }
+
+            if !self_closing && !token.starts_with("<?") && !token.starts_with("<!") {
+                depth += 1;
+            }
+        }
+
+        pos = end + 1;
+    }
+
+    blocks
 }
 
 fn parse_friendship_data(xml: &str) -> Vec<FriendshipInfo> {
@@ -489,6 +668,8 @@ pub async fn get_planted_crops(id: String) -> Result<Vec<PlantedCrop>, String> {
 }
 
 fn get_planted_crops_sync(id: String) -> Result<Vec<PlantedCrop>, String> {
+    let started_at = Instant::now();
+    eprintln!("[get_planted_crops] start save_id={}", id);
     let saves_dir =
         get_saves_dir().ok_or_else(|| "Could not locate APPDATA or HOME directory".to_string())?;
 
@@ -504,51 +685,62 @@ fn get_planted_crops_sync(id: String) -> Result<Vec<PlantedCrop>, String> {
 
     let xml = fs::read_to_string(&main_save_path)
         .map_err(|e| format!("Failed to read main save file: {}", e))?;
+    eprintln!(
+        "[get_planted_crops] loaded save bytes={} path={}",
+        xml.len(),
+        main_save_path.display()
+    );
 
     let mut planted_crops = Vec::new();
+    let location_blocks = extract_game_location_blocks(&xml);
+    eprintln!(
+        "[get_planted_crops] begin processing {} location blocks",
+        location_blocks.len()
+    );
 
-    let mut location_blocks = Vec::new();
-    let mut search_pos = 0;
-    while let Some(start_idx) = xml[search_pos..].find("<GameLocation") {
-        let abs_start = search_pos + start_idx;
-        let block_content = &xml[abs_start..];
-
-        let end_offset = match block_content.find("</GameLocation>") {
-            Some(offset) => offset,
-            None => break,
-        };
-        let abs_end = abs_start + end_offset + 15;
-        let loc_xml = &xml[abs_start..abs_end];
-        location_blocks.push(loc_xml);
-        search_pos = abs_end;
-    }
-
-    for loc_xml in location_blocks {
-        let name = get_tag_value(loc_xml, "name")
+    for (location_index, loc_xml) in location_blocks.into_iter().enumerate() {
+        let location_started_at = Instant::now();
+        let name = get_direct_child_tag_value(loc_xml, "name")
             .unwrap_or("Unknown")
             .to_string();
+        eprintln!(
+            "[get_planted_crops] location-start #{} name={} bytes={}",
+            location_index + 1,
+            name,
+            loc_xml.len()
+        );
 
-        let mut terrain_features_section = "";
-        if let Some(tf_start) = loc_xml.find("<terrainFeatures>") {
-            if let Some(tf_end) = loc_xml[tf_start..].find("</terrainFeatures>") {
-                terrain_features_section = &loc_xml[tf_start..tf_start + tf_end];
-            }
-        }
-
-        if terrain_features_section.is_empty() {
+        let Some(tf_start) = loc_xml.find("<terrainFeatures>") else {
+            continue;
+        };
+        let Some(tf_end_rel) = loc_xml[tf_start..].find("</terrainFeatures>") else {
+            continue;
+        };
+        let terrain_features_section =
+            &loc_xml[tf_start..tf_start + tf_end_rel + "</terrainFeatures>".len()];
+        let terrain_feature_items = extract_direct_child_blocks(terrain_features_section, "item");
+        if terrain_feature_items.is_empty() {
             continue;
         }
 
-        let mut item_pos = 0;
-        while let Some(item_start) = terrain_features_section[item_pos..].find("<item>") {
-            let abs_item_start = item_pos + item_start;
-            let item_end = match terrain_features_section[abs_item_start..].find("</item>") {
-                Some(offset) => abs_item_start + offset,
-                None => break,
-            };
-            let item_xml = &terrain_features_section[abs_item_start..item_end];
+        let mut location_hoe_dirt_count = 0usize;
+        let mut location_crop_count = 0usize;
+        let mut scanned_items = 0usize;
+        for item_xml in terrain_feature_items {
+            scanned_items += 1;
+            if scanned_items % 1000 == 0 {
+                eprintln!(
+                    "[get_planted_crops] location-progress name={} scanned_items={} hoe_dirt={} parsed_crops={} elapsed_ms={}",
+                    name,
+                    scanned_items,
+                    location_hoe_dirt_count,
+                    location_crop_count,
+                    location_started_at.elapsed().as_millis()
+                );
+            }
 
             if item_xml.contains("xsi:type=\"HoeDirt\"") || item_xml.contains("type=\"HoeDirt\"") {
+                location_hoe_dirt_count += 1;
                 let mut x = 0;
                 let mut y = 0;
                 if let Some(key_start) = item_xml.find("<key>") {
@@ -631,6 +823,11 @@ fn get_planted_crops_sync(id: String) -> Result<Vec<PlantedCrop>, String> {
                                     }
                                 }
 
+                                if seed_id.is_empty() && harvest_id.is_empty() {
+                                    continue;
+                                }
+
+                                location_crop_count += 1;
                                 planted_crops.push(PlantedCrop {
                                     location: name.clone(),
                                     x,
@@ -649,10 +846,24 @@ fn get_planted_crops_sync(id: String) -> Result<Vec<PlantedCrop>, String> {
                     }
                 }
             }
-            item_pos = item_end + 7;
         }
+
+        eprintln!(
+            "[get_planted_crops] location-done name={} scanned_items={} hoe_dirt={} parsed_crops={} running_total={} elapsed_ms={}",
+            name,
+            scanned_items,
+            location_hoe_dirt_count,
+            location_crop_count,
+            planted_crops.len(),
+            location_started_at.elapsed().as_millis()
+        );
     }
 
+    eprintln!(
+        "[get_planted_crops] finished total_parsed_crops={} total_elapsed_ms={}",
+        planted_crops.len(),
+        started_at.elapsed().as_millis()
+    );
     Ok(planted_crops)
 }
 

@@ -13,10 +13,10 @@ use crate::game::{auto_detect_game_dir, get_game_version, launch_game};
 use crate::game_data::{get_crop_game_data, get_fishing_map_data, get_fishing_map_detail};
 use crate::mods::{
     apply_profile, check_nexus_login_status, delete_mod, delete_profile, export_profile,
-    export_profile_to_file, fetch_nexus_api_key, fetch_smapi_compatibility_mods, import_profile,
-    import_profile_from_file, install_mod_from_zip, install_nexus_mod, list_installed_mods,
-    list_profiles, logout_nexus, open_nexus_login_window, open_nexus_ranking_scraper,
-    open_scraper_window, save_mod_config, save_profile, toggle_mod,
+    export_profile_to_file, fetch_nexus_api_key, fetch_nexus_download_metadata,
+    fetch_smapi_compatibility_mods, import_profile, import_profile_from_file, install_mod_from_zip,
+    install_nexus_mod, list_installed_mods, list_profiles, logout_nexus, open_nexus_login_window,
+    open_nexus_ranking_scraper, open_scraper_window, save_mod_config, save_profile, toggle_mod,
 };
 use crate::saves::{get_planted_crops, get_save_detail, list_save_files};
 use crate::smapi::{check_smapi_status, install_smapi, uninstall_smapi};
@@ -278,6 +278,7 @@ pub fn run() {
             check_nexus_login_status,
             logout_nexus,
             fetch_nexus_api_key,
+            fetch_nexus_download_metadata,
             install_nexus_mod,
             install_mod_from_zip,
             get_npc_portraits
