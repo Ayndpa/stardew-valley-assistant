@@ -4,6 +4,8 @@ mod smapi;
 mod mods;
 mod saves;
 
+use std::fs;
+
 use crate::game::{auto_detect_game_dir, get_game_version, launch_game};
 use crate::smapi::{check_smapi_status, install_smapi, uninstall_smapi};
 use crate::mods::{
@@ -31,6 +33,71 @@ use crate::mods::{
 };
 use crate::saves::{list_save_files, get_save_detail, get_planted_crops};
 use crate::utils::open_in_file_manager;
+use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Manager, Size};
+
+#[derive(Debug, Deserialize, Serialize)]
+struct MainWindowState {
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+}
+
+fn get_window_state_path(app: &AppHandle) -> Option<std::path::PathBuf> {
+    let mut path = app.path().app_data_dir().ok()?;
+    fs::create_dir_all(&path).ok()?;
+    path.push("window-state.json");
+    Some(path)
+}
+
+fn load_main_window_state(app: &AppHandle) -> Option<MainWindowState> {
+    let path = get_window_state_path(app)?;
+    let contents = fs::read_to_string(path).ok()?;
+    serde_json::from_str::<MainWindowState>(&contents).ok()
+}
+
+fn save_main_window_state(app: &AppHandle, window: &tauri::WebviewWindow) {
+    let path = match get_window_state_path(app) {
+        Some(path) => path,
+        None => return,
+    };
+
+    let pos = match window.outer_position() {
+        Ok(pos) => pos,
+        Err(_) => return,
+    };
+    let size = match window.outer_size() {
+        Ok(size) => size,
+        Err(_) => return,
+    };
+
+    let state = MainWindowState {
+        x: pos.x,
+        y: pos.y,
+        width: size.width,
+        height: size.height,
+    };
+
+    if let Ok(serialized) = serde_json::to_vec_pretty(&state) {
+        let _ = fs::write(path, serialized);
+    }
+}
+
+fn restore_main_window_state(app: &AppHandle, window: &tauri::WebviewWindow) {
+    let Some(state) = load_main_window_state(app) else {
+        return;
+    };
+    if state.width == 0 || state.height == 0 {
+        return;
+    }
+
+    let _ = window.set_position(tauri::PhysicalPosition::new(state.x, state.y));
+    let _ = window.set_size(Size::Physical(tauri::PhysicalSize::new(
+        state.width,
+        state.height,
+    )));
+}
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -77,6 +144,21 @@ pub fn run() {
             install_nexus_mod,
             install_mod_from_zip
         ])
+        .setup(|app| {
+            let app_handle = app.handle();
+            if let Some(window) = app_handle.get_webview_window("main") {
+                restore_main_window_state(app_handle, &window);
+
+                let app_handle = app.handle().clone();
+                window.on_window_event(move |_| {
+                    if let Some(window) = app_handle.get_webview_window("main") {
+                        save_main_window_state(&app_handle, &window);
+                    }
+                });
+            }
+
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
