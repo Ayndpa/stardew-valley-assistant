@@ -6,7 +6,14 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::UNIX_EPOCH;
 use tokio::task;
 
+use super::calendar::resolve_localized_text;
+use super::image_utils::render_object_icon;
 use super::tbin::{load_tbin_map_from_xnb, render_tbin_map_preview};
+use super::xnb::{
+    load_localized_string_tables, load_location_fishing_xnb, load_objects_xnb,
+    load_string_dictionary_xnb,
+    RawLocationFishingData,
+};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -39,6 +46,27 @@ pub struct FishingMapData {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
+pub struct FishingAreaFish {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub icon: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct FishingArea {
+    pub id: String,
+    pub name: String,
+    pub x: Option<i32>,
+    pub y: Option<i32>,
+    pub width: Option<i32>,
+    pub height: Option<i32>,
+    pub fish: Vec<FishingAreaFish>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct FishingMapDetail {
     pub id: String,
     pub name: String,
@@ -49,6 +77,7 @@ pub struct FishingMapDetail {
     pub fishable_tiles: i32,
     pub max_depth: i32,
     pub tiles: Vec<FishingTile>,
+    pub fishing_areas: Vec<FishingArea>,
     pub map_image_data_url: Option<String>,
     pub map_image_error: Option<String>,
     pub cached: bool,
@@ -136,6 +165,7 @@ fn get_fishing_map_detail_sync(
         .find(|map| map.id == map_id)
         .cloned()
         .ok_or_else(|| format!("未找到地图 {}", map_id))?;
+    detail.fishing_areas = load_fishing_areas_for_map(&content_dir, &detail.id)?;
     let preview = get_or_render_fishing_map_preview(
         &content_dir,
         &cache_key,
@@ -389,10 +419,181 @@ pub fn parse_fishing_map(
         fishable_tiles: tiles.len() as i32,
         max_depth,
         tiles,
+        fishing_areas: Vec::new(),
         map_image_data_url: None,
         map_image_error: None,
         cached: false,
     }))
+}
+
+fn load_fishing_areas_for_map(content_dir: &Path, map_id: &str) -> Result<Vec<FishingArea>, String> {
+    let location_data = load_location_fishing_xnb(&content_dir.join("Data").join("Locations.xnb"))?;
+    let fish_data = load_string_dictionary_xnb(&content_dir.join("Data").join("Fish.xnb"))?;
+    let objects = load_objects_xnb(&content_dir.join("Data").join("Objects.xnb"))?;
+    let localized_tables =
+        load_localized_string_tables(content_dir, &["Objects", "1_6_Strings", "StringsFromCSFiles"]);
+    let mut texture_cache = HashMap::new();
+
+    let Some(location_key) = resolve_location_key(map_id, &location_data) else {
+        return Ok(Vec::new());
+    };
+    let Some(location) = location_data.get(location_key.as_str()) else {
+        return Ok(Vec::new());
+    };
+
+    let mut explicit_areas = location
+        .fish_areas
+        .iter()
+        .map(|(id, area)| {
+            let (x, y, width, height) = area
+                .position
+                .map(|(x, y, width, height)| (Some(x), Some(y), Some(width), Some(height)))
+                .unwrap_or((None, None, None, None));
+            let resolved_name = resolve_localized_text(&area.display_name, &localized_tables);
+            (
+                id.clone(),
+                FishingArea {
+                    id: id.clone(),
+                    name: if resolved_name.trim().is_empty() {
+                        id.clone()
+                    } else {
+                        resolved_name
+                    },
+                    x,
+                    y,
+                    width,
+                    height,
+                    fish: Vec::new(),
+                },
+            )
+        })
+        .collect::<HashMap<_, _>>();
+
+    let has_global_fish = location
+        .fish
+        .iter()
+        .any(|entry| entry.fish_area_id.trim().is_empty());
+    if has_global_fish && explicit_areas.is_empty() {
+        explicit_areas.insert(
+            "default".to_string(),
+            FishingArea {
+                id: "default".to_string(),
+                name: "默认水域".to_string(),
+                x: None,
+                y: None,
+                width: None,
+                height: None,
+                fish: Vec::new(),
+            },
+        );
+    }
+
+    for fish_entry in &location.fish {
+        let target_ids = if fish_entry.fish_area_id.trim().is_empty() {
+            explicit_areas.keys().cloned().collect::<Vec<_>>()
+        } else {
+            vec![fish_entry.fish_area_id.clone()]
+        };
+        for target_id in target_ids {
+            let Some(area) = explicit_areas.get_mut(&target_id) else {
+                continue;
+            };
+            for item_id in &fish_entry.item_ids {
+                let Some(object_id) = normalize_object_item_id(item_id) else {
+                    continue;
+                };
+                if !fish_data.contains_key(&object_id) {
+                    continue;
+                }
+                let Some(object) = objects.get(&object_id) else {
+                    continue;
+                };
+                if area.fish.iter().any(|fish| fish.id == object_id) {
+                    continue;
+                }
+                let name = resolve_localized_text(&object.display_name, &localized_tables);
+                let description = resolve_localized_text(&object.description, &localized_tables);
+                area.fish.push(FishingAreaFish {
+                    id: object_id.clone(),
+                    name: if name.trim().is_empty() {
+                        object.name.clone()
+                    } else {
+                        name
+                    },
+                    description: if description.trim().is_empty() {
+                        "游戏内容未提供描述。".to_string()
+                    } else {
+                        description
+                    },
+                    icon: render_object_icon(content_dir, object, &mut texture_cache).ok(),
+                });
+            }
+        }
+    }
+
+    let mut areas = explicit_areas.into_values().collect::<Vec<_>>();
+    for area in &mut areas {
+        area.fish.sort_by(|a, b| a.name.cmp(&b.name));
+    }
+    areas.sort_by(|a, b| {
+        let a_has_pos = a.x.is_some();
+        let b_has_pos = b.x.is_some();
+        b_has_pos.cmp(&a_has_pos).then_with(|| a.name.cmp(&b.name))
+    });
+    Ok(areas)
+}
+
+fn normalize_object_item_id(item_id: &str) -> Option<String> {
+    let trimmed = item_id.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if let Some(id) = trimmed.strip_prefix("(O)") {
+        return Some(id.to_string());
+    }
+    if trimmed.chars().all(|ch| ch.is_ascii_digit()) {
+        return Some(trimmed.to_string());
+    }
+    None
+}
+
+fn resolve_location_key(
+    map_id: &str,
+    location_data: &HashMap<String, RawLocationFishingData>,
+) -> Option<String> {
+    let candidates = [
+        map_id.to_string(),
+        map_id.split('-').next().unwrap_or(map_id).to_string(),
+        map_id
+            .strip_prefix("Island_SE")
+            .map(|_| "IslandSouthEast".to_string())
+            .unwrap_or_default(),
+        map_id
+            .strip_prefix("Island_N")
+            .map(|_| "IslandNorth".to_string())
+            .unwrap_or_default(),
+        map_id
+            .strip_prefix("Island_S")
+            .map(|_| "IslandSouth".to_string())
+            .unwrap_or_default(),
+        map_id
+            .strip_prefix("Island_W")
+            .map(|_| "IslandWest".to_string())
+            .unwrap_or_default(),
+        map_id
+            .strip_prefix("Island_E")
+            .map(|_| "IslandEast".to_string())
+            .unwrap_or_default(),
+        if map_id.starts_with("Farm_") {
+            "Farm".to_string()
+        } else {
+            String::new()
+        },
+    ];
+
+    candidates
+        .into_iter()
+        .find(|candidate| !candidate.is_empty() && location_data.contains_key(candidate))
 }
 
 fn tile_index(width: i32, x: i32, y: i32) -> usize {

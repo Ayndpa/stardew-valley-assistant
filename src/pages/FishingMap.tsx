@@ -12,6 +12,7 @@ import {
   Loader2,
   Map as MapIcon,
   Minus,
+  Package,
   RefreshCw,
   RotateCcw,
   Search,
@@ -39,6 +40,7 @@ interface FishingMapSummary {
 
 interface FishingMapDetail extends FishingMapSummary {
   tiles: FishingTile[]
+  fishingAreas: FishingArea[]
   mapImageDataUrl?: string | null
   mapImageError?: string | null
   cached: boolean
@@ -49,12 +51,36 @@ interface FishingMapData {
   cached: boolean
 }
 
+interface FishingAreaFish {
+  id: string
+  name: string
+  description: string
+  icon?: string | null
+}
+
+interface FishingArea {
+  id: string
+  name: string
+  x?: number | null
+  y?: number | null
+  width?: number | null
+  height?: number | null
+  fish: FishingAreaFish[]
+}
+
 interface TileRun {
   x: number
   y: number
   width: number
   depth: number
   hidden: boolean
+}
+
+interface HoveredFishingInfo {
+  tile: FishingTile
+  area: FishingArea | null
+  x: number
+  y: number
 }
 
 const depthColors = ["#38bdf8", "#22c55e", "#facc15", "#fb923c", "#ef4444", "#a855f7"]
@@ -85,6 +111,7 @@ export function FishingMap() {
   const [zoom, setZoom] = useState(1)
   const [offset, setOffset] = useState({ x: 0, y: 0 })
   const [isDragging, setIsDragging] = useState(false)
+  const [hoveredFishingInfo, setHoveredFishingInfo] = useState<HoveredFishingInfo | null>(null)
 
   const loadMaps = async (forceRefresh = false) => {
     setLoading(true)
@@ -221,7 +248,12 @@ export function FishingMap() {
     setOffset({ x: 0, y: 0 })
     dragStateRef.current = null
     setIsDragging(false)
+    setHoveredFishingInfo(null)
   }, [selectedId])
+
+  useEffect(() => {
+    setHoveredFishingInfo(null)
+  }, [minDepth, showHidden, showFishingOverlay])
 
   const visibleTiles = useMemo(() => {
     if (!selectedMap) return []
@@ -261,6 +293,14 @@ export function FishingMap() {
     return runs
   }, [selectedMap, visibleTiles])
 
+  const visibleTileLookup = useMemo(() => {
+    const lookup = new globalThis.Map<string, FishingTile>()
+    for (const tile of visibleTiles) {
+      lookup.set(`${tile.x}:${tile.y}`, tile)
+    }
+    return lookup
+  }, [visibleTiles])
+
   const depthSummary = useMemo(() => {
     const counts = new globalThis.Map<number, number>()
     for (const tile of selectedMap?.tiles || []) {
@@ -291,10 +331,78 @@ export function FishingMap() {
 
   const clampZoom = (value: number) => Math.max(0.6, value)
 
+  const resolveFishingArea = (tileX: number, tileY: number) => {
+    if (!selectedMap) return null
+
+    let fallback: FishingArea | null = null
+    for (const area of selectedMap.fishingAreas) {
+      const hasRect =
+        area.x !== null &&
+        area.x !== undefined &&
+        area.y !== null &&
+        area.y !== undefined &&
+        area.width !== null &&
+        area.width !== undefined &&
+        area.height !== null &&
+        area.height !== undefined
+
+      if (!hasRect) {
+        fallback ||= area
+        continue
+      }
+
+      if (
+        tileX >= area.x! &&
+        tileY >= area.y! &&
+        tileX < area.x! + area.width! &&
+        tileY < area.y! + area.height!
+      ) {
+        return area
+      }
+    }
+
+    return fallback
+  }
+
+  const updateHoveredFishingInfo = (clientX: number, clientY: number) => {
+    const viewport = viewportRef.current
+    if (!viewport || !selectedMap || sceneSize.width <= 0 || sceneSize.height <= 0) {
+      setHoveredFishingInfo(null)
+      return
+    }
+
+    const rect = viewport.getBoundingClientRect()
+    const sceneLeft = rect.left + rect.width / 2 - (sceneSize.width * zoom) / 2 + offset.x
+    const sceneTop = rect.top + rect.height / 2 - (sceneSize.height * zoom) / 2 + offset.y
+    const localX = (clientX - sceneLeft) / zoom
+    const localY = (clientY - sceneTop) / zoom
+
+    if (localX < 0 || localY < 0 || localX >= sceneSize.width || localY >= sceneSize.height) {
+      setHoveredFishingInfo(null)
+      return
+    }
+
+    const tileX = Math.floor((localX / sceneSize.width) * selectedMap.width)
+    const tileY = Math.floor((localY / sceneSize.height) * selectedMap.height)
+    const tile = visibleTileLookup.get(`${tileX}:${tileY}`)
+    if (!tile) {
+      setHoveredFishingInfo(null)
+      return
+    }
+
+    setHoveredFishingInfo({
+      tile,
+      area: resolveFishingArea(tileX, tileY),
+      x: clientX - rect.left,
+      y: clientY - rect.top,
+    })
+  }
+
   const zoomAtPoint = (nextZoom: number, clientX?: number, clientY?: number) => {
     const viewport = viewportRef.current
     if (!viewport) {
       setZoom(clampZoom(nextZoom))
+      setHoveredFishingInfo(null)
       return
     }
 
@@ -316,6 +424,7 @@ export function FishingMap() {
       }
     })
     setZoom(clamped)
+    setHoveredFishingInfo(null)
   }
 
   const handleWheel: WheelEventHandler<HTMLDivElement> = (event) => {
@@ -330,21 +439,27 @@ export function FishingMap() {
     dragStateRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY }
     event.currentTarget.setPointerCapture(event.pointerId)
     setIsDragging(true)
+    setHoveredFishingInfo(null)
   }
 
   const handlePointerMove: PointerEventHandler<HTMLDivElement> = (event) => {
     const dragState = dragStateRef.current
-    if (!dragState || dragState.pointerId !== event.pointerId) return
-    event.preventDefault()
+    if (dragState && dragState.pointerId === event.pointerId) {
+      event.preventDefault()
 
-    const deltaX = event.clientX - dragState.x
-    const deltaY = event.clientY - dragState.y
-    dragStateRef.current = { ...dragState, x: event.clientX, y: event.clientY }
+      const deltaX = event.clientX - dragState.x
+      const deltaY = event.clientY - dragState.y
+      dragStateRef.current = { ...dragState, x: event.clientX, y: event.clientY }
 
-    setOffset((current) => ({
-      x: current.x + deltaX,
-      y: current.y + deltaY,
-    }))
+      setOffset((current) => ({
+        x: current.x + deltaX,
+        y: current.y + deltaY,
+      }))
+      setHoveredFishingInfo(null)
+      return
+    }
+
+    updateHoveredFishingInfo(event.clientX, event.clientY)
   }
 
   const endDrag = (event?: ReactPointerEvent<HTMLDivElement>) => {
@@ -353,6 +468,9 @@ export function FishingMap() {
     }
     dragStateRef.current = null
     setIsDragging(false)
+    if (event) {
+      updateHoveredFishingInfo(event.clientX, event.clientY)
+    }
   }
 
   return (
@@ -495,7 +613,9 @@ export function FishingMap() {
             onPointerLeave={(event) => {
               if (dragStateRef.current?.pointerId === event.pointerId) {
                 endDrag(event)
+                return
               }
+              setHoveredFishingInfo(null)
             }}
           >
             {selectedMap && sceneSize.width > 0 && sceneSize.height > 0 && (
@@ -556,6 +676,64 @@ export function FishingMap() {
                       </rect>
                     ))}
                   </svg>
+                )}
+              </div>
+            )}
+
+            {hoveredFishingInfo && !isDragging && (
+              <div
+                className="pointer-events-none absolute z-20 w-[min(380px,calc(100%-24px))] rounded-lg border border-border/70 bg-background/94 px-3 py-3 shadow-2xl backdrop-blur-xl"
+                style={{
+                  left: `${Math.min(hoveredFishingInfo.x + 18, Math.max(12, viewportSize.width - 392))}px`,
+                  top: `${Math.min(hoveredFishingInfo.y + 18, Math.max(12, viewportSize.height - 320))}px`,
+                }}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-semibold">
+                      {hoveredFishingInfo.area?.name || "当前水域"}
+                    </div>
+                    <div className="mt-1 text-[11px] text-muted-foreground">
+                      {`(${hoveredFishingInfo.tile.x}, ${hoveredFishingInfo.tile.y}) · 深度 ${hoveredFishingInfo.tile.depth}${hoveredFishingInfo.tile.hidden ? " · 隐藏水域" : ""}`}
+                    </div>
+                  </div>
+                  <Badge variant="secondary" className="shrink-0 border border-border/60 bg-secondary/80 text-secondary-foreground">
+                    {`${hoveredFishingInfo.area?.fish.length || 0} 种鱼`}
+                  </Badge>
+                </div>
+
+                {hoveredFishingInfo.area?.fish.length ? (
+                  <div className="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1">
+                    {hoveredFishingInfo.area.fish.map((fish) => (
+                      <div
+                        key={fish.id}
+                        className="rounded-md border border-border/60 bg-card/80 px-2.5 py-2"
+                      >
+                        <div className="flex items-start gap-2.5">
+                          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border bg-accent/30">
+                            {fish.icon ? (
+                              <img
+                                src={fish.icon}
+                                alt=""
+                                className="h-8 w-8 object-contain"
+                                style={{ imageRendering: "pixelated" }}
+                              />
+                            ) : (
+                              <Package className="h-4 w-4 text-muted-foreground" />
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-medium text-foreground">{fish.name}</div>
+                            <div className="mt-1 line-clamp-2 text-[11px] leading-5 text-muted-foreground">
+                              {fish.description}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-3 text-xs text-muted-foreground">当前区域没有读到可展示的鱼类数据</div>
                 )}
               </div>
             )}

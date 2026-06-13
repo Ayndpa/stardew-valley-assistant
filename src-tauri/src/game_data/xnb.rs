@@ -36,6 +36,24 @@ pub struct RawObjectData {
     pub can_be_trashed: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct RawLocationFishArea {
+    pub display_name: String,
+    pub position: Option<(i32, i32, i32, i32)>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RawLocationFishEntry {
+    pub item_ids: Vec<String>,
+    pub fish_area_id: String,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct RawLocationFishingData {
+    pub fish_areas: HashMap<String, RawLocationFishArea>,
+    pub fish: Vec<RawLocationFishEntry>,
+}
+
 pub fn require_reader(
     type_readers: &[String],
     one_based_index: usize,
@@ -376,6 +394,40 @@ impl<'a> XnbPayloadReader<'a> {
         }))
     }
 
+    pub fn read_location_fishing_data(&mut self) -> Result<RawLocationFishingData, String> {
+        let _display_name = self.read_object_string_any()?;
+        self.skip_nullable_point()?;
+        let _exclude_from_npc_pathfinding = self.read_bool()?;
+        self.skip_nullable_create_location_data()?;
+        self.skip_nullable_string_list()?;
+        self.skip_nullable_bool()?;
+        let _can_have_green_rain_spawns = self.read_bool()?;
+        self.skip_nullable_artifact_spot_drop_list()?;
+        let fish_areas = self.read_nullable_fish_area_dictionary()?;
+        let fish = self.read_nullable_spawn_fish_list()?;
+        self.skip_nullable_spawn_forage_list()?;
+        let _min_daily_weeds = self.read_i32()?;
+        let _max_daily_weeds = self.read_i32()?;
+        let _first_day_weed_multiplier = self.read_i32()?;
+        let _min_daily_forage_spawn = self.read_i32()?;
+        let _max_daily_forage_spawn = self.read_i32()?;
+        let _max_spawned_forage_at_once = self.read_i32()?;
+        let _chance_for_clay = self.read_f64()?;
+        self.skip_nullable_location_music_list()?;
+        let _music_default = self.read_object_string_any()?;
+        let _music_context = self.read_i32()?;
+        let _music_ignored_in_rain = self.read_bool()?;
+        let _music_ignored_in_spring = self.read_bool()?;
+        let _music_ignored_in_summer = self.read_bool()?;
+        let _music_ignored_in_fall = self.read_bool()?;
+        let _music_ignored_in_fall_debris = self.read_bool()?;
+        let _music_ignored_in_winter = self.read_bool()?;
+        let _music_is_town_theme = self.read_bool()?;
+        self.skip_nullable_string_dictionary()?;
+
+        Ok(RawLocationFishingData { fish_areas, fish })
+    }
+
     fn skip_character_data_tail(&mut self) -> Result<(), String> {
         let _home_region = self.read_object_string_any()?;
         let _language = self.read_i32()?;
@@ -563,6 +615,18 @@ impl<'a> XnbPayloadReader<'a> {
         Ok(())
     }
 
+    fn read_nullable_string_list_values(&mut self) -> Result<Vec<String>, String> {
+        if self.read_7bit_usize()? == 0 {
+            return Ok(Vec::new());
+        }
+        let count = self.read_i32()?.max(0) as usize;
+        let mut values = Vec::with_capacity(count);
+        for _ in 0..count {
+            values.push(self.read_object_string_any()?);
+        }
+        Ok(values)
+    }
+
     fn skip_point(&mut self) -> Result<(), String> {
         let _x = self.read_i32()?;
         let _y = self.read_i32()?;
@@ -587,6 +651,149 @@ impl<'a> XnbPayloadReader<'a> {
     fn skip_nullable_rectangle(&mut self) -> Result<(), String> {
         if self.read_bool()? {
             self.skip_rectangle()?;
+        }
+        Ok(())
+    }
+
+    fn read_nullable_rectangle_tuple(&mut self) -> Result<Option<(i32, i32, i32, i32)>, String> {
+        if self.read_bool()? {
+            let x = self.read_i32()?;
+            let y = self.read_i32()?;
+            let width = self.read_i32()?;
+            let height = self.read_i32()?;
+            return Ok(Some((x, y, width, height)));
+        }
+        Ok(None)
+    }
+
+    fn skip_nullable_create_location_data(&mut self) -> Result<(), String> {
+        if self.read_7bit_usize()? == 0 {
+            return Ok(());
+        }
+        let _map_path = self.read_object_string_any()?;
+        let _type = self.read_object_string_any()?;
+        let _always_active = self.read_bool()?;
+        Ok(())
+    }
+
+    fn skip_nullable_artifact_spot_drop_list(&mut self) -> Result<(), String> {
+        if self.read_7bit_usize()? == 0 {
+            return Ok(());
+        }
+        let count = self.read_i32()?.max(0) as usize;
+        for _ in 0..count {
+            if self.read_7bit_usize()? == 0 {
+                continue;
+            }
+            self.read_spawn_item_with_condition_stub()?;
+            let _chance = self.read_f64()?;
+            let _apply_generous_enchantment = self.read_bool()?;
+            let _one_debris_per_drop = self.read_bool()?;
+            let _precedence = self.read_i32()?;
+            let _continue_on_drop = self.read_bool()?;
+        }
+        Ok(())
+    }
+
+    fn read_nullable_fish_area_dictionary(
+        &mut self,
+    ) -> Result<HashMap<String, RawLocationFishArea>, String> {
+        if self.read_7bit_usize()? == 0 {
+            return Ok(HashMap::new());
+        }
+        let count = self.read_i32()?.max(0) as usize;
+        let mut fish_areas = HashMap::with_capacity(count);
+        for _ in 0..count {
+            let key = self.read_object_string_any()?;
+            if self.read_7bit_usize()? == 0 {
+                continue;
+            }
+            let display_name = self.read_object_string_any()?;
+            let position = self.read_nullable_rectangle_tuple()?;
+            let _crab_pot_fish_types = self.read_nullable_string_list_values()?;
+            let _crab_pot_junk_chance = self.read_f32()?;
+            fish_areas.insert(
+                key,
+                RawLocationFishArea {
+                    display_name,
+                    position,
+                },
+            );
+        }
+        Ok(fish_areas)
+    }
+
+    fn read_nullable_spawn_fish_list(&mut self) -> Result<Vec<RawLocationFishEntry>, String> {
+        if self.read_7bit_usize()? == 0 {
+            return Ok(Vec::new());
+        }
+        let count = self.read_i32()?.max(0) as usize;
+        let mut fish = Vec::with_capacity(count);
+        for _ in 0..count {
+            if self.read_7bit_usize()? == 0 {
+                continue;
+            }
+            let item_ids = self.read_spawn_item_with_condition_stub()?;
+            let _chance = self.read_f32()?;
+            self.skip_nullable_i32()?;
+            let fish_area_id = self.read_object_string_any()?;
+            self.skip_nullable_rectangle()?;
+            self.skip_nullable_rectangle()?;
+            let _min_fishing_level = self.read_i32()?;
+            let _min_distance_from_shore = self.read_i32()?;
+            let _max_distance_from_shore = self.read_i32()?;
+            let _apply_daily_luck = self.read_bool()?;
+            let _curiosity_lure_buff = self.read_f32()?;
+            let _specific_bait_buff = self.read_f32()?;
+            let _specific_bait_multiplier = self.read_f32()?;
+            let _catch_limit = self.read_i32()?;
+            self.skip_nullable_bool()?;
+            let _is_boss_fish = self.read_bool()?;
+            let _set_flag_on_catch = self.read_object_string_any()?;
+            let _require_magic_bait = self.read_bool()?;
+            let _precedence = self.read_i32()?;
+            let _ignore_fish_data_requirements = self.read_bool()?;
+            let _can_be_inherited = self.read_bool()?;
+            self.skip_nullable_quantity_modifier_list()?;
+            let _chance_modifier_mode = self.read_i32()?;
+            let _chance_boost_per_luck_level = self.read_f32()?;
+            let _use_fish_caught_seeded_random = self.read_bool()?;
+            fish.push(RawLocationFishEntry {
+                item_ids,
+                fish_area_id,
+            });
+        }
+        Ok(fish)
+    }
+
+    fn skip_nullable_spawn_forage_list(&mut self) -> Result<(), String> {
+        if self.read_7bit_usize()? == 0 {
+            return Ok(());
+        }
+        let count = self.read_i32()?.max(0) as usize;
+        for _ in 0..count {
+            if self.read_7bit_usize()? == 0 {
+                continue;
+            }
+            self.read_spawn_item_with_condition_stub()?;
+            let _chance = self.read_f64()?;
+            self.skip_nullable_i32()?;
+        }
+        Ok(())
+    }
+
+    fn skip_nullable_location_music_list(&mut self) -> Result<(), String> {
+        if self.read_7bit_usize()? == 0 {
+            return Ok(());
+        }
+        let count = self.read_i32()?.max(0) as usize;
+        for _ in 0..count {
+            if self.read_7bit_usize()? == 0 {
+                continue;
+            }
+            let _id = self.read_object_string_any()?;
+            let _track = self.read_object_string_any()?;
+            let _condition = self.read_object_string_any()?;
         }
         Ok(())
     }
@@ -773,10 +980,10 @@ impl<'a> XnbPayloadReader<'a> {
         Ok(())
     }
 
-    fn skip_generic_spawn_item_data(&mut self) -> Result<(), String> {
+    fn read_spawn_item_stub(&mut self) -> Result<Vec<String>, String> {
         let _id = self.read_object_string_any()?;
-        let _item_id = self.read_object_string_any()?;
-        self.skip_nullable_string_list()?;
+        let item_id = self.read_object_string_any()?;
+        let random_item_ids = self.read_nullable_string_list_values()?;
         self.skip_nullable_i32()?;
         let _min_stack = self.read_i32()?;
         let _max_stack = self.read_i32()?;
@@ -792,6 +999,27 @@ impl<'a> XnbPayloadReader<'a> {
         let _quality_modifier_mode = self.read_i32()?;
         self.skip_nullable_string_dictionary()?;
         let _per_item_condition = self.read_object_string_any()?;
+
+        let mut item_ids = Vec::new();
+        if !item_id.trim().is_empty() {
+            item_ids.push(item_id);
+        }
+        item_ids.extend(
+            random_item_ids
+                .into_iter()
+                .filter(|value| !value.trim().is_empty()),
+        );
+        Ok(item_ids)
+    }
+
+    fn read_spawn_item_with_condition_stub(&mut self) -> Result<Vec<String>, String> {
+        let item_ids = self.read_spawn_item_stub()?;
+        let _condition = self.read_object_string_any()?;
+        Ok(item_ids)
+    }
+
+    fn skip_generic_spawn_item_data(&mut self) -> Result<(), String> {
+        let _ = self.read_spawn_item_stub()?;
         Ok(())
     }
 
@@ -984,6 +1212,36 @@ pub fn load_objects_xnb(path: &Path) -> Result<HashMap<String, RawObjectData>, S
         objects.insert(key, value);
     }
     Ok(objects)
+}
+
+pub fn load_location_fishing_xnb(
+    path: &Path,
+) -> Result<HashMap<String, RawLocationFishingData>, String> {
+    let payload = load_xnb_payload(path)?;
+    let mut reader = XnbPayloadReader::new(&payload);
+    let type_readers = reader.read_type_readers()?;
+    let root_reader = reader.read_7bit_usize()?;
+    if root_reader == 0 {
+        return Ok(HashMap::new());
+    }
+    require_reader(&type_readers, root_reader, "DictionaryReader")?;
+
+    let count = reader.read_i32()?.max(0) as usize;
+    let mut locations = HashMap::with_capacity(count);
+    for _ in 0..count {
+        let key = reader.read_object_string(&type_readers)?;
+        let value_reader = reader.read_7bit_usize()?;
+        if value_reader == 0 {
+            continue;
+        }
+        require_reader(&type_readers, value_reader, "ReflectiveReader")
+            .map_err(|e| format!("Failed to parse location '{}' reader: {}", key, e))?;
+        let value = reader.read_location_fishing_data().map_err(|e| {
+            format!("Failed to parse location fishing data '{}' : {}", key, e)
+        })?;
+        locations.insert(key, value);
+    }
+    Ok(locations)
 }
 
 pub fn load_string_dictionary_best_effort(paths: &[PathBuf]) -> HashMap<String, String> {

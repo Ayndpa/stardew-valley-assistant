@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
+import { Button } from "@/components/ui/button"
 import {
   Search,
   Heart,
@@ -123,6 +124,7 @@ function HeartBar({ hearts, maxHearts }: { hearts: number; maxHearts: number }) 
 
 interface NPCsProps {
   selectedSaveId: string
+  onNavigateToItem: (itemName: string) => void
 }
 
 function NPCPortrait({
@@ -159,7 +161,7 @@ function NPCPortrait({
   )
 }
 
-export function NPCs({ selectedSaveId }: NPCsProps) {
+export function NPCs({ selectedSaveId, onNavigateToItem }: NPCsProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedNpcId, setSelectedNpcId] = useState<string | null>(null)
   const [friendships, setFriendships] = useState<Record<string, FriendshipInfo>>({})
@@ -605,9 +607,17 @@ export function NPCs({ selectedSaveId }: NPCsProps) {
                     {activeNPC.lovedItems.length > 0 ? (
                       <div className="flex flex-wrap gap-2">
                         {activeNPC.lovedItems.map((item) => (
-                          <Badge key={item} variant="secondary" className="text-xs font-medium">
+                          <Button
+                            key={item}
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            className="h-7 px-2.5 text-xs"
+                            onClick={() => onNavigateToItem(item)}
+                            title={`查看 ${item} 的物品百科`}
+                          >
                             {item}
-                          </Badge>
+                          </Button>
                         ))}
                       </div>
                     ) : (
@@ -623,9 +633,17 @@ export function NPCs({ selectedSaveId }: NPCsProps) {
                     {activeNPC.hatedItems.length > 0 ? (
                       <div className="flex flex-wrap gap-2">
                         {activeNPC.hatedItems.map((item) => (
-                          <Badge key={item} variant="secondary" className="text-xs font-medium">
+                          <Button
+                            key={item}
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            className="h-7 px-2.5 text-xs"
+                            onClick={() => onNavigateToItem(item)}
+                            title={`查看 ${item} 的物品百科`}
+                          >
                             {item}
-                          </Badge>
+                          </Button>
                         ))}
                       </div>
                     ) : (

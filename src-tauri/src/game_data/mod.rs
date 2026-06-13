@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 pub use calendar::get_calendar_game_data;
 pub use crops::get_crop_game_data;
 pub use fishing::{get_fishing_map_data, get_fishing_map_detail};
-pub use items::get_item_game_data;
+pub use items::{get_item_game_data, get_item_game_data_overview, query_item_game_data};
 pub use npc::get_npc_game_data;
 
 pub fn locate_content_dir(game_dir: Option<&str>) -> Result<PathBuf, String> {
@@ -171,6 +171,18 @@ mod tests {
         assert!(beach.height > 0);
         assert!(beach.fishable_tiles > 0);
         assert!(beach.max_depth > 0);
+    }
+
+    #[test]
+    fn reads_location_fishing_data_from_dev_source() {
+        let Some(content) = dev_content_dir() else {
+            return;
+        };
+        let locations = xnb::load_location_fishing_xnb(&content.join("Data").join("Locations.xnb"))
+            .unwrap();
+        let beach = locations.get("Beach").unwrap();
+        assert!(!beach.fish.is_empty());
+        assert!(!beach.fish_areas.is_empty());
     }
 
     #[test]

@@ -3,39 +3,60 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Package, Search, Soup, Tag, Coins, Gift, Trash2 } from "lucide-react"
+import { ChevronLeft, ChevronRight, Coins, Gift, Package, Search, Soup, Tag, Trash2 } from "lucide-react"
 import {
   ItemEntry,
-  ItemGameData,
+  ItemGameDataOverview,
+  ItemGameDataQueryResult,
   getItemGameDataCacheKey,
   readCache,
   writeCache,
 } from "./items/types"
 
-export function Items() {
+interface ItemsProps {
+  navigationTarget?: string | null
+  onNavigationHandled?: () => void
+}
+
+const PAGE_SIZE = 24
+
+export function Items({ navigationTarget, onNavigationHandled }: ItemsProps) {
   const [items, setItems] = useState<ItemEntry[]>([])
   const [categories, setCategories] = useState<string[]>([])
   const [itemTypes, setItemTypes] = useState<string[]>([])
   const [searchTerm, setSearchTerm] = useState("")
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("")
   const [activeCategory, setActiveCategory] = useState("全部")
   const [activeType, setActiveType] = useState("全部")
+  const [highlightedItemId, setHighlightedItemId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [page, setPage] = useState(1)
+  const [totalCount, setTotalCount] = useState(0)
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm)
+    }, 250)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [searchTerm])
 
   useEffect(() => {
     let canceled = false
 
-    async function loadItemGameData() {
+    async function loadOverview() {
       const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__
       const gameDir = localStorage.getItem("stardewGameDirectory") || ""
       const cacheKey = getItemGameDataCacheKey(gameDir)
-      const cached = readCache<ItemGameData>(cacheKey)
+      const cached = readCache<ItemGameDataOverview>(cacheKey)
 
       if (cached && !canceled) {
-        setItems(cached.data.encyclopedia)
         setCategories(cached.data.categories)
         setItemTypes(cached.data.itemTypes)
-        setLoading(false)
+        setTotalCount(cached.data.totalCount)
         setError(null)
       }
 
@@ -54,63 +75,130 @@ export function Items() {
 
       try {
         const { invoke } = await import("@tauri-apps/api/core")
-        const data = await invoke<ItemGameData>("get_item_game_data", {
+        const data = await invoke<ItemGameDataOverview>("get_item_game_data_overview", {
           gameDir: gameDir.trim() || undefined,
         })
         if (!canceled) {
-          setItems(data.encyclopedia)
           setCategories(data.categories)
           setItemTypes(data.itemTypes)
+          setTotalCount(data.totalCount)
           setError(null)
         }
         writeCache(cacheKey, data)
       } catch (err) {
-        console.error("Error loading item game data:", err)
+        console.error("Error loading item game data overview:", err)
         if (!canceled) {
           setLoading(false)
           setError(String(err))
           if (!cached) {
-            setItems([])
             setCategories([])
             setItemTypes([])
+            setTotalCount(0)
           }
         }
-        return
-      }
-
-      if (!canceled) {
-        setLoading(false)
       }
     }
 
-    loadItemGameData()
+    loadOverview()
 
     return () => {
       canceled = true
     }
   }, [])
 
-  const filteredItems = useMemo(() => {
-    const keyword = searchTerm.trim().toLowerCase()
-    return items.filter((item) => {
-      const matchesKeyword =
-        keyword.length === 0 ||
-        item.name.toLowerCase().includes(keyword) ||
-        item.internalName.toLowerCase().includes(keyword) ||
-        item.id.toLowerCase().includes(keyword) ||
-        item.description.toLowerCase().includes(keyword)
-      const matchesCategory = activeCategory === "全部" || item.category === activeCategory
-      const matchesType = activeType === "全部" || item.itemType === activeType
-      return matchesKeyword && matchesCategory && matchesType
+  useEffect(() => {
+    setPage(1)
+  }, [activeCategory, activeType, debouncedSearchTerm])
+
+  useEffect(() => {
+    if (!navigationTarget) return
+
+    setSearchTerm(navigationTarget)
+    setActiveCategory("全部")
+    setActiveType("全部")
+    setPage(1)
+    onNavigationHandled?.()
+  }, [navigationTarget, onNavigationHandled])
+
+  useEffect(() => {
+    let canceled = false
+
+    async function loadItems() {
+      const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__
+      if (!isTauri) return
+
+      const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+      setLoading(true)
+      setError(null)
+
+      try {
+        const { invoke } = await import("@tauri-apps/api/core")
+        const data = await invoke<ItemGameDataQueryResult>("query_item_game_data", {
+          gameDir: gameDir.trim() || undefined,
+          searchTerm: debouncedSearchTerm || undefined,
+          activeCategory,
+          activeType,
+          page,
+          pageSize: PAGE_SIZE,
+        })
+
+        if (!canceled) {
+          setItems(data.items)
+          setTotalCount(data.totalCount)
+          setHighlightedItemId(null)
+        }
+      } catch (err) {
+        console.error("Error querying item game data:", err)
+        if (!canceled) {
+          setItems([])
+          setTotalCount(0)
+          setError(String(err))
+        }
+      } finally {
+        if (!canceled) {
+          setLoading(false)
+        }
+      }
+    }
+
+    loadItems()
+
+    return () => {
+      canceled = true
+    }
+  }, [activeCategory, activeType, debouncedSearchTerm, page])
+
+  useEffect(() => {
+    if (!navigationTarget || items.length === 0) return
+
+    const normalizedTarget = navigationTarget.trim().toLowerCase()
+    const exactMatch = items.find((item) => item.name.toLowerCase() === normalizedTarget)
+    const partialMatch = exactMatch || items.find((item) => item.name.toLowerCase().includes(normalizedTarget))
+
+    if (!partialMatch) {
+      setHighlightedItemId(null)
+      return
+    }
+
+    setHighlightedItemId(partialMatch.id)
+    requestAnimationFrame(() => {
+      document.getElementById(`item-card-${partialMatch.id}`)?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      })
     })
-  }, [activeCategory, activeType, items, searchTerm])
+  }, [items, navigationTarget])
+
+  const totalPages = useMemo(() => Math.max(1, Math.ceil(totalCount / PAGE_SIZE)), [totalCount])
+  const pageStart = totalCount === 0 ? 0 : (page - 1) * PAGE_SIZE + 1
+  const pageEnd = Math.min(totalCount, page * PAGE_SIZE)
 
   return (
     <div className="p-8 space-y-6">
       <div>
         <h2 className="text-3xl font-bold tracking-tight">物品百科</h2>
         <p className="text-muted-foreground mt-1">
-          直接从游戏物品列表解析全部物品名称、描述、分类、售价和图标
+          按需读取当前筛选页的物品名称、描述、分类、售价和图标
         </p>
       </div>
 
@@ -151,25 +239,54 @@ export function Items() {
             ))}
           </div>
         </div>
+
+        <div className="flex flex-col gap-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+          <span>
+            {totalCount === 0 ? "暂无结果" : `第 ${pageStart}-${pageEnd} 项，共 ${totalCount} 项`}
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+              disabled={loading || page <= 1}
+            >
+              <ChevronLeft className="h-4 w-4" />
+              上一页
+            </Button>
+            <span className="min-w-20 text-center text-xs">
+              {page} / {totalPages}
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+              disabled={loading || page >= totalPages}
+            >
+              下一页
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
       </div>
 
       {(loading || error) && (
         <div className="text-xs text-muted-foreground">
           {loading
-            ? "正在从游戏内容解析物品数据..."
+            ? "正在读取当前筛选页的物品数据..."
             : `未能读取游戏目录中的物品数据：${error}`}
         </div>
       )}
 
-      {filteredItems.length === 0 ? (
+      {items.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16 text-center">
             <Package className="mb-4 h-12 w-12 text-muted-foreground/40" />
             <p className="text-lg font-semibold">
-              {items.length === 0 ? "未读取到物品百科数据" : "没有符合条件的物品"}
+              {totalCount === 0 ? "未读取到物品百科数据" : "没有符合条件的物品"}
             </p>
             <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-              {items.length === 0
+              {totalCount === 0
                 ? "请在设置中确认星露谷安装目录可用，程序会直接从游戏内容目录解析物品信息。"
                 : "调整搜索词、类型或分类筛选后再试。"}
             </p>
@@ -177,8 +294,16 @@ export function Items() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {filteredItems.map((item) => (
-            <Card key={item.id} className="hover:shadow-md transition-shadow">
+          {items.map((item) => (
+            <Card
+              key={item.id}
+              id={`item-card-${item.id}`}
+              className={`transition-all ${
+                highlightedItemId === item.id
+                  ? "ring-2 ring-primary shadow-md"
+                  : "hover:shadow-md"
+              }`}
+            >
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-3">

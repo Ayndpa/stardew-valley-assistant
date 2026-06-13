@@ -1,8 +1,14 @@
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    sync::{Arc, LazyLock, Mutex},
+};
+
 use serde::{Deserialize, Serialize};
 
 use super::calendar::resolve_localized_text;
 use super::image_utils::render_object_icon;
-use super::xnb::{load_localized_string_tables, load_objects_xnb};
+use super::xnb::{load_localized_string_tables, load_objects_xnb, RawObjectData};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -30,9 +36,152 @@ pub struct ItemGameData {
     pub item_types: Vec<String>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemGameDataOverview {
+    pub categories: Vec<String>,
+    pub item_types: Vec<String>,
+    pub total_count: usize,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemGameDataQueryResult {
+    pub items: Vec<ItemEncyclopediaEntry>,
+    pub total_count: usize,
+    pub page: usize,
+    pub page_size: usize,
+}
+
+#[derive(Debug, Clone)]
+struct IndexedItemEntry {
+    id: String,
+    name: String,
+    internal_name: String,
+    description: String,
+    item_type: String,
+    item_type_key: String,
+    category: String,
+    category_key: String,
+    sell_price: i32,
+    edibility: Option<i32>,
+    can_be_given_as_gift: bool,
+    can_be_trashed: bool,
+    raw_object: RawObjectData,
+}
+
+#[derive(Debug, Clone)]
+struct ItemSnapshot {
+    content_dir: PathBuf,
+    encyclopedia: Vec<IndexedItemEntry>,
+    categories: Vec<String>,
+    item_types: Vec<String>,
+}
+
+static ITEM_SNAPSHOT_CACHE: LazyLock<Mutex<HashMap<String, Arc<ItemSnapshot>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
 #[tauri::command]
 pub fn get_item_game_data(game_dir: Option<String>) -> Result<ItemGameData, String> {
+    let snapshot = load_item_snapshot(game_dir)?;
+    let mut texture_cache = HashMap::new();
+    let encyclopedia = snapshot
+        .encyclopedia
+        .iter()
+        .map(|entry| build_item_entry(&snapshot.content_dir, entry, &mut texture_cache))
+        .collect::<Vec<_>>();
+
+    Ok(ItemGameData {
+        encyclopedia,
+        categories: snapshot.categories.clone(),
+        item_types: snapshot.item_types.clone(),
+    })
+}
+
+#[tauri::command]
+pub fn get_item_game_data_overview(game_dir: Option<String>) -> Result<ItemGameDataOverview, String> {
+    let snapshot = load_item_snapshot(game_dir)?;
+    Ok(ItemGameDataOverview {
+        categories: snapshot.categories.clone(),
+        item_types: snapshot.item_types.clone(),
+        total_count: snapshot.encyclopedia.len(),
+    })
+}
+
+#[tauri::command]
+pub fn query_item_game_data(
+    game_dir: Option<String>,
+    search_term: Option<String>,
+    active_category: Option<String>,
+    active_type: Option<String>,
+    page: Option<usize>,
+    page_size: Option<usize>,
+) -> Result<ItemGameDataQueryResult, String> {
+    let snapshot = load_item_snapshot(game_dir)?;
+    let keyword = search_term.unwrap_or_default().trim().to_lowercase();
+    let category = active_category.unwrap_or_else(|| "全部".to_string());
+    let item_type = active_type.unwrap_or_else(|| "全部".to_string());
+    let page = page.unwrap_or(1).max(1);
+    let page_size = page_size.unwrap_or(24).clamp(1, 96);
+
+    let filtered_indexes = snapshot
+        .encyclopedia
+        .iter()
+        .enumerate()
+        .filter(|(_, item)| matches_item(item, &keyword, &category, &item_type))
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+
+    let total_count = filtered_indexes.len();
+    let start = page_size.saturating_mul(page.saturating_sub(1));
+
+    if start >= total_count {
+        return Ok(ItemGameDataQueryResult {
+            items: Vec::new(),
+            total_count,
+            page,
+            page_size,
+        });
+    }
+
+    let end = (start + page_size).min(total_count);
+    let mut texture_cache = HashMap::new();
+    let items = filtered_indexes[start..end]
+        .iter()
+        .map(|index| build_item_entry(&snapshot.content_dir, &snapshot.encyclopedia[*index], &mut texture_cache))
+        .collect::<Vec<_>>();
+
+    Ok(ItemGameDataQueryResult {
+        items,
+        total_count,
+        page,
+        page_size,
+    })
+}
+
+fn load_item_snapshot(game_dir: Option<String>) -> Result<Arc<ItemSnapshot>, String> {
     let content_dir = super::locate_content_dir(game_dir.as_deref())?;
+    let cache_key = content_dir.to_string_lossy().to_string();
+
+    if let Some(snapshot) = ITEM_SNAPSHOT_CACHE
+        .lock()
+        .map_err(|_| "物品百科缓存锁定失败".to_string())?
+        .get(&cache_key)
+        .cloned()
+    {
+        return Ok(snapshot);
+    }
+
+    let snapshot = Arc::new(build_item_snapshot(content_dir.clone())?);
+    ITEM_SNAPSHOT_CACHE
+        .lock()
+        .map_err(|_| "物品百科缓存锁定失败".to_string())?
+        .insert(cache_key, snapshot.clone());
+
+    Ok(snapshot)
+}
+
+fn build_item_snapshot(content_dir: PathBuf) -> Result<ItemSnapshot, String> {
     let objects = load_objects_xnb(&content_dir.join("Data").join("Objects.xnb"))?;
     let localized_tables = load_localized_string_tables(
         &content_dir,
@@ -40,24 +189,22 @@ pub fn get_item_game_data(game_dir: Option<String>) -> Result<ItemGameData, Stri
     );
 
     let mut encyclopedia = Vec::with_capacity(objects.len());
-    let mut texture_cache = std::collections::HashMap::new();
 
     for (id, object) in objects {
         let name = resolve_localized_text(&object.display_name, &localized_tables);
         let description = resolve_localized_text(&object.description, &localized_tables);
-        let icon = render_object_icon(&content_dir, &object, &mut texture_cache).ok();
         let (item_type_key, item_type) = classify_item_type(&object.object_type, object.category);
         let (category_key, category) = classify_category(object.category, &object.object_type);
         let edibility = (object.edibility > -300).then_some(object.edibility);
 
-        encyclopedia.push(ItemEncyclopediaEntry {
+        encyclopedia.push(IndexedItemEntry {
             id,
             name: if name.trim().is_empty() {
                 object.name.clone()
             } else {
                 name
             },
-            internal_name: object.name,
+            internal_name: object.name.clone(),
             description: if description.trim().is_empty() {
                 "游戏内容未提供描述。".to_string()
             } else {
@@ -67,11 +214,11 @@ pub fn get_item_game_data(game_dir: Option<String>) -> Result<ItemGameData, Stri
             item_type_key,
             category,
             category_key,
-            icon,
             sell_price: object.price,
             edibility,
             can_be_given_as_gift: object.can_be_given_as_gift,
             can_be_trashed: object.can_be_trashed,
+            raw_object: object,
         });
     }
 
@@ -93,11 +240,45 @@ pub fn get_item_game_data(game_dir: Option<String>) -> Result<ItemGameData, Stri
         }
     }
 
-    Ok(ItemGameData {
+    Ok(ItemSnapshot {
+        content_dir,
         encyclopedia,
         categories,
         item_types,
     })
+}
+
+fn matches_item(item: &IndexedItemEntry, keyword: &str, category: &str, item_type: &str) -> bool {
+    let matches_keyword = keyword.is_empty()
+        || item.name.to_lowercase().contains(keyword)
+        || item.internal_name.to_lowercase().contains(keyword)
+        || item.id.to_lowercase().contains(keyword)
+        || item.description.to_lowercase().contains(keyword);
+    let matches_category = category == "全部" || item.category == category;
+    let matches_type = item_type == "全部" || item.item_type == item_type;
+    matches_keyword && matches_category && matches_type
+}
+
+fn build_item_entry(
+    content_dir: &std::path::Path,
+    item: &IndexedItemEntry,
+    texture_cache: &mut HashMap<String, super::image_utils::Texture>,
+) -> ItemEncyclopediaEntry {
+    ItemEncyclopediaEntry {
+        id: item.id.clone(),
+        name: item.name.clone(),
+        internal_name: item.internal_name.clone(),
+        description: item.description.clone(),
+        item_type: item.item_type.clone(),
+        item_type_key: item.item_type_key.clone(),
+        category: item.category.clone(),
+        category_key: item.category_key.clone(),
+        icon: render_object_icon(content_dir, &item.raw_object, texture_cache).ok(),
+        sell_price: item.sell_price,
+        edibility: item.edibility,
+        can_be_given_as_gift: item.can_be_given_as_gift,
+        can_be_trashed: item.can_be_trashed,
+    }
 }
 
 fn classify_item_type(object_type: &str, category: i32) -> (String, String) {

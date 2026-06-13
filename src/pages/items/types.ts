@@ -20,12 +20,25 @@ export interface ItemGameData {
   itemTypes: string[]
 }
 
+export interface ItemGameDataOverview {
+  categories: string[]
+  itemTypes: string[]
+  totalCount: number
+}
+
+export interface ItemGameDataQueryResult {
+  items: ItemEntry[]
+  totalCount: number
+  page: number
+  pageSize: number
+}
+
 export interface LocalCacheEntry<T> {
   data: T
   fetchedAt: number
 }
 
-export const ITEM_GAME_DATA_CACHE_KEY = "stardew_item_game_data_cache"
+export const ITEM_GAME_DATA_CACHE_KEY = "stardew_item_game_data_overview_cache_v2"
 
 export function normalizeGameDir(gameDir: string) {
   return gameDir.trim().toLowerCase()

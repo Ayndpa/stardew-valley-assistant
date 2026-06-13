@@ -52,6 +52,7 @@ const NPCs = lazy(async () => {
 
 function App() {
   const [currentPage, setCurrentPage] = useState<Page>("fishingMap")
+  const [itemNavigationTarget, setItemNavigationTarget] = useState<string | null>(null)
   const [showOnboarding, setShowOnboarding] = useState(() => {
     return !localStorage.getItem("stardewGameDirectory")
   })
@@ -219,7 +220,12 @@ function App() {
       case "crops":
         return <Crops selectedSaveId={selectedSaveId} />
       case "items":
-        return <Items />
+        return (
+          <Items
+            navigationTarget={itemNavigationTarget}
+            onNavigationHandled={() => setItemNavigationTarget(null)}
+          />
+        )
       case "npcs":
         return (
           <Suspense
@@ -232,7 +238,13 @@ function App() {
               </div>
             }
           >
-            <NPCs selectedSaveId={selectedSaveId} />
+            <NPCs
+              selectedSaveId={selectedSaveId}
+              onNavigateToItem={(itemName) => {
+                setItemNavigationTarget(itemName)
+                setCurrentPage("items")
+              }}
+            />
           </Suspense>
         )
       case "calendar":
