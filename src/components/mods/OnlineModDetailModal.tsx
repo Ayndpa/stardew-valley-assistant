@@ -4,21 +4,12 @@ import {
   X, 
   ExternalLink, 
   Download, 
-  Info, 
   Loader2, 
   AlertTriangle,
   RefreshCw,
-  Languages,
-  ChevronLeft,
-  ChevronRight,
-  Calendar,
-  User,
-  Tag,
-  Eye,
-  ZoomIn
+  Languages
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 
 // Import types from OnlineMods
 import type { SmapiMod } from "./OnlineMods"
@@ -32,119 +23,18 @@ interface OnlineModDetailModalProps {
   isGameRunning?: boolean
 }
 
-interface ParsedModDetails {
-  title: string
-  author: string
-  imageUrl: string
-  galleryImages: string[]
-  description: string
-  condensedDescription: string
-  version: string
-  uniqueDls: string
-  totalDls: string
-  endorsements: string
-  lastUpdated: string
-  downloadUrl?: string
-}
-
+import {
+  TranslateState,
+  edgeTranslate,
+  translateHtmlTextOnly
+} from "@/lib/translate"
+import { useNexus } from "@/lib/nexus-provider"
+import { ParsedModDetails, parseHtml, getNexusId } from "./online-mod-parser"
+import { ModGallery } from "./ModGallery"
+import { ModSpecs, renderStatusBadge } from "./ModSpecs"
 interface CondensedTranslateState extends TranslateState {
   condensedDescriptionTranslated: string | null
   condensedDescLoading: boolean
-}
-
-import {
-  TranslateState,
-  edgeTranslate
-} from "@/lib/translate"
-import { useNexus } from "@/lib/nexus-provider"
-
-async function translateHtmlTextOnly(html: string, toLanguage: string) {
-  const parser = new DOMParser()
-  const doc = parser.parseFromString(`<div id="translate-root">${html}</div>`, "text/html")
-  const root = doc.querySelector("#translate-root")
-  if (!root) return html
-
-  const isInExclusionTag = (node: Node) => {
-    let parent = node.parentElement
-    while (parent) {
-      const tag = parent.tagName.toLowerCase()
-      if (tag === "script" || tag === "style") return true
-      parent = parent.parentElement
-    }
-    return false
-  }
-
-  const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-    acceptNode(node) {
-      const text = node.textContent || ""
-      if (!text || !text.trim()) return NodeFilter.FILTER_REJECT
-      if (isInExclusionTag(node)) return NodeFilter.FILTER_REJECT
-      return NodeFilter.FILTER_ACCEPT
-    },
-  })
-
-  const textNodes: Text[] = []
-  let currentNode = walker.nextNode()
-  while (currentNode) {
-    textNodes.push(currentNode as Text)
-    currentNode = walker.nextNode()
-  }
-
-  if (textNodes.length === 0) return html
-
-  const originalTexts = textNodes.map(node => node.textContent || "")
-  const chunkLimit = 4500
-  const chunkedTasks: { nodeIndex: number; text: string }[] = []
-
-  originalTexts.forEach((text, index) => {
-    if (text.length <= chunkLimit) {
-      chunkedTasks.push({ nodeIndex: index, text })
-      return
-    }
-    for (let i = 0; i < text.length; i += chunkLimit) {
-      chunkedTasks.push({ nodeIndex: index, text: text.substring(i, i + chunkLimit) })
-    }
-  })
-
-  if (chunkedTasks.length === 0) return html
-
-  const translatedByNode: string[][] = originalTexts.map(() => [])
-  const batchSize = 10
-  const batchChars = 4800
-  let cursor = 0
-
-  while (cursor < chunkedTasks.length) {
-    let end = cursor
-    let batchCharCount = 0
-    while (end < chunkedTasks.length) {
-      const nextText = chunkedTasks[end].text
-      if (end > cursor && batchCharCount + nextText.length > batchChars) break
-      batchCharCount += nextText.length
-      end += 1
-    }
-
-    const batch = chunkedTasks.slice(cursor, end)
-    if (batch.length > batchSize) {
-      end = cursor + batchSize
-    }
-
-    const batchTexts = chunkedTasks.slice(cursor, end).map(task => task.text)
-    const translatedBatch = await edgeTranslate(batchTexts, toLanguage)
-
-    translatedBatch.forEach((translatedText, offset) => {
-      const task = chunkedTasks[cursor + offset]
-      if (!task) return
-      translatedByNode[task.nodeIndex].push(translatedText ?? task.text)
-    })
-
-    cursor = end
-  }
-
-  for (let i = 0; i < textNodes.length; i += 1) {
-    textNodes[i].textContent = (translatedByNode[i].length ? translatedByNode[i].join("") : originalTexts[i])
-  }
-
-  return root.innerHTML
 }
 
 // Helper for dynamic imports
@@ -193,8 +83,6 @@ export function OnlineModDetailModal({
     error: null,
   })
   const [showTranslated, setShowTranslated] = useState({ title: false, desc: false, condensedDesc: false })
-  const [lightboxImage, setLightboxImage] = useState<string | null>(null)
-  const [currentGalleryIndex, setCurrentGalleryIndex] = useState(0)
   const [isInstalling, setIsInstalling] = useState(false)
   const [installMessage, setInstallMessage] = useState<string | null>(null)
   const [installError, setInstallError] = useState<string | null>(null)
@@ -205,113 +93,6 @@ export function OnlineModDetailModal({
   const scrapeTimeoutRef = useRef<number | null>(null)
   const activeRequestIdRef = useRef(0)
   const activeNexusIdRef = useRef<string | null>(null)
-  const resolveNexusUrl = (href: string) => {
-    const value = href.trim()
-    if (!value) return ""
-    if (value.startsWith("http://") || value.startsWith("https://")) return value
-    if (value.startsWith("//")) return `https:${value}`
-    if (value.startsWith("/")) return `https://www.nexusmods.com${value}`
-    return `https://www.nexusmods.com/stardewvalley/mods/${value}`
-  }
-
-  const extractDownloadUrl = (htmlString: string) => {
-    const hrefCandidates = new Set<string>()
-    const parser = new DOMParser()
-    const doc = parser.parseFromString(htmlString, "text/html")
-    const normalizedNexusUrl = resolveNexusUrl(nexusUrl)
-    const expectedBasePath = normalizedNexusUrl ? normalizedNexusUrl.split("?")[0].toLowerCase() : ""
-
-    const isBlockedDownloadCandidate = (value: string) => {
-      const lower = value.toLowerCase()
-      return (
-        lower.includes("/users/myaccount") ||
-        lower.includes("tab=download+history") ||
-        lower.includes("tab=download%20history") ||
-        lower.includes("download-history") ||
-        lower.includes("/collections") ||
-        lower.includes("cookiebot.renew") ||
-        lower.includes("imasdk.googleapis.com") ||
-        lower.includes("googlesyndication.com") ||
-        lower.includes("doubleclick.net") ||
-        lower.endsWith("#") ||
-        lower.includes("#maincontent")
-      )
-    }
-
-    const pushCandidate = (candidate: string | null) => {
-      const normalized = resolveNexusUrl(candidate || "")
-      if (!normalized) return
-      const lower = normalized.toLowerCase()
-      if (!lower.includes("nexusmods.com")) return
-      if (isBlockedDownloadCandidate(lower)) return
-      if (expectedBasePath && !lower.startsWith(expectedBasePath)) return
-      hrefCandidates.add(normalized)
-    }
-
-    const explicitDownloadSelectors = [
-      "#action-nmm a[href]",
-      "#action-manual a[href]",
-      "li#action-nmm a[href]",
-      "li#action-manual a[href]",
-    ]
-    explicitDownloadSelectors.forEach((selector) => {
-      doc.querySelectorAll(selector).forEach((el) => {
-        pushCandidate(el.getAttribute("href"))
-      })
-    })
-
-    const filePageLinks = [
-      ...doc.querySelectorAll("a[href*='tab=files'][href*='file_id=']"),
-      ...doc.querySelectorAll("a[href*='tab=files'][href*='nmm=1']"),
-    ]
-    filePageLinks.forEach((el) => {
-      pushCandidate(el.getAttribute("href"))
-    })
-
-    doc.querySelectorAll("a[href]").forEach((a) => {
-      const href = a.getAttribute("href") || ""
-      const lower = href.toLowerCase()
-      if (!href) return
-      if (
-        lower.includes("file_id=") ||
-        lower.includes("&nmm=1") ||
-        lower.includes("?nmm=1") ||
-        (lower.includes("/mods/") && lower.includes("tab=files"))
-      ) {
-        pushCandidate(href)
-      }
-    })
-
-    const htmlCandidates = [...htmlString.matchAll(/https?:\/\/(?:www\.)?nexusmods\.com\/[^\s"']*?(?:file_id|nmm=1)[^"'\s]*/gi)].map(match => match[0])
-    htmlCandidates.forEach(pushCandidate)
-
-    doc.querySelectorAll("[data-file-id][href]").forEach((el) => {
-      const fileId = el.getAttribute("data-file-id")
-      if (!fileId) return
-      const fileIdDigits = fileId.trim()
-      if (!fileIdDigits) return
-      if (hrefCandidates.size === 0 && normalizedNexusUrl) {
-        const base = normalizedNexusUrl.split("?")[0]
-        hrefCandidates.add(`${base}?tab=files&file_id=${encodeURIComponent(fileIdDigits)}&nmm=1`)
-      }
-    })
-
-    const rawFileIdMatches = [...htmlString.matchAll(/file_id\s*=\s*([0-9]{3,})/gi)]
-    if (rawFileIdMatches.length > 0 && hrefCandidates.size === 0 && normalizedNexusUrl) {
-      const base = normalizedNexusUrl.split("?")[0]
-      hrefCandidates.add(`${base}?tab=files&file_id=${rawFileIdMatches[0][1]}&nmm=1`)
-    }
-
-    const candidates = [...hrefCandidates]
-    const directZip = candidates.find((item) => item.toLowerCase().includes(".zip") && (item.includes("file_id") || item.includes("nmm=1")))
-    if (directZip) return directZip
-
-    const nmmCandidate = candidates.find(item => item.includes("nmm=1") && item.includes("file_id"))
-    if (nmmCandidate) return nmmCandidate
-
-    const fileApi = candidates.find(item => item.includes("file_id"))
-    return fileApi || candidates[0] || ""
-  }
 
   // Translate title
   const handleTranslateTitle = useCallback(async () => {
@@ -388,8 +169,6 @@ export function OnlineModDetailModal({
       error: null,
     })
     setShowTranslated({ title: false, desc: false, condensedDesc: false })
-    setLightboxImage(null)
-    setCurrentGalleryIndex(0)
   }, [mod])
 
   const handleDownloadAndInstall = useCallback(async () => {
@@ -466,163 +245,6 @@ export function OnlineModDetailModal({
     }
   }, [details, isGameRunning, mod, nexusChecking, nexusLoggedIn, onNavigate, nexusUrl, onQueueDownload])
 
-  // Extract Nexus ID from URL
-  const getNexusId = (modItem: SmapiMod) => {
-    const nexusPage = modItem.ModPages.find(p => p.Text === "Nexus" || p.Url.includes("nexusmods.com"))
-    if (!nexusPage) return ""
-    const parts = nexusPage.Url.split("/")
-    return parts.pop() || ""
-  }
-
-  const parseHtml = (htmlString: string): ParsedModDetails => {
-    const parser = new DOMParser()
-    const doc = parser.parseFromString(htmlString, "text/html")
-
-    // 1. Extract Title
-    let title = doc.querySelector('meta[property="og:title"]')?.getAttribute("content") || ""
-    if (!title) title = doc.querySelector("#pagetitle h1")?.textContent?.trim() || ""
-    if (!title) title = doc.querySelector("h1")?.textContent?.trim() || (mod ? mod.Name : "未知模组")
-    title = title.replace(/\s+at Stardew Valley Nexus.*/i, "")
-
-    // 2. Extract Author from sideitems "Created by" block
-    let author = ""
-    const sideItems = doc.querySelectorAll(".sideitems .sideitem")
-    sideItems.forEach(item => {
-      const h3 = item.querySelector("h3")
-      if (h3 && h3.textContent?.trim().toLowerCase().includes("created by")) {
-        // Get text content excluding the h3 itself
-        const clone = item.cloneNode(true) as HTMLElement
-        clone.querySelector("h3")?.remove()
-        author = clone.textContent?.trim() || ""
-      }
-    })
-    if (!author) author = doc.querySelector(".author-name")?.textContent?.trim() || ""
-    if (!author) author = doc.querySelector(".member-name a")?.textContent?.trim() || ""
-    if (!author) author = mod ? mod.Author : "未知作者"
-    author = author.replace(/^created by\s+/i, "").trim()
-
-    // 3. Extract Gallery Images from thumbgallery (data-src has full-size URLs)
-    const galleryImages: string[] = []
-    const thumbs = doc.querySelectorAll("ul.thumbgallery.gallery > li.thumb[data-src]")
-    thumbs.forEach(thumb => {
-      const src = thumb.getAttribute("data-src")
-      if (src && src.startsWith("http") && !galleryImages.includes(src)) {
-        galleryImages.push(src)
-      }
-    })
-
-    // Hero image: prefer og:image, fallback to first gallery image
-    let imageUrl = doc.querySelector('meta[property="og:image"]')?.getAttribute("content") || ""
-    if (!imageUrl && galleryImages.length > 0) imageUrl = galleryImages[0]
-
-    // 4. Extract Full Description from .tab-description container
-    //    Remove non-content elements (headings, share buttons, actions, accordion, scripts)
-    const sanitizeDescriptionHtml = (html: string) => {
-      const safeDoc = parser.parseFromString(`<div>${html}</div>`, "text/html")
-      const tempContainer = safeDoc.body.firstElementChild
-      if (!tempContainer) return html
-
-      tempContainer.querySelectorAll("*").forEach(el => {
-        const node = el as HTMLElement
-        const style = node.getAttribute("style")
-        if (!style) return
-
-        // Remove problematic constraints regardless of spacing/casing, and keep remaining inline styles.
-        node.style.removeProperty("min-width")
-        node.style.removeProperty("width")
-        const displayValue = node.style.getPropertyValue("display").trim().toLowerCase()
-        if (displayValue === "table" || displayValue === "inline-table" || displayValue.startsWith("table-")) {
-          node.style.removeProperty("display")
-        }
-
-        if (node.style.cssText.trim()) {
-          node.setAttribute("style", node.style.cssText.endsWith(";") ? node.style.cssText : `${node.style.cssText};`)
-        } else {
-          node.removeAttribute("style")
-        }
-
-        const lowerStyle = style.toLowerCase()
-        if (lowerStyle.includes("min-width") || lowerStyle.includes("width") || lowerStyle.includes("display: table")) {
-          node.removeAttribute("style")
-        }
-      })
-
-      const cleaned = tempContainer.innerHTML
-        .replace(/<\s*br\s*\/?\s*>/gi, "")
-        .replace(/<\s*\/\s*p\s*>\s*<\s*p[^>]*>/gi, "")
-
-      return cleaned
-    }
-
-    let description = ""
-    let condensedDescription = ""
-    const descContainer = doc.querySelector(".tab-description")
-    if (descContainer) {
-      const clone = descContainer.cloneNode(true) as HTMLElement
-      // Remove non-content elements
-      const removeSelectors = [
-        "h2", ".modhistory", "ul.actions", ".accordionitems",
-        "script", ".share-button", "share-button", ".report-abuse-btn",
-        ".clearfix:empty"
-      ]
-      clone.querySelectorAll(removeSelectors.join(",")).forEach(el => el.remove())
-      description = sanitizeDescriptionHtml(clone.innerHTML?.trim() || "")
-    }
-    condensedDescription = sanitizeDescriptionHtml(doc.querySelector(".container.mod_description_container.condensed")?.innerHTML || "")
-    // Fallback: try other known selectors
-    if (!description) description = sanitizeDescriptionHtml(doc.querySelector("#description-content")?.innerHTML || "")
-    if (!description) description = sanitizeDescriptionHtml(doc.querySelector(".mod-description")?.innerHTML || "")
-    if (!description) description = sanitizeDescriptionHtml(doc.querySelector("#description")?.innerHTML || "")
-    if (!description) {
-      description = doc.querySelector('meta[property="og:description"]')?.getAttribute("content") || "暂无详细描述。"
-    }
-
-    // 5. Extract Stats from .statitem elements
-    let version = mod?.Compatibility?.UnofficialVersion?.Text || ""
-    let uniqueDls = "—"
-    let totalDls = "—"
-    let endorsements = "—"
-
-    const statItems = doc.querySelectorAll(".statitem")
-    statItems.forEach(item => {
-      const titleEl = item.querySelector(".titlestat")
-      const valueEl = item.querySelector(".stat")
-      if (!titleEl || !valueEl) return
-      const key = titleEl.textContent?.trim().toLowerCase() || ""
-      const val = valueEl.textContent?.trim() || ""
-      if (key.includes("version") && val) version = val
-      else if (key.includes("unique") && val) uniqueDls = val
-      else if (key === "total downloads" && val) totalDls = val
-      else if (key.includes("endorsement") && val) endorsements = val
-    })
-    if (!version) version = mod?.Compatibility?.UnofficialVersion?.Text || "1.0.0"
-    const downloadUrl = extractDownloadUrl(htmlString)
-
-    // 6. Extract Last Updated from sideitems
-    let lastUpdated = ""
-    sideItems.forEach(item => {
-      const h3 = item.querySelector("h3")
-      if (h3 && h3.textContent?.trim().toLowerCase().includes("last updated")) {
-        const timeEl = item.querySelector("time")
-        lastUpdated = timeEl?.textContent?.trim() || item.textContent?.replace(/last updated/i, "").trim() || ""
-      }
-    })
-
-    return {
-      title,
-      author,
-      imageUrl,
-      galleryImages,
-      description,
-      condensedDescription,
-      version,
-      uniqueDls,
-      totalDls,
-      endorsements,
-      lastUpdated,
-      downloadUrl
-    }
-  }
 
   const cleanupScrape = useCallback(async () => {
     activeRequestIdRef.current += 1
@@ -738,7 +360,7 @@ export function OnlineModDetailModal({
             return
           }
 
-          const parsed = parseHtml(event.payload.html)
+          const parsed = parseHtml(event.payload.html, mod, nexusUrl)
           if (scrapeTimeoutRef.current !== null) {
             window.clearTimeout(scrapeTimeoutRef.current)
             scrapeTimeoutRef.current = null
@@ -817,29 +439,9 @@ export function OnlineModDetailModal({
 
     detailNode.style.setProperty("display", "block", "important")
     detailNode.style.setProperty("overflow", "hidden", "important")
-  }, [details, isOpen, currentGalleryIndex, showTranslated.title, showTranslated.desc, showTranslated.condensedDesc])
+  }, [details, isOpen, showTranslated.title, showTranslated.desc, showTranslated.condensedDesc])
 
   if (!isOpen || !mod) return null
-
-  // Render Status Badge
-  const renderStatusBadge = (status: string) => {
-    switch (status) {
-      case "ok":
-        return <Badge className="bg-green-500/10 text-green-500 border border-green-500/20 rounded-full font-semibold px-2.5 py-0.5 text-xs">完美兼容</Badge>
-      case "workaround":
-        return <Badge className="bg-amber-500/10 text-amber-500 border border-amber-500/20 rounded-full font-semibold px-2.5 py-0.5 text-xs">有解决方法</Badge>
-      case "broken":
-        return <Badge className="bg-red-500/10 text-red-500 border border-red-500/20 rounded-full font-semibold px-2.5 py-0.5 text-xs">已损坏</Badge>
-      case "unofficial":
-        return <Badge className="bg-blue-500/10 text-blue-500 border border-blue-500/20 rounded-full font-semibold px-2.5 py-0.5 text-xs">非官方更新</Badge>
-      case "abandoned":
-        return <Badge className="bg-gray-500/10 text-gray-500 border border-gray-500/20 rounded-full font-semibold px-2.5 py-0.5 text-xs">已弃用</Badge>
-      case "obsolete":
-        return <Badge className="bg-slate-500/10 text-slate-500 border border-slate-500/20 rounded-full font-semibold px-2.5 py-0.5 text-xs">已过时</Badge>
-      default:
-        return <Badge className="bg-green-500/10 text-green-500 border border-green-500/20 rounded-full font-semibold px-2.5 py-0.5 text-xs">兼容</Badge>
-    }
-  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm p-4 animate-in fade-in duration-200" onClick={(e) => { if (e.target === e.currentTarget) handleClose() }}>
@@ -913,58 +515,6 @@ export function OnlineModDetailModal({
         {!loading && details && (
           <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
 
-            {/* Lightbox Overlay */}
-                {lightboxImage && (
-              <div
-                className="fixed inset-0 z-[60] bg-black/90 flex items-center justify-center"
-                onClick={() => setLightboxImage(null)}
-              >
-                <button
-                  className="absolute top-4 right-4 p-2 text-white/80 hover:text-white rounded-full bg-white/10 hover:bg-white/20 transition-colors cursor-pointer"
-                  onClick={() => setLightboxImage(null)}
-                >
-                  <X className="h-5 w-5" />
-                </button>
-                {details.galleryImages.length > 1 && (
-                  <>
-                    <button
-                      className="absolute left-4 top-1/2 -translate-y-1/2 p-2 text-white/70 hover:text-white rounded-full bg-white/10 hover:bg-white/20 transition-colors cursor-pointer"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        const newIndex = currentGalleryIndex > 0 ? currentGalleryIndex - 1 : details.galleryImages.length - 1
-                        setCurrentGalleryIndex(newIndex)
-                        setLightboxImage(details.galleryImages[newIndex])
-                      }}
-                    >
-                      <ChevronLeft className="h-6 w-6" />
-                    </button>
-                    <button
-                      className="absolute right-4 top-1/2 -translate-y-1/2 p-2 text-white/70 hover:text-white rounded-full bg-white/10 hover:bg-white/20 transition-colors cursor-pointer"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        const newIndex = currentGalleryIndex < details.galleryImages.length - 1 ? currentGalleryIndex + 1 : 0
-                        setCurrentGalleryIndex(newIndex)
-                        setLightboxImage(details.galleryImages[newIndex])
-                      }}
-                    >
-                      <ChevronRight className="h-6 w-6" />
-                    </button>
-                  </>
-                )}
-                <img
-                  src={lightboxImage}
-                  alt={details.title}
-                  className="w-auto h-auto max-w-[90vw] max-h-[85vh] object-contain rounded-lg shadow-2xl block"
-                  onClick={(e) => e.stopPropagation()}
-                />
-                {details.galleryImages.length > 1 && (
-                  <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-black/60 text-white text-xs px-3 py-1.5 rounded-full">
-                    {currentGalleryIndex + 1} / {details.galleryImages.length}
-                  </div>
-                )}
-              </div>
-            )}
-
             {/* Scrollable Content */}
             <div className="flex-1 min-h-0 overflow-auto">
               <div
@@ -972,145 +522,9 @@ export function OnlineModDetailModal({
                 className="p-5 space-y-5 w-full max-w-full min-w-0"
                 style={{ width: "100%", minWidth: 0, maxWidth: "100%" }}
               >
+                <ModGallery key={details.title} galleryImages={details.galleryImages} title={details.title} />
 
-                {/* Image Gallery */}
-                {details.galleryImages.length > 0 && (
-                  <div className="space-y-3">
-                    {/* Main large image */}
-                    <div
-                      className="relative w-full h-[34vh] max-h-[320px] rounded-xl overflow-hidden border border-border bg-black/5 cursor-pointer group flex items-center justify-center"
-                      onClick={() => {
-                        setLightboxImage(details.galleryImages[currentGalleryIndex])
-                      }}
-                    >
-                      <img
-                        src={details.galleryImages[currentGalleryIndex]}
-                        alt={details.title}
-                        className="w-auto h-auto max-w-full max-h-full object-contain p-2 box-border block transition-transform group-hover:scale-[1.02] mx-auto"
-                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none" }}
-                      />
-                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
-                        <ZoomIn className="h-8 w-8 text-white/0 group-hover:text-white/70 transition-colors drop-shadow-lg" />
-                      </div>
-                      {details.galleryImages.length > 1 && (
-                        <>
-                          <button
-                            className="absolute left-2 top-1/2 -translate-y-1/2 p-1.5 rounded-full bg-black/40 text-white/80 hover:bg-black/60 hover:text-white opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              const newIndex = currentGalleryIndex > 0 ? currentGalleryIndex - 1 : details.galleryImages.length - 1
-                              setCurrentGalleryIndex(newIndex)
-                            }}
-                          >
-                            <ChevronLeft className="h-4 w-4" />
-                          </button>
-                          <button
-                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-full bg-black/40 text-white/80 hover:bg-black/60 hover:text-white opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              const newIndex = currentGalleryIndex < details.galleryImages.length - 1 ? currentGalleryIndex + 1 : 0
-                              setCurrentGalleryIndex(newIndex)
-                            }}
-                          >
-                            <ChevronRight className="h-4 w-4" />
-                          </button>
-                          <div className="absolute bottom-2 right-2 bg-black/50 text-white text-[10px] px-2 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
-                            {currentGalleryIndex + 1} / {details.galleryImages.length}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                    {/* Thumbnail strip */}
-                    {details.galleryImages.length > 1 && (
-                      <div className="flex gap-2 overflow-x-auto pb-1">
-                        {details.galleryImages.map((img, index) => (
-                          <button
-                            key={index}
-                            className={`shrink-0 rounded-lg overflow-hidden border-2 transition-all cursor-pointer ${
-                              index === currentGalleryIndex
-                                ? "border-primary shadow-md"
-                                : "border-transparent opacity-60 hover:opacity-100 hover:border-border"
-                            }`}
-                            style={{ width: "88px", height: "52px" }}
-                            onClick={() => setCurrentGalleryIndex(index)}
-                          >
-                            <img
-                              src={img}
-                              alt={`Screenshot ${index + 1}`}
-                              className="w-full h-full object-cover block"
-                            />
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Stats Row */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div className="bg-accent/20 border border-border/50 rounded-xl p-3 text-center space-y-1">
-                    <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider flex items-center justify-center gap-1">
-                      <Tag className="h-3 w-3" />
-                      <span>版本</span>
-                    </p>
-                    <p className="text-sm font-bold text-foreground">{details.version}</p>
-                  </div>
-                  <div className="bg-accent/20 border border-border/50 rounded-xl p-3 text-center space-y-1">
-                    <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider flex items-center justify-center gap-1">
-                      <Eye className="h-3 w-3" />
-                      <span>独立下载</span>
-                    </p>
-                    <p className="text-sm font-bold text-foreground">{details.uniqueDls}</p>
-                  </div>
-                  <div className="bg-accent/20 border border-border/50 rounded-xl p-3 text-center space-y-1">
-                    <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider flex items-center justify-center gap-1">
-                      <Download className="h-3 w-3" />
-                      <span>总下载</span>
-                    </p>
-                    <p className="text-sm font-bold text-foreground">{details.totalDls}</p>
-                  </div>
-                  <div className="bg-accent/20 border border-border/50 rounded-xl p-3 text-center space-y-1">
-                    <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider flex items-center justify-center gap-1">
-                      <Info className="h-3 w-3" />
-                      <span>推荐数</span>
-                    </p>
-                    <p className="text-sm font-bold text-foreground">{details.endorsements}</p>
-                  </div>
-                </div>
-
-                {/* Author & Date Info */}
-                <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
-                  <span className="flex items-center gap-1.5">
-                    <User className="h-3.5 w-3.5" />
-                    <span>作者：</span>
-                    <span className="font-semibold text-foreground">{details.author}</span>
-                  </span>
-                  {details.lastUpdated && details.lastUpdated !== "—" && (
-                    <span className="flex items-center gap-1.5">
-                      <Calendar className="h-3.5 w-3.5" />
-                      <span>最后更新：</span>
-                      <span className="font-semibold text-foreground">{details.lastUpdated}</span>
-                    </span>
-                  )}
-                  {mod.Compatibility && (
-                    <span className="flex items-center gap-1.5">
-                      {renderStatusBadge(mod.Compatibility.Status)}
-                    </span>
-                  )}
-                </div>
-
-                {/* Compatibility Notice */}
-                <div className="bg-accent/10 border border-border/50 rounded-xl p-3.5 text-xs leading-relaxed space-y-1">
-                  <p className="font-bold text-foreground flex items-center gap-1.5">
-                    <Info className="h-3.5 w-3.5 text-primary shrink-0" />
-                    <span>{mod.Compatibility ? "兼容性报告" : "兼容性说明"}</span>
-                  </p>
-                  <p className="text-muted-foreground text-[11px]">
-                    {mod.Compatibility
-                      ? "此处的报告是经 SMAPI 社区及作者核验后的准确记录，用以替代落后的游戏日志检查。"
-                      : "该模组暂未收录在 SMAPI 兼容列表中，通常适用于不需要 SMAPI 兼容特殊报告的模组。"}
-                  </p>
-                </div>
+                <ModSpecs details={details} mod={mod} />
 
                 {/* Description Section */}
                 <div className="space-y-3">

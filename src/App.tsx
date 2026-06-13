@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useEffect, useRef, useCallback, type DragEvent } from "react"
+import { lazy, Suspense, useState, useEffect, useRef, useCallback } from "react"
 import { Sidebar } from "@/components/Sidebar"
 import { Dashboard } from "@/pages/Dashboard"
 import { Crops } from "@/pages/Crops"
@@ -13,6 +13,10 @@ import { OnlineMods } from "@/components/mods/OnlineMods"
 import { Onboarding } from "@/components/Onboarding"
 import { TitleBar } from "@/components/TitleBar"
 import { useDownloadManager } from "@/hooks/useDownloadManager"
+import { useSavesList } from "@/hooks/useSavesList"
+import { useGameLauncher } from "@/hooks/useGameLauncher"
+import { useNxmDeepLink } from "@/hooks/useNxmDeepLink"
+import { useGlobalDragAndDrop } from "@/hooks/useGlobalDragAndDrop"
 import "./index.css"
 
 export type Page = "dashboard" | "crops" | "npcs" | "calendar" | "fishingMap" | "saveEditor" | "saveBackups" | "settings" | "mods" | "onlineMods" | "downloads"
@@ -38,15 +42,12 @@ export interface SaveSummary {
   farmerAvatarError?: string | null
 }
 
-interface NexusDownloadMetadata {
-  modName: string
-  author: string
-}
 
 const NPCs = lazy(async () => {
   const mod = await import("@/pages/NPCs")
   return { default: mod.NPCs }
 })
+
 
 function App() {
   const [currentPage, setCurrentPage] = useState<Page>("dashboard")
@@ -56,49 +57,10 @@ function App() {
   const [onboardingReason, setOnboardingReason] = useState<string | null>(null)
   const [modListRefreshSignal, setModListRefreshSignal] = useState(0)
   const [globalToast, setGlobalToast] = useState<{ message: string; type: "success" | "info" | "warning" } | null>(null)
-  const [isGlobalDragOver, setIsGlobalDragOver] = useState(false)
-  const [isGameRunning, setIsGameRunning] = useState(false)
-  const globalDragCounterRef = useRef(0)
-  const isHandlingGlobalDropRef = useRef(false)
-  const lastHandledDropRef = useRef<{ sig: string; at: number } | null>(null)
-  const isHandlingNxmRef = useRef(false)
-  const lastHandledNxmRef = useRef<{ sig: string; at: number } | null>(null)
-  
-  const [saves, setSaves] = useState<SaveSummary[]>([])
-  const [selectedSaveId, setSelectedSaveId] = useState<string>(() => {
-    return localStorage.getItem("selectedSaveId") || ""
-  })
   const [saveEditorAcknowledged, setSaveEditorAcknowledged] = useState(false)
 
-  const fetchSavesList = useCallback(async () => {
-    const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__;
-    if (isTauri) {
-      try {
-        const mod = await import("@tauri-apps/api/core");
-        const gameDir = localStorage.getItem("stardewGameDirectory") || ""
-        const list: SaveSummary[] = await mod.invoke("list_save_files", {
-          gameDir: gameDir.trim() || undefined,
-        })
-        setSaves(list)
-        if (list.length > 0) {
-          const storedId = localStorage.getItem("selectedSaveId")
-          if (storedId && list.some(s => s.id === storedId)) {
-            setSelectedSaveId(storedId)
-          } else {
-            setSelectedSaveId(list[0].id)
-            localStorage.setItem("selectedSaveId", list[0].id)
-          }
-        } else {
-          setSelectedSaveId("")
-        }
-      } catch (err) {
-        console.error("Error listing saves:", err)
-        setSelectedSaveId("")
-      }
-    } else {
-      setSelectedSaveId("")
-    }
-  }, [])
+  // Custom Hooks
+  const { saves, selectedSaveId, fetchSavesList, handleSaveChange } = useSavesList()
 
   // --- Sidebar collapsed state (synced across windows) ---
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -144,16 +106,6 @@ function App() {
     return () => observer.disconnect()
   }, [sidebarCollapsed, updateSidebarCollapsed])
 
-  // Load list of saves
-  useEffect(() => {
-    fetchSavesList()
-  }, [fetchSavesList])
-
-  const handleSaveChange = (id: string) => {
-    setSelectedSaveId(id)
-    localStorage.setItem("selectedSaveId", id)
-  }
-
   useEffect(() => {
     if (currentPage !== "saveEditor") {
       setSaveEditorAcknowledged(false)
@@ -197,7 +149,7 @@ function App() {
         return gameDir
       }
 
-      promptGameDirectoryOnboarding(`之前配置的游戏目录不存在：${gameDir}。请重新选择游戏目录。`)
+      promptGameDirectoryOnboarding('之前配置的游戏目录不存在：' + gameDir + '。请重新选择游戏目录。')
       return null
     } catch (err) {
       console.error("Failed to verify game directory:", err)
@@ -209,6 +161,9 @@ function App() {
   useEffect(() => {
     ensureGameDirectoryReady()
   }, [ensureGameDirectoryReady])
+
+  // Custom hooks for launcher, deep link and drag and drop
+  const { isGameRunning, handleLaunchGame } = useGameLauncher({ ensureGameDirectoryReady, showGlobalToast })
 
   const {
     tasks: downloadTasks,
@@ -226,59 +181,26 @@ function App() {
     onShowToast: showGlobalToast,
   })
 
-  const handleLaunchGame = useCallback(async (launchMode?: "default" | "vanilla") => {
-    if (isGameRunning) {
-      showGlobalToast("游戏正在运行中，暂时不能重复启动。", "info")
-      return
-    }
+  useNxmDeepLink({
+    isGameRunning,
+    ensureGameDirectoryReady,
+    showGlobalToast,
+    queueNexusDownload,
+  })
 
-    const gameDir = await ensureGameDirectoryReady()
-    if (!gameDir) {
-      return
-    }
-
-    if (typeof window === "undefined" || !(window as any).__TAURI_INTERNALS__) {
-      showGlobalToast("当前为 Web 模式，暂不支持直接启动游戏。", "warning")
-      return
-    }
-
-    try {
-      const invokeModule = await import("@tauri-apps/api/core")
-      await invokeModule.invoke("launch_game", {
-        gameDir,
-        launchMode: launchMode === "vanilla" ? "vanilla" : undefined,
-      })
-      setIsGameRunning(true)
-      showGlobalToast(launchMode === "vanilla" ? "原版游戏启动中…" : "游戏启动中…", "success")
-    } catch (err) {
-      console.error("launch_game failed:", err)
-      showGlobalToast("启动游戏失败: " + err, "warning")
-    }
-  }, [ensureGameDirectoryReady, isGameRunning, showGlobalToast])
-
-  useEffect(() => {
-    if (typeof window === "undefined" || !(window as any).__TAURI_INTERNALS__) {
-      return
-    }
-
-    let unlisten: (() => void) | null = null
-    const setupGameExitListener = async () => {
-      try {
-        const eventModule = await import("@tauri-apps/api/event")
-        unlisten = await eventModule.listen<number>("game-exited", () => {
-          setIsGameRunning(false)
-          showGlobalToast("游戏已退出，模组管理已恢复可修改。", "info")
-        })
-      } catch (err) {
-        console.debug("Unable to setup game exit listener:", err)
-      }
-    }
-
-    setupGameExitListener()
-    return () => {
-      unlisten?.()
-    }
-  }, [showGlobalToast])
+  const {
+    isGlobalDragOver,
+    handleGlobalDragEnter,
+    handleGlobalDragOver,
+    handleGlobalDragLeave,
+    handleGlobalDrop,
+  } = useGlobalDragAndDrop({
+    isGameRunning,
+    ensureGameDirectoryReady,
+    showGlobalToast,
+    setModListRefreshSignal,
+    setCurrentPage,
+  })
 
   useEffect(() => {
     if (globalToast) {
@@ -288,286 +210,6 @@ function App() {
       return () => clearTimeout(timer)
     }
   }, [globalToast])
-
-  const getZipPathFromPayload = useCallback((paths: string[]) => {
-    return paths.find((path) => path.toLowerCase().endsWith(".zip")) || null
-  }, [])
-
-  const handleGlobalZipDrop = useCallback(async (paths: string[], source: string) => {
-    if (isGameRunning) {
-      showGlobalToast("游戏运行中不能安装模组，请退出游戏后再试。", "warning")
-      return
-    }
-
-    const zipPath = getZipPathFromPayload(paths)
-
-    if (!zipPath) {
-      if (paths.length > 0) {
-        showGlobalToast(`【${source}】未检测到 .zip 文件`, "warning")
-      } else {
-        showGlobalToast(`【${source}】未检测到拖入文件`, "warning")
-      }
-      return
-    }
-
-    const normalizedZipPath = zipPath.toLowerCase()
-    const now = Date.now()
-    const lastDrop = lastHandledDropRef.current
-    if (isHandlingGlobalDropRef.current) {
-      if (!lastDrop || (lastDrop.sig !== normalizedZipPath || now - lastDrop.at > 1200)) {
-        // allow a new install if it's clearly a different file
-      } else {
-        return
-      }
-    } else if (lastDrop && lastDrop.sig === normalizedZipPath && now - lastDrop.at < 1200) {
-      return
-    }
-
-    isHandlingGlobalDropRef.current = true
-    lastHandledDropRef.current = { sig: normalizedZipPath, at: now }
-
-    const gameDir = await ensureGameDirectoryReady()
-    if (!gameDir) {
-      isHandlingGlobalDropRef.current = false
-      return
-    }
-
-    if (!window || !(window as any).__TAURI_INTERNALS__) {
-      showGlobalToast("当前运行环境不支持拖拽安装，请在桌面应用中运行", "warning")
-      isHandlingGlobalDropRef.current = false
-      return
-    }
-
-    try {
-      const invokeModule = await import("@tauri-apps/api/core")
-      await invokeModule.invoke("install_mod_from_zip", { gameDir, zipPath })
-      const fileName = zipPath.split("\\").pop()?.split("/").pop() || "模组"
-      setCurrentPage("mods")
-      setModListRefreshSignal((value) => value + 1)
-      showGlobalToast(`已安装模组包：${fileName}`, "success")
-    } catch (err) {
-      console.error(`install_mod_from_zip failed from ${source}:`, err)
-      showGlobalToast("安装模组失败: " + err, "warning")
-    } finally {
-      isHandlingGlobalDropRef.current = false
-    }
-  }, [ensureGameDirectoryReady, getZipPathFromPayload, isGameRunning, showGlobalToast])
-
-  const handleNxmUrl = useCallback(async (downloadUrl: string, source: string) => {
-    if (isGameRunning) {
-      showGlobalToast("游戏运行中不能下载并安装模组，请退出游戏后再试。", "warning")
-      return
-    }
-
-    const normalizedUrl = downloadUrl.trim()
-    if (!normalizedUrl.toLowerCase().startsWith("nxm://")) {
-      return
-    }
-
-    const signature = normalizedUrl.toLowerCase()
-    const now = Date.now()
-    const lastHandled = lastHandledNxmRef.current
-    if (isHandlingNxmRef.current) {
-      if (!lastHandled || lastHandled.sig !== signature || now - lastHandled.at > 1200) {
-        showGlobalToast(`【${source}】已有 Nexus 下载正在处理，请稍后重试`, "warning")
-      }
-      return
-    }
-    if (lastHandled && lastHandled.sig === signature && now - lastHandled.at < 1200) {
-      return
-    }
-
-    const gameDir = await ensureGameDirectoryReady()
-    if (!gameDir) {
-      return
-    }
-
-    if (typeof window === "undefined" || !(window as any).__TAURI_INTERNALS__) {
-      showGlobalToast("当前运行环境不支持 NexusMods 协议安装，请在桌面应用中运行", "warning")
-      return
-    }
-
-    isHandlingNxmRef.current = true
-    lastHandledNxmRef.current = { sig: signature, at: now }
-    try {
-      let metadata: NexusDownloadMetadata | null = null
-      try {
-        const invokeModule = await import("@tauri-apps/api/core")
-        metadata = await invokeModule.invoke<NexusDownloadMetadata>("fetch_nexus_download_metadata", {
-          downloadUrl: normalizedUrl,
-        })
-      } catch (err) {
-        console.debug("Failed to resolve Nexus download metadata:", err)
-      }
-
-      const result = queueNexusDownload({
-        modName: metadata?.modName || "NexusMods 模组",
-        author: metadata?.author || "",
-        downloadUrl: normalizedUrl,
-      })
-      if (result.ok) {
-        showGlobalToast("NexusMods 下载已加入下载管理", "info")
-      } else {
-        showGlobalToast(result.message, "warning")
-      }
-    } finally {
-      isHandlingNxmRef.current = false
-    }
-  }, [ensureGameDirectoryReady, isGameRunning, queueNexusDownload, showGlobalToast])
-
-  const handleNxmUrls = useCallback(async (urls: string[], source: string) => {
-    for (const url of urls) {
-      await handleNxmUrl(url, source)
-    }
-  }, [handleNxmUrl])
-
-  const extractZipPathFromDataTransfer = useCallback((dataTransfer: DataTransfer | null): string | null => {
-    if (!dataTransfer) return null
-    const files = Array.from(dataTransfer.files || [])
-    const zipFile = files.find((file) => file.name.toLowerCase().endsWith(".zip"))
-    if (!zipFile) return null
-    return (zipFile as File & { path?: string }).path || null
-  }, [])
-
-  useEffect(() => {
-    const unlistenFns: Array<() => void> = []
-
-    const setupNxmDeepLink = async () => {
-      if (typeof window === "undefined" || !(window as any).__TAURI_INTERNALS__) {
-        return
-      }
-
-      try {
-        const [invokeModule, eventModule] = await Promise.all([
-          import("@tauri-apps/api/core"),
-          import("@tauri-apps/api/event"),
-        ])
-
-        const takePending = async () => {
-          const pending = await invokeModule.invoke<string[]>("take_pending_nxm_urls")
-          if (pending.length > 0) {
-            await handleNxmUrls(pending, "NexusMods 协议")
-          }
-        }
-
-        await takePending()
-        unlistenFns.push(
-          await eventModule.listen<string>("nxm-download-url", async () => {
-            await takePending()
-          })
-        )
-      } catch (err) {
-        console.debug("Unable to setup nxm deep link listener:", err)
-      }
-    }
-
-    setupNxmDeepLink()
-
-    return () => {
-      unlistenFns.forEach((unlisten) => unlisten())
-    }
-  }, [handleNxmUrls])
-
-  useEffect(() => {
-    const unlistenFns: Array<() => void> = []
-
-    const setupGlobalDrop = async () => {
-      if (typeof window === "undefined" || !(window as any).__TAURI_INTERNALS__) {
-        return
-      }
-
-      try {
-        const webviewModule = await import("@tauri-apps/api/webview")
-        const webview = webviewModule.getCurrentWebview()
-
-        unlistenFns.push(
-          await webview.onDragDropEvent((event) => {
-            const payload = event.payload
-            if (payload.type === "enter" || payload.type === "over") {
-              setIsGlobalDragOver(true)
-              return
-            }
-
-            if (payload.type === "leave") {
-              setIsGlobalDragOver(false)
-              globalDragCounterRef.current = 0
-              return
-            }
-
-            if (payload.type === "drop") {
-              setIsGlobalDragOver(false)
-              globalDragCounterRef.current = 0
-              handleGlobalZipDrop(payload.paths, "window.webview")
-            }
-          })
-        )
-      } catch (err) {
-        console.debug("Unable to setup global file drop listener:", err)
-      }
-    }
-
-    setupGlobalDrop()
-
-    return () => {
-      unlistenFns.forEach((unlisten) => unlisten())
-    }
-  }, [handleGlobalZipDrop])
-
-  const handleGlobalDragEnter = (e: DragEvent<HTMLDivElement>) => {
-    if (typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__) {
-      return
-    }
-    e.preventDefault()
-    globalDragCounterRef.current += 1
-    setIsGlobalDragOver(true)
-  }
-
-  const handleGlobalDragOver = (e: DragEvent<HTMLDivElement>) => {
-    if (typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__) {
-      return
-    }
-    e.preventDefault()
-    e.dataTransfer.dropEffect = "copy"
-  }
-
-  const handleGlobalDragLeave = (e: DragEvent<HTMLDivElement>) => {
-    if (typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__) {
-      return
-    }
-    e.preventDefault()
-    globalDragCounterRef.current = Math.max(0, globalDragCounterRef.current - 1)
-    if (globalDragCounterRef.current === 0) {
-      setIsGlobalDragOver(false)
-    }
-  }
-
-  const handleGlobalDrop = (e: DragEvent<HTMLDivElement>) => {
-    if (typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__) {
-      return
-    }
-    e.preventDefault()
-    e.stopPropagation()
-    globalDragCounterRef.current = 0
-    setIsGlobalDragOver(false)
-
-    const zipPath = extractZipPathFromDataTransfer(e.dataTransfer)
-    if (!zipPath) {
-      const files = Array.from(e.dataTransfer.files || [])
-      const zipFile = files.find((file) => file.name.toLowerCase().endsWith(".zip"))
-      if (!files.length) {
-        showGlobalToast("未检测到拖入文件", "warning")
-        return
-      }
-      if (!zipFile) {
-        showGlobalToast("只支持拖入 .zip 模组压缩包", "warning")
-        return
-      }
-      showGlobalToast("当前环境未返回文件绝对路径，请使用“导入新模组”或手动放置可访问路径", "warning")
-      return
-    }
-
-    handleGlobalZipDrop([zipPath], "页面拖放")
-  }
 
   const renderPage = () => {
     switch (currentPage) {
@@ -723,4 +365,5 @@ function App() {
 }
 
 export default App
+
 

@@ -77,3 +77,93 @@ export function restoreHtml(translated: string, tagMap: { index: number; tag: st
   }
   return result
 }
+
+export async function translateHtmlTextOnly(html: string, toLanguage: string) {
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(`<div id="translate-root">${html}</div>`, "text/html")
+  const root = doc.querySelector("#translate-root")
+  if (!root) return html
+
+  const isInExclusionTag = (node: Node) => {
+    let parent = node.parentElement
+    while (parent) {
+      const tag = parent.tagName.toLowerCase()
+      if (tag === "script" || tag === "style") return true
+      parent = parent.parentElement
+    }
+    return false
+  }
+
+  const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      const text = node.textContent || ""
+      if (!text || !text.trim()) return NodeFilter.FILTER_REJECT
+      if (isInExclusionTag(node)) return NodeFilter.FILTER_REJECT
+      return NodeFilter.FILTER_ACCEPT
+    },
+  })
+
+  const textNodes: Text[] = []
+  let currentNode = walker.nextNode()
+  while (currentNode) {
+    textNodes.push(currentNode as Text)
+    currentNode = walker.nextNode()
+  }
+
+  if (textNodes.length === 0) return html
+
+  const originalTexts = textNodes.map(node => node.textContent || "")
+  const chunkLimit = 4500
+  const chunkedTasks: { nodeIndex: number; text: string }[] = []
+
+  originalTexts.forEach((text, index) => {
+    if (text.length <= chunkLimit) {
+      chunkedTasks.push({ nodeIndex: index, text })
+      return
+    }
+    for (let i = 0; i < text.length; i += chunkLimit) {
+      chunkedTasks.push({ nodeIndex: index, text: text.substring(i, i + chunkLimit) })
+    }
+  })
+
+  if (chunkedTasks.length === 0) return html
+
+  const translatedByNode: string[][] = originalTexts.map(() => [])
+  const batchSize = 10
+  const batchChars = 4800
+  let cursor = 0
+
+  while (cursor < chunkedTasks.length) {
+    let end = cursor
+    let batchCharCount = 0
+    while (end < chunkedTasks.length) {
+      const nextText = chunkedTasks[end].text
+      if (end > cursor && batchCharCount + nextText.length > batchChars) break
+      batchCharCount += nextText.length
+      end += 1
+    }
+
+    const batch = chunkedTasks.slice(cursor, end)
+    if (batch.length > batchSize) {
+      end = cursor + batchSize
+    }
+
+    const batchTexts = chunkedTasks.slice(cursor, end).map(task => task.text)
+    const translatedBatch = await edgeTranslate(batchTexts, toLanguage)
+
+    translatedBatch.forEach((translatedText, offset) => {
+      const task = chunkedTasks[cursor + offset]
+      if (!task) return
+      translatedByNode[task.nodeIndex].push(translatedText ?? task.text)
+    })
+
+    cursor = end
+  }
+
+  for (let i = 0; i < textNodes.length; i += 1) {
+    textNodes[i].textContent = (translatedByNode[i].length ? translatedByNode[i].join("") : originalTexts[i])
+  }
+
+  return root.innerHTML
+}
+
