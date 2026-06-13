@@ -25,7 +25,7 @@ export function OnboardingStep4({
       <div className="space-y-2">
         <h2 className="text-2xl font-bold tracking-tight text-primary">配置已完成！</h2>
         <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-          游戏安装目录与个性外观已配置完成。星露谷助手已经为您准备就绪。
+          游戏安装目录与个性外观已配置完成。超级星露谷已经为您准备就绪。
         </p>
       </div>
 

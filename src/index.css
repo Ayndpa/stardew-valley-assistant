@@ -177,9 +177,93 @@
     overflow: hidden;
   }
   body {
-    @apply bg-background text-foreground;
+    background: transparent;
+    color: var(--foreground);
     font-family: system-ui, -apple-system, sans-serif;
   }
+  #root {
+    background: transparent;
+  }
+}
+
+.app-shell {
+  background: transparent;
+}
+
+.app-panel {
+  background: color-mix(in oklab, var(--background) 76%, transparent);
+  backdrop-filter: blur(22px) saturate(1.15);
+}
+
+.app-sidebar {
+  background: color-mix(in oklab, var(--sidebar) 72%, transparent);
+  backdrop-filter: blur(22px) saturate(1.15);
+}
+
+.titlebar {
+  user-select: none;
+}
+
+.titlebar-brand {
+  background: transparent;
+}
+
+.titlebar-brand img {
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.08);
+}
+
+.titlebar-control {
+  width: 0.875rem;
+  height: 0.875rem;
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgb(0 0 0 / 0.58);
+  transition: transform 120ms ease, filter 120ms ease, opacity 120ms ease;
+}
+
+.dark .titlebar-control {
+  color: rgb(0 0 0 / 0.62);
+}
+
+.titlebar-control svg {
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.titlebar-controls:hover .titlebar-control svg,
+.titlebar-control:focus-visible svg {
+  opacity: 1;
+}
+
+.titlebar-control:hover {
+  filter: brightness(0.96);
+}
+
+.titlebar-control:active {
+  transform: scale(0.94);
+}
+
+.titlebar-control:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.titlebar-close {
+  background: #ff5f57;
+  border-color: #e0443e;
+}
+
+.titlebar-minimize {
+  background: #febc2e;
+  border-color: #e0a225;
+}
+
+.titlebar-maximize {
+  background: #28c840;
+  border-color: #1ea933;
 }
 
 /* NexusMods description HTML content styling */

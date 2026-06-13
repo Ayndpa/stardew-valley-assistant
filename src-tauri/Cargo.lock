@@ -3904,6 +3904,7 @@ dependencies = [
  "tauri-plugin-single-instance",
  "tokio",
  "ureq",
+ "window-vibrancy",
  "zip",
 ]
 

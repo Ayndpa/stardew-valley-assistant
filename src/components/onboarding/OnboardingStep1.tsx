@@ -20,7 +20,7 @@ export function OnboardingStep1({ onNext }: OnboardingStep1Props) {
       </div>
       <div className="space-y-2">
         <h1 className="text-2xl font-bold tracking-tight text-primary">
-          欢迎来到星露谷助手 !
+          欢迎来到超级星露谷 !
         </h1>
         <p className="text-sm text-muted-foreground max-w-sm mx-auto">
           这是你的专属农场助手，能够为你管理游戏模组、提醒作物收获、打理村民关系以及追踪节日。

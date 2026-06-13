@@ -5,6 +5,10 @@
   "windows": ["main", "nexus-scraper", "nexus-login", "nexus-login-check", "nexus-apikey-fetch"],
   "permissions": [
     "core:default",
+    "core:window:allow-close",
+    "core:window:allow-minimize",
+    "core:window:allow-start-dragging",
+    "core:window:allow-toggle-maximize",
     "opener:default",
     "dialog:default",
     "dialog:allow-open",

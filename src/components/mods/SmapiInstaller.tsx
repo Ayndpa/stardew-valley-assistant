@@ -193,7 +193,7 @@ export function SmapiInstaller({
           <CardTitle className="text-sm font-bold text-foreground">关于 SMAPI 的一键安装</CardTitle>
         </CardHeader>
         <CardContent className="p-0 text-xs text-muted-foreground/90 space-y-2 leading-relaxed font-medium">
-          <p>1. 星露谷助手会从 GitHub 下载对应您游戏平台的最新版 SMAPI 安装包。</p>
+          <p>1. 超级星露谷会从 GitHub 下载对应您游戏平台的最新版 SMAPI 安装包。</p>
           <p>2. 程序将执行静默手动解压，并将安装包中 <code className="bg-accent/40 px-1 py-0.5 rounded text-[10px]">internal</code> 的对应文件递归移动部署至您的游戏主目录，与官方脚本安装效果完全一致。</p>
           <p>3. 卸载十分方便：若将来您希望清除 SMAPI，可以在右上角的管理面板中点击一键卸载，游戏文件会重回官方无模组的纯净版，且您的个人 Mods 目录不受任何损伤。</p>
         </CardContent>

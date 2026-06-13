@@ -4,15 +4,17 @@ import { Dashboard } from "@/pages/Dashboard"
 import { Crops } from "@/pages/Crops"
 import { Calendar } from "@/pages/Calendar"
 import { FishingMap } from "@/pages/FishingMap"
+import { SaveEditor } from "@/pages/SaveEditor"
 import { Settings } from "@/pages/Settings"
 import { Mods } from "@/pages/Mods"
 import { Downloads } from "@/pages/Downloads"
 import { OnlineMods } from "@/components/mods/OnlineMods"
 import { Onboarding } from "@/components/Onboarding"
+import { TitleBar } from "@/components/TitleBar"
 import { useDownloadManager } from "@/hooks/useDownloadManager"
 import "./index.css"
 
-export type Page = "dashboard" | "crops" | "npcs" | "calendar" | "fishingMap" | "settings" | "mods" | "onlineMods" | "downloads"
+export type Page = "dashboard" | "crops" | "npcs" | "calendar" | "fishingMap" | "saveEditor" | "settings" | "mods" | "onlineMods" | "downloads"
 
 export interface SaveSummary {
   id: string
@@ -65,6 +67,37 @@ function App() {
   const [selectedSaveId, setSelectedSaveId] = useState<string>(() => {
     return localStorage.getItem("selectedSaveId") || ""
   })
+  const [saveEditorAcknowledged, setSaveEditorAcknowledged] = useState(false)
+
+  const fetchSavesList = useCallback(async () => {
+    const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__;
+    if (isTauri) {
+      try {
+        const mod = await import("@tauri-apps/api/core");
+        const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+        const list: SaveSummary[] = await mod.invoke("list_save_files", {
+          gameDir: gameDir.trim() || undefined,
+        })
+        setSaves(list)
+        if (list.length > 0) {
+          const storedId = localStorage.getItem("selectedSaveId")
+          if (storedId && list.some(s => s.id === storedId)) {
+            setSelectedSaveId(storedId)
+          } else {
+            setSelectedSaveId(list[0].id)
+            localStorage.setItem("selectedSaveId", list[0].id)
+          }
+        } else {
+          setSelectedSaveId("")
+        }
+      } catch (err) {
+        console.error("Error listing saves:", err)
+        setSelectedSaveId("")
+      }
+    } else {
+      setSelectedSaveId("")
+    }
+  }, [])
 
   // --- Sidebar collapsed state (synced across windows) ---
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -112,43 +145,19 @@ function App() {
 
   // Load list of saves
   useEffect(() => {
-    async function fetchSavesList() {
-      const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__;
-      if (isTauri) {
-        try {
-          const mod = await import("@tauri-apps/api/core");
-          const gameDir = localStorage.getItem("stardewGameDirectory") || ""
-          const list: SaveSummary[] = await mod.invoke("list_save_files", {
-            gameDir: gameDir.trim() || undefined,
-          })
-          setSaves(list)
-          if (list.length > 0) {
-            const storedId = localStorage.getItem("selectedSaveId")
-            if (storedId && list.some(s => s.id === storedId)) {
-              setSelectedSaveId(storedId)
-            } else {
-              setSelectedSaveId(list[0].id)
-              localStorage.setItem("selectedSaveId", list[0].id)
-            }
-          } else {
-            setSelectedSaveId("")
-          }
-        } catch (err) {
-          console.error("Error listing saves:", err)
-          setSelectedSaveId("")
-        }
-      } else {
-        // Web preview: no saves available
-        setSelectedSaveId("")
-      }
-    }
     fetchSavesList()
-  }, [])
+  }, [fetchSavesList])
 
   const handleSaveChange = (id: string) => {
     setSelectedSaveId(id)
     localStorage.setItem("selectedSaveId", id)
   }
+
+  useEffect(() => {
+    if (currentPage !== "saveEditor") {
+      setSaveEditorAcknowledged(false)
+    }
+  }, [currentPage])
 
   const handleOnboardingComplete = (dir: string) => {
     localStorage.setItem("stardewGameDirectory", dir)
@@ -591,6 +600,17 @@ function App() {
           onRestartOnboarding={() => setShowOnboarding(true)}
           />
         )
+      case "saveEditor":
+        return (
+          <SaveEditor
+            selectedSaveId={selectedSaveId}
+            onShowToast={showGlobalToast}
+            onSaved={fetchSavesList}
+            warningAcknowledged={saveEditorAcknowledged}
+            onAcknowledgeWarning={() => setSaveEditorAcknowledged(true)}
+            onCancel={() => setCurrentPage("dashboard")}
+          />
+        )
       case "mods":
         return (
           <Mods
@@ -635,56 +655,61 @@ function App() {
   }
 
   return (
-    <div ref={containerRef} className="flex h-screen overflow-hidden bg-background">
-      <Sidebar
-        currentPage={currentPage}
-        onNavigate={setCurrentPage}
-        saves={saves}
-        selectedSaveId={selectedSaveId}
-        onSaveChange={handleSaveChange}
-        collapsed={sidebarCollapsed}
-        onToggleCollapse={toggleSidebarCollapsed}
-        onLaunchGame={handleLaunchGame}
-        isGameRunning={isGameRunning}
-        downloadStats={downloadStats}
-      />
-      <main
-        className="flex-1 overflow-auto relative"
-        onDragEnter={handleGlobalDragEnter}
-        onDragOver={handleGlobalDragOver}
-        onDragLeave={handleGlobalDragLeave}
-        onDrop={handleGlobalDrop}
-      >
-        {isGlobalDragOver && (
-          <div className="fixed inset-0 z-40 bg-primary/10 backdrop-blur-sm border-4 border-dashed border-primary pointer-events-none">
-            <div className="h-full w-full flex items-center justify-center">
-              <div className="bg-card/95 border border-primary rounded-2xl px-6 py-4 shadow-2xl">
-                <p className="text-sm font-semibold text-primary">松开鼠标，安装该 .zip 模组</p>
-                <p className="text-xs text-muted-foreground mt-1">全局支持 .zip 拖拽安装，安装后将刷新模组列表</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {globalToast && (
-          <div
-            className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 px-5 py-4 rounded-xl border shadow-xl ${
-              globalToast.type === "success"
-                ? "bg-green-50/90 dark:bg-green-950/80 border-green-200 dark:border-green-800 text-green-800 dark:text-green-200"
-                : globalToast.type === "warning"
-                  ? "bg-amber-50/90 dark:bg-amber-950/80 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200"
-                  : "bg-blue-50/90 dark:bg-blue-950/80 border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-200"
-            }`}
+    <div ref={containerRef} className="app-shell flex h-screen overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <TitleBar />
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          <Sidebar
+            currentPage={currentPage}
+            onNavigate={setCurrentPage}
+            saves={saves}
+            selectedSaveId={selectedSaveId}
+            onSaveChange={handleSaveChange}
+            collapsed={sidebarCollapsed}
+            onToggleCollapse={toggleSidebarCollapsed}
+            onLaunchGame={handleLaunchGame}
+            isGameRunning={isGameRunning}
+            downloadStats={downloadStats}
+          />
+          <main
+            className="app-panel flex-1 overflow-auto relative"
+            onDragEnter={handleGlobalDragEnter}
+            onDragOver={handleGlobalDragOver}
+            onDragLeave={handleGlobalDragLeave}
+            onDrop={handleGlobalDrop}
           >
-            <div className="text-sm font-medium pr-4">{globalToast.message}</div>
-            <button onClick={() => setGlobalToast(null)} className="p-1 rounded-lg hover:bg-black/10 dark:hover:bg-white/10 transition-colors ml-auto">
-              ×
-            </button>
-          </div>
-        )}
+            {isGlobalDragOver && (
+              <div className="fixed inset-0 z-40 border-4 border-dashed border-primary bg-primary/10 backdrop-blur-sm pointer-events-none">
+                <div className="flex h-full w-full items-center justify-center">
+                  <div className="rounded-2xl border border-primary bg-card/95 px-6 py-4 shadow-2xl">
+                    <p className="text-sm font-semibold text-primary">松开鼠标，安装该 .zip 模组</p>
+                    <p className="mt-1 text-xs text-muted-foreground">全局支持 .zip 拖拽安装，安装后将刷新模组列表</p>
+                  </div>
+                </div>
+              </div>
+            )}
 
-        {renderPage()}
-      </main>
+            {globalToast && (
+              <div
+                className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-xl border px-5 py-4 shadow-xl ${
+                  globalToast.type === "success"
+                    ? "border-green-200 bg-green-50/90 text-green-800 dark:border-green-800 dark:bg-green-950/80 dark:text-green-200"
+                    : globalToast.type === "warning"
+                      ? "border-amber-200 bg-amber-50/90 text-amber-800 dark:border-amber-800 dark:bg-amber-950/80 dark:text-amber-200"
+                      : "border-blue-200 bg-blue-50/90 text-blue-800 dark:border-blue-800 dark:bg-blue-950/80 dark:text-blue-200"
+                }`}
+              >
+                <div className="pr-4 text-sm font-medium">{globalToast.message}</div>
+                <button onClick={() => setGlobalToast(null)} className="ml-auto rounded-lg p-1 transition-colors hover:bg-black/10 dark:hover:bg-white/10">
+                  ×
+                </button>
+              </div>
+            )}
+
+            {renderPage()}
+          </main>
+        </div>
+      </div>
       {showOnboarding && <Onboarding onComplete={handleOnboardingComplete} initialReason={onboardingReason} />}
     </div>
   )

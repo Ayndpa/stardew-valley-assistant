@@ -210,7 +210,7 @@ export function Settings({
       <div>
         <h2 className="text-3xl font-bold tracking-tight">设置</h2>
         <p className="text-muted-foreground mt-1">
-          自定义你的星露谷助手体验
+          自定义你的超级星露谷体验
         </p>
       </div>
 

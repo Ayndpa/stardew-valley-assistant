@@ -23,12 +23,17 @@ use crate::mods::{
     install_nexus_mod, list_installed_mods, list_profiles, logout_nexus, open_nexus_login_window,
     open_nexus_ranking_scraper, open_scraper_window, save_mod_config, save_profile, toggle_mod,
 };
-use crate::saves::{get_planted_crops, get_save_detail, list_save_files};
+use crate::saves::{
+    get_planted_crops, get_save_detail, get_save_editor_data, list_save_files,
+    update_save_editor_data,
+};
 use crate::smapi::{check_smapi_status, install_smapi, uninstall_smapi};
 use crate::utils::{open_in_file_manager, path_exists};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, Monitor, PhysicalPosition, PhysicalSize, Size, State};
 use tauri_plugin_deep_link::DeepLinkExt;
+#[cfg(windows)]
+use window_vibrancy::{apply_acrylic, apply_mica};
 
 const MAIN_WINDOW_MIN_WIDTH: f64 = 800.0;
 const MAIN_WINDOW_MIN_HEIGHT: f64 = 600.0;
@@ -230,6 +235,16 @@ fn show_main_window_in_front(window: &tauri::WebviewWindow) {
     });
 }
 
+#[cfg(windows)]
+fn apply_windows_backdrop(window: &tauri::WebviewWindow) {
+    if apply_mica(window, None).is_err() {
+        let _ = apply_acrylic(window, Some((24, 28, 32, 160)));
+    }
+}
+
+#[cfg(not(windows))]
+fn apply_windows_backdrop(_window: &tauri::WebviewWindow) {}
+
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -275,6 +290,8 @@ pub fn run() {
             uninstall_smapi,
             list_save_files,
             get_save_detail,
+            get_save_editor_data,
+            update_save_editor_data,
             get_planted_crops,
             list_profiles,
             save_profile,
@@ -323,6 +340,7 @@ pub fn run() {
                     MAIN_WINDOW_MIN_WIDTH,
                     MAIN_WINDOW_MIN_HEIGHT,
                 ))));
+                apply_windows_backdrop(&window);
                 restore_main_window_state(app_handle, &window);
                 show_main_window_in_front(&window);
 

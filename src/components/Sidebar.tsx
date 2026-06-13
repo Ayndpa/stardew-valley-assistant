@@ -20,6 +20,7 @@ import {
   Play,
   ListChecks,
   Fish,
+  PencilRuler,
 } from "lucide-react"
 
 interface SidebarProps {
@@ -49,6 +50,7 @@ const navItems: { id: Page; label: string; icon: React.ReactNode }[] = [
   { id: "npcs", label: "村民关系", icon: <Users /> },
   { id: "calendar", label: "节日日历", icon: <CalendarDays /> },
   { id: "fishingMap", label: "钓鱼地图", icon: <Fish /> },
+  { id: "saveEditor", label: "存档编辑", icon: <PencilRuler className="h-4 w-4" /> },
   { id: "mods", label: "模组管理", icon: <Puzzle /> },
   { id: "onlineMods", label: "获取模组", icon: <Download className="h-4 w-4" /> },
   { id: "downloads", label: "下载管理", icon: <ListChecks className="h-4 w-4" /> },
@@ -131,7 +133,7 @@ export function Sidebar({
 
   return (
     <aside className={cn(
-      "border-r border-sidebar-border bg-sidebar flex flex-col transition-all duration-300",
+      "app-sidebar border-r border-sidebar-border/70 flex flex-col transition-all duration-300",
       collapsed ? "w-16" : "w-64"
     )}>
       {/* Logo */}
@@ -139,15 +141,14 @@ export function Sidebar({
         <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg border border-sidebar-border/60 bg-card shadow-sm shrink-0">
           <img
             src={appIcon}
-            alt="星露谷助手图标"
+            alt="超级星露谷图标"
             className="h-full w-full object-cover"
             draggable={false}
           />
         </div>
         {!collapsed && (
           <div className="overflow-hidden">
-            <h1 className="text-lg font-bold text-sidebar-foreground whitespace-nowrap">星露谷助手</h1>
-            <p className="text-xs text-muted-foreground whitespace-nowrap">Stardew Valley</p>
+            <h1 className="text-lg font-bold text-sidebar-foreground whitespace-nowrap">超级星露谷</h1>
           </div>
         )}
       </div>
@@ -387,7 +388,7 @@ export function Sidebar({
 
       {/* Footer */}
       <div className={cn("border-t border-sidebar-border text-xs text-muted-foreground", collapsed ? "px-2 py-3" : "px-6 py-3")}>
-        {!collapsed && <p className="text-center">v0.1.0 · 星露谷物语助手</p>}
+        {!collapsed && <p className="text-center">v0.1.0 · 超级星露谷</p>}
       </div>
     </aside>
   )

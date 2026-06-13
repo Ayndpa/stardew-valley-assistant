@@ -69,6 +69,38 @@ pub struct SaveDetail {
     pub farmer_avatar_error: Option<String>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct EditableFriendship {
+    pub npc_name: String,
+    pub points: i32,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveEditorData {
+    pub summary: SaveSummary,
+    pub editable_friendships: Vec<EditableFriendship>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveEditorUpdate {
+    pub id: String,
+    pub money: i32,
+    pub total_money_earned: i32,
+    pub day_of_month: i32,
+    pub season: i32,
+    pub year: i32,
+    pub farming_level: i32,
+    pub mining_level: i32,
+    pub combat_level: i32,
+    pub foraging_level: i32,
+    pub fishing_level: i32,
+    pub deepest_mine_level: i32,
+    pub friendships: Vec<EditableFriendship>,
+}
+
 fn get_tag_value<'a>(xml: &'a str, tag: &str) -> Option<&'a str> {
     let start_tag = format!("<{}>", tag);
     let end_tag = format!("</{}>", tag);
@@ -97,6 +129,109 @@ fn extract_tag_string(xml: &str, tag: &str) -> String {
     get_tag_value(xml, tag)
         .map(|v| v.to_string())
         .unwrap_or_else(|| "".to_string())
+}
+
+fn replace_first_tag_value(xml: &str, tag: &str, new_value: &str) -> Result<String, String> {
+    let start_tag = format!("<{}>", tag);
+    let end_tag = format!("</{}>", tag);
+    let start_idx = xml
+        .find(&start_tag)
+        .ok_or_else(|| format!("Tag <{}> not found", tag))?;
+    let value_start = start_idx + start_tag.len();
+    let end_rel = xml[value_start..]
+        .find(&end_tag)
+        .ok_or_else(|| format!("Closing tag </{}> not found", tag))?;
+    let value_end = value_start + end_rel;
+
+    let mut updated = String::with_capacity(xml.len() + new_value.len());
+    updated.push_str(&xml[..value_start]);
+    updated.push_str(new_value);
+    updated.push_str(&xml[value_end..]);
+    Ok(updated)
+}
+
+fn replace_friendship_points(xml: &str, npc_name: &str, points: i32) -> String {
+    let mut search_pos = 0usize;
+    let mut updated = xml.to_string();
+
+    while let Some(item_rel) = updated[search_pos..].find("<item>") {
+        let item_start = search_pos + item_rel;
+        let Some(item_end_rel) = updated[item_start..].find("</item>") else {
+            break;
+        };
+        let item_end = item_start + item_end_rel + "</item>".len();
+        let item_xml = &updated[item_start..item_end];
+
+        if item_xml.contains(&format!("<string>{}</string>", npc_name)) {
+            let Some(points_start_rel) = item_xml.find("<Points>") else {
+                break;
+            };
+            let points_start = item_start + points_start_rel + "<Points>".len();
+            let Some(points_end_rel) = updated[points_start..].find("</Points>") else {
+                break;
+            };
+            let points_end = points_start + points_end_rel;
+            updated.replace_range(points_start..points_end, &points.to_string());
+            break;
+        }
+
+        search_pos = item_end;
+    }
+
+    updated
+}
+
+fn create_backup(path: &PathBuf, contents: &str) -> Result<(), String> {
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| "Invalid save file name".to_string())?;
+    let backup_name = format!(
+        "{}.backup-{}",
+        file_name,
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|e| format!("Failed to get backup timestamp: {}", e))?
+            .as_secs()
+    );
+    let backup_path = path.with_file_name(backup_name);
+    fs::write(&backup_path, contents)
+        .map_err(|e| format!("Failed to write backup {}: {}", backup_path.display(), e))
+}
+
+fn upsert_numeric_fields(xml: &str, update: &SaveEditorUpdate) -> Result<String, String> {
+    let mut updated = xml.to_string();
+    let replacements = [
+        ("money", update.money.to_string()),
+        ("totalMoneyEarned", update.total_money_earned.to_string()),
+        ("dayOfMonthForSaveGame", update.day_of_month.to_string()),
+        ("seasonForSaveGame", update.season.to_string()),
+        ("yearForSaveGame", update.year.to_string()),
+        ("farmingLevel", update.farming_level.to_string()),
+        ("miningLevel", update.mining_level.to_string()),
+        ("combatLevel", update.combat_level.to_string()),
+        ("foragingLevel", update.foraging_level.to_string()),
+        ("fishingLevel", update.fishing_level.to_string()),
+        ("deepestMineLevel", update.deepest_mine_level.to_string()),
+    ];
+
+    for (tag, value) in replacements {
+        updated = replace_first_tag_value(&updated, tag, &value)?;
+    }
+
+    Ok(updated)
+}
+
+fn editable_friendships_from_infos(friendships: Vec<FriendshipInfo>) -> Vec<EditableFriendship> {
+    let mut list = friendships
+        .into_iter()
+        .map(|friendship| EditableFriendship {
+            npc_name: friendship.npc_name,
+            points: friendship.points,
+        })
+        .collect::<Vec<_>>();
+    list.sort_by(|a, b| a.npc_name.cmp(&b.npc_name));
+    list
 }
 
 fn get_direct_child_tag_value<'a>(xml: &'a str, tag: &str) -> Option<&'a str> {
@@ -658,6 +793,108 @@ fn get_save_detail_sync(
         farmer_avatar,
         farmer_avatar_error,
     })
+}
+
+#[tauri::command]
+pub async fn get_save_editor_data(id: String) -> Result<SaveEditorData, String> {
+    task::spawn_blocking(move || get_save_editor_data_sync(id))
+        .await
+        .map_err(|e| format!("读取存档编辑器数据任务失败: {}", e))?
+}
+
+fn get_save_editor_data_sync(id: String) -> Result<SaveEditorData, String> {
+    let saves_dir =
+        get_saves_dir().ok_or_else(|| "Could not locate APPDATA or HOME directory".to_string())?;
+
+    let save_folder = saves_dir.join(&id);
+    if !save_folder.exists() {
+        return Err(format!("Save folder {} does not exist", id));
+    }
+
+    let save_game_info_path = save_folder.join("SaveGameInfo");
+    let info_xml = fs::read_to_string(&save_game_info_path)
+        .map_err(|e| format!("Failed to read SaveGameInfo: {}", e))?;
+
+    let summary = SaveSummary {
+        id,
+        player_name: extract_tag_string(&info_xml, "name"),
+        farm_name: extract_tag_string(&info_xml, "farmName"),
+        money: extract_tag_i32(&info_xml, "money"),
+        total_money_earned: extract_tag_i32(&info_xml, "totalMoneyEarned"),
+        day_of_month: extract_tag_i32(&info_xml, "dayOfMonthForSaveGame"),
+        season: extract_tag_i32(&info_xml, "seasonForSaveGame"),
+        year: extract_tag_i32(&info_xml, "yearForSaveGame"),
+        farming_level: extract_tag_i32(&info_xml, "farmingLevel"),
+        mining_level: extract_tag_i32(&info_xml, "miningLevel"),
+        combat_level: extract_tag_i32(&info_xml, "combatLevel"),
+        foraging_level: extract_tag_i32(&info_xml, "foragingLevel"),
+        fishing_level: extract_tag_i32(&info_xml, "fishingLevel"),
+        deepest_mine_level: extract_tag_i32(&info_xml, "deepestMineLevel"),
+        milliseconds_played: extract_tag_u64(&info_xml, "millisecondsPlayed"),
+        last_save_time: save_game_info_path
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs())
+            .unwrap_or(0),
+        farmer_avatar: None,
+        farmer_avatar_error: None,
+    };
+
+    Ok(SaveEditorData {
+        summary,
+        editable_friendships: editable_friendships_from_infos(parse_friendship_data(&info_xml)),
+    })
+}
+
+#[tauri::command]
+pub async fn update_save_editor_data(update: SaveEditorUpdate) -> Result<SaveEditorData, String> {
+    task::spawn_blocking(move || update_save_editor_data_sync(update))
+        .await
+        .map_err(|e| format!("保存存档编辑数据任务失败: {}", e))?
+}
+
+fn update_save_editor_data_sync(update: SaveEditorUpdate) -> Result<SaveEditorData, String> {
+    if !(1..=28).contains(&update.day_of_month) {
+        return Err("Day of month must be between 1 and 28".to_string());
+    }
+    if !(0..=3).contains(&update.season) {
+        return Err("Season must be between 0 and 3".to_string());
+    }
+    if update.year < 1 {
+        return Err("Year must be at least 1".to_string());
+    }
+
+    let saves_dir =
+        get_saves_dir().ok_or_else(|| "Could not locate APPDATA or HOME directory".to_string())?;
+    let save_folder = saves_dir.join(&update.id);
+    let save_game_info_path = save_folder.join("SaveGameInfo");
+    let main_save_path = save_folder.join(&update.id);
+
+    let info_xml = fs::read_to_string(&save_game_info_path)
+        .map_err(|e| format!("Failed to read SaveGameInfo: {}", e))?;
+    let main_xml = fs::read_to_string(&main_save_path)
+        .map_err(|e| format!("Failed to read main save file: {}", e))?;
+
+    create_backup(&save_game_info_path, &info_xml)?;
+    create_backup(&main_save_path, &main_xml)?;
+
+    let mut updated_info = upsert_numeric_fields(&info_xml, &update)?;
+    let mut updated_main = upsert_numeric_fields(&main_xml, &update)?;
+
+    for friendship in &update.friendships {
+        let clamped_points = friendship.points.clamp(0, 2500);
+        updated_info = replace_friendship_points(&updated_info, &friendship.npc_name, clamped_points);
+        updated_main = replace_friendship_points(&updated_main, &friendship.npc_name, clamped_points);
+    }
+
+    fs::write(&save_game_info_path, updated_info)
+        .map_err(|e| format!("Failed to write SaveGameInfo: {}", e))?;
+    fs::write(&main_save_path, updated_main)
+        .map_err(|e| format!("Failed to write main save file: {}", e))?;
+
+    get_save_editor_data_sync(update.id)
 }
 
 #[tauri::command]
