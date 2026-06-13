@@ -38,6 +38,8 @@ interface NpcProfile {
   birthday?: string | null
   gender: "marriageable_male" | "marriageable_female" | "other"
   marriageCandidate: boolean
+  lovedItems: string[]
+  hatedItems: string[]
 }
 
 interface NpcGameData {
@@ -57,7 +59,7 @@ const relationshipStatusMap: Record<string, string> = {
   Divorced: "离异",
 }
 
-const NPC_PROFILES_CACHE_KEY = "stardew_npc_profiles_cache"
+const NPC_PROFILES_CACHE_KEY = "stardew_npc_profiles_cache_v2"
 const NPC_PORTRAITS_CACHE_KEY = "stardew_npc_portraits_cache"
 const NPC_FRIENDSHIPS_CACHE_KEY = "stardew_npc_friendships_cache"
 
@@ -329,6 +331,8 @@ export function NPCs({ selectedSaveId }: NPCsProps) {
           birthday: null,
           gender: "other",
           marriageCandidate: false,
+          lovedItems: [],
+          hatedItems: [],
         })
       }
     })
@@ -591,6 +595,44 @@ export function NPCs({ selectedSaveId }: NPCsProps) {
                 </div>
 
                 <Separator />
+
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                  <div className="rounded-lg border bg-background p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Gift className="h-4 w-4 text-emerald-600" />
+                      <h3 className="text-sm font-bold">喜爱物品</h3>
+                    </div>
+                    {activeNPC.lovedItems.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {activeNPC.lovedItems.map((item) => (
+                          <Badge key={item} variant="secondary" className="text-xs font-medium">
+                            {item}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">游戏内容中未提供该村民的喜爱物品。</p>
+                    )}
+                  </div>
+
+                  <div className="rounded-lg border bg-background p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Gift className="h-4 w-4 text-rose-600" />
+                      <h3 className="text-sm font-bold">讨厌物品</h3>
+                    </div>
+                    {activeNPC.hatedItems.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {activeNPC.hatedItems.map((item) => (
+                          <Badge key={item} variant="secondary" className="text-xs font-medium">
+                            {item}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">游戏内容中未提供该村民的讨厌物品。</p>
+                    )}
+                  </div>
+                </div>
 
                 <div className="rounded-lg border bg-accent/10 p-4">
                   <div className="flex items-center gap-2 mb-2">

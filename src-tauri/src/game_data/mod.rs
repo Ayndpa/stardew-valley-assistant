@@ -183,11 +183,18 @@ mod tests {
         };
         let localized_tables = xnb::load_localized_string_tables(
             &content,
-            &["Characters", "NPCNames", "UI", "1_6_Strings"],
+            &["Characters", "NPCNames", "UI", "1_6_Strings", "StringsFromCSFiles", "Objects"],
         );
         let npcs = npc::load_npc_profiles(&content, &localized_tables).unwrap();
 
         assert!(npcs.iter().any(|entry| entry.id == "Abigail"));
         assert!(npcs.iter().any(|entry| entry.id == "Lewis"));
+        let abigail = npcs.iter().find(|entry| entry.id == "Abigail").unwrap();
+        assert!(!abigail.loved_items.is_empty());
+        assert!(!abigail.hated_items.is_empty());
+        assert!(abigail
+            .loved_items
+            .iter()
+            .all(|item| !item.contains("[LocalizedText")));
     }
 }

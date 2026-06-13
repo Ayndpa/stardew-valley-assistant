@@ -167,6 +167,32 @@
 @layer base {
   * {
     @apply border-border;
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 9999px;
+    border: 2px solid transparent;
+  }
+  *:hover,
+  *:focus-within {
+    scrollbar-color: color-mix(in oklab, var(--border) 88%, transparent) transparent;
+  }
+  *:hover::-webkit-scrollbar-thumb,
+  *:focus-within::-webkit-scrollbar-thumb {
+    background: color-mix(in oklab, var(--border) 88%, transparent);
+  }
+  *:hover::-webkit-scrollbar-thumb:hover,
+  *:focus-within::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in oklab, var(--foreground) 22%, var(--border));
   }
   html,
   body,

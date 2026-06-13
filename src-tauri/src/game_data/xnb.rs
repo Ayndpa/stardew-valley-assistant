@@ -359,6 +359,8 @@ impl<'a> XnbPayloadReader<'a> {
             birthday,
             gender,
             marriage_candidate: can_be_romanced,
+            loved_items: Vec::new(),
+            hated_items: Vec::new(),
         }))
     }
 
