@@ -113,16 +113,25 @@ pub fn check_cloudflare_challenge(win: &tauri::WebviewWindow) -> bool {
                 const html = document.documentElement ? document.documentElement.outerHTML : '';
                 const x = document.body ? document.body.innerText : '';
                 const hasNormalContent = !!document.querySelector("a[href*='/users/login'], a[href*='/auth/sign_in'], [class*='login-btn'], [class*='sign-in'], a[href*='sign_out'], a[href*='logout'], a[href*='sign-out'], #section-mod-description, #pagetitle, .header-user, .logo, .nav-item");
-                const cf = t.includes('just a moment') || 
-                           t.includes('checking your browser') || 
-                           t.includes('attention required') || 
-                           h.includes('captcha') || 
-                           h.includes('challenge') || 
-                           x.includes('checking if the site connection is secure') || 
+
+                // Exclude Nexus error pages — they lack normal content but are not CF challenges
+                const isNexusErrorPage =
+                    x.includes("The mod you were looking for couldn't be found") ||
+                    x.includes("was removed by its author") ||
+                    x.includes("Removed by author") ||
+                    (x.includes("has been hidden") && x.includes("author"));
+                if (isNexusErrorPage) return false;
+
+                const cf = t.includes('just a moment') ||
+                           t.includes('checking your browser') ||
+                           t.includes('attention required') ||
+                           h.includes('captcha') ||
+                           h.includes('challenge') ||
+                           x.includes('checking if the site connection is secure') ||
                            x.includes('verify you are human') ||
                            (!hasNormalContent && (
-                               html.includes('cf-turnstile') || 
-                               html.includes('challenges.cloudflare.com') || 
+                               html.includes('cf-turnstile') ||
+                               html.includes('challenges.cloudflare.com') ||
                                html.includes('/cdn-cgi/challenge-platform/')
                            ));
                 return cf;

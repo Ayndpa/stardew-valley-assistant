@@ -145,10 +145,25 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
                                     ogDescription.length > 0 ||
                                     !!document.querySelector("a[href*='/stardewvalley/mods/'], a[href*='/mods/']")
                                 );
+
+                            // Detect Nexus error pages
+                            const bodyText = (document.body ? document.body.innerText : "").trim();
+                            const pageTitle = (document.querySelector("#pagetitle h1")?.textContent || "").trim();
+                            const isNotFoundPage =
+                                (pageTitle.toLowerCase() === "not found" && bodyText.includes("couldn't be found")) ||
+                                bodyText.includes("The mod you were looking for couldn't be found");
+                            const isRemovedPage =
+                                bodyText.includes("was removed by its author") ||
+                                bodyText.includes("Removed by author");
+                            const isHiddenPage =
+                                bodyText.includes("has been hidden") && bodyText.includes("author");
+                            const errorPageType = isNotFoundPage ? "not_found" : (isRemovedPage ? "removed" : (isHiddenPage ? "hidden" : null));
+
                             return {
                                 readyState: document.readyState,
                                 hasDetails: hasNexusPageMarker,
                                 hasRichContent,
+                                errorPageType,
                                 html
                             };
                         } catch (error) {
@@ -156,6 +171,7 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
                                 readyState: "error",
                                 hasDetails: false,
                                 hasRichContent: false,
+                                errorPageType: null,
                                 html: "",
                                 error: String(error)
                             };
@@ -195,6 +211,34 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
                     .and_then(|v| v.as_str())
                     .unwrap_or_default()
                     .to_string();
+
+                let error_page_type = snapshot
+                    .get("errorPageType")
+                    .and_then(|v| v.as_str());
+
+                // Detect Nexus error pages early and notify frontend
+                if !is_challenge && ready_state == "complete" && error_page_type.is_some() {
+                    let error_msg = match error_page_type.unwrap() {
+                        "not_found" => "该模组不存在，可能是 ID 错误或模组已被删除。",
+                        "removed" => "该模组已被作者从 NexusMods 移除，无法查看。",
+                        "hidden" => "该模组已被作者暂时隐藏，目前无法查看。",
+                        _ => "该模组页面无法访问。",
+                    };
+                    warn!(
+                        "[Scraper] Detected error page ({}) for mod_id={}",
+                        error_page_type.unwrap(),
+                        poll_mod_id
+                    );
+                    let _ = poll_handle.emit(
+                        "respond-nexus-html",
+                        serde_json::json!({
+                            "modId": poll_mod_id.clone(),
+                            "error": error_msg
+                        }),
+                    );
+                    let _ = poll_window.destroy();
+                    return;
+                }
 
                 if !is_challenge && ready_state == "complete" && has_details {
                     if has_rich_content {

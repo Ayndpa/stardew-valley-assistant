@@ -29,7 +29,7 @@ import {
   translateHtmlTextOnly
 } from "@/lib/translate"
 import { useNexus } from "@/lib/nexus-provider"
-import { ParsedModDetails, parseHtml, getNexusId } from "./online-mod-parser"
+import { ParsedModDetails, parseHtml, getNexusId, detectNexusErrorPage } from "./online-mod-parser"
 import { ModGallery } from "./ModGallery"
 import { ModSpecs, renderStatusBadge } from "./ModSpecs"
 interface CondensedTranslateState extends TranslateState {
@@ -339,6 +339,7 @@ export function OnlineModDetailModal({
             }
             setError(event.payload.error)
             setLoading(false)
+            setScrapeStatus("loading")
             if (unlistenRef.current) {
               unlistenRef.current()
               unlistenRef.current = null
@@ -353,6 +354,23 @@ export function OnlineModDetailModal({
             }
             setError("未收到 Nexus 页面内容，请重试。")
             setLoading(false)
+            if (unlistenRef.current) {
+              unlistenRef.current()
+              unlistenRef.current = null
+            }
+            return
+          }
+
+          // Check for Nexus error pages before parsing
+          const nexusError = detectNexusErrorPage(event.payload.html)
+          if (nexusError) {
+            if (scrapeTimeoutRef.current !== null) {
+              window.clearTimeout(scrapeTimeoutRef.current)
+              scrapeTimeoutRef.current = null
+            }
+            setError(nexusError.message)
+            setLoading(false)
+            setScrapeStatus("loading")
             if (unlistenRef.current) {
               unlistenRef.current()
               unlistenRef.current = null

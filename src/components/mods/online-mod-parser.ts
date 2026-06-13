@@ -15,6 +15,40 @@ export interface ParsedModDetails {
   downloadUrl?: string
 }
 
+export interface NexusErrorPage {
+  type: "not_found" | "removed" | "hidden"
+  message: string
+}
+
+/**
+ * Detect Nexus error pages (not found, removed by author, hidden).
+ * Returns null if the page is a normal mod page.
+ */
+export function detectNexusErrorPage(htmlString: string): NexusErrorPage | null {
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(htmlString, "text/html")
+  const bodyText = doc.body?.textContent?.trim() || ""
+
+  // "Not found" — The mod you were looking for couldn't be found
+  if (bodyText.includes("The mod you were looking for couldn't be found") ||
+      (bodyText.includes("Not found") && bodyText.includes("couldn't be found"))) {
+    return { type: "not_found", message: "该模组不存在，可能是 ID 错误或模组已被删除。" }
+  }
+
+  // "Removed by author" — The mod you were looking for was removed by its author
+  if (bodyText.includes("was removed by its author") ||
+      bodyText.includes("Removed by author")) {
+    return { type: "removed", message: "该模组已被作者从 NexusMods 移除，无法查看。" }
+  }
+
+  // "Hidden" — The mod is hidden by the author
+  if (bodyText.includes("has been hidden") && bodyText.includes("author")) {
+    return { type: "hidden", message: "该模组已被作者暂时隐藏，目前无法查看。" }
+  }
+
+  return null
+}
+
 export function getNexusId(modItem: SmapiMod): string {
   const nexusPage = modItem.ModPages.find(p => p.Text === "Nexus" || p.Url.includes("nexusmods.com"))
   if (!nexusPage) return ""
