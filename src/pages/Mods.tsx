@@ -52,6 +52,8 @@ export function Mods({ onNavigate, refreshSignal, isGameRunning = false, onQueue
     installError,
     isScanning,
     isCheckingUpdates,
+    isSyncingModTranslations,
+    translationSyncingModIds,
     toast,
     setToast,
 
@@ -223,6 +225,16 @@ export function Mods({ onNavigate, refreshSignal, isGameRunning = false, onQueue
                 <p className={`text-xs font-medium ${updateAvailableCount > 0 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}>可更新</p>
                 <p className={`text-2xl font-bold mt-0.5 ${updateAvailableCount > 0 ? "text-amber-500" : "text-foreground"}`}>{updateAvailableCount}</p>
               </div>
+              <div className={`border rounded-xl px-4 py-3 text-center flex-1 lg:flex-initial min-w-[90px] transition-colors ${
+                isSyncingModTranslations
+                  ? "bg-sky-50/60 dark:bg-sky-950/10 border-sky-200 dark:border-sky-900"
+                  : "bg-accent/30 dark:bg-accent/10 border-border/60"
+              }`}>
+                <p className={`text-xs font-medium ${isSyncingModTranslations ? "text-sky-600 dark:text-sky-400" : "text-muted-foreground"}`}>翻译库</p>
+                <p className={`text-2xl font-bold mt-0.5 ${isSyncingModTranslations ? "text-sky-500 animate-pulse" : "text-foreground"}`}>
+                  {translationSyncingModIds.size}
+                </p>
+              </div>
             </div>
           </div>
 
@@ -271,6 +283,7 @@ export function Mods({ onNavigate, refreshSignal, isGameRunning = false, onQueue
                   void handlePickZipFile()
                 }}
                 isGameRunning={isGameRunning}
+                translationSyncingModIds={translationSyncingModIds}
               />
             </div>
 

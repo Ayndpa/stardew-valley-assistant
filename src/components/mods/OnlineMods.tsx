@@ -11,9 +11,11 @@ import {
   Eye,
   Trophy,
   Database,
+  Loader2,
 } from "lucide-react"
 import { OnlineModDetailModal } from "./OnlineModDetailModal"
 import { NexusModsRanking, type NexusRankedMod } from "./NexusModsRanking"
+import { syncOnlineModTranslations } from "@/lib/mod-translation-library"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card"
@@ -172,6 +174,9 @@ export function OnlineMods({ onNavigate, isGameRunning = false, onQueueDownload 
   const [loading, setLoading] = useState(() => !readSmapiModsCache())
   const [isBackgroundRefreshing, setIsBackgroundRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const completedTranslationModIdsRef = useRef<Set<string>>(new Set())
+  const syncingTranslationModIdsRef = useRef<Set<string>>(new Set())
+  const [translationSyncingModIds, setTranslationSyncingModIds] = useState<Set<string>>(new Set())
   
   // Modal State
   const [selectedDetailMod, setSelectedDetailMod] = useState<SmapiMod | null>(null)
@@ -311,6 +316,57 @@ export function OnlineMods({ onNavigate, isGameRunning = false, onQueueDownload 
 
   const totalPages = Math.max(1, Math.ceil(filteredMods.length / itemsPerPage))
 
+  const getTranslationId = (mod: SmapiMod) => mod.Id?.[0] || mod.Slug || mod.Name
+
+  useEffect(() => {
+    if (activeTab !== "smapi" || loading) return
+
+    const pendingMods = paginatedMods.filter((mod) => {
+      const id = getTranslationId(mod)
+      return !completedTranslationModIdsRef.current.has(id) && !syncingTranslationModIdsRef.current.has(id)
+    })
+    if (pendingMods.length === 0) return
+
+    pendingMods.forEach((mod) => syncingTranslationModIdsRef.current.add(getTranslationId(mod)))
+    setTranslationSyncingModIds(new Set(syncingTranslationModIdsRef.current))
+
+    syncOnlineModTranslations(pendingMods)
+      .then(({ mods: translatedMods }) => {
+        translatedMods.forEach((mod) => completedTranslationModIdsRef.current.add(getTranslationId(mod)))
+        const translatedById = new Map(translatedMods.map((mod) => [getTranslationId(mod), mod]))
+
+        setOnlineMods((currentMods) =>
+          currentMods.map((mod) => {
+            const translated = translatedById.get(getTranslationId(mod))
+            if (!translated) return mod
+            return {
+              ...mod,
+              Name: translated.Name,
+              Compatibility: translated.Compatibility,
+            }
+          })
+        )
+
+        setSelectedDetailMod((currentMod) => {
+          if (!currentMod) return currentMod
+          const translated = translatedById.get(getTranslationId(currentMod))
+          if (!translated) return currentMod
+          return {
+            ...currentMod,
+            Name: translated.Name,
+            Compatibility: translated.Compatibility,
+          }
+        })
+      })
+      .catch((err) => {
+        console.error("Failed to sync online mod translations:", err)
+      })
+      .finally(() => {
+        pendingMods.forEach((mod) => syncingTranslationModIdsRef.current.delete(getTranslationId(mod)))
+        setTranslationSyncingModIds(new Set(syncingTranslationModIdsRef.current))
+      })
+  }, [activeTab, loading, paginatedMods])
+
   // Render Status Badge
   const renderStatusBadge = (status: string) => {
     const base = "whitespace-nowrap shrink-0 font-semibold px-2 py-0.5 text-[10px] rounded-full"
@@ -409,6 +465,13 @@ export function OnlineMods({ onNavigate, isGameRunning = false, onQueueDownload 
             </div>
           )}
 
+          {translationSyncingModIds.size > 0 && !loading && (
+            <div className="text-[11px] text-sky-600 dark:text-sky-400 flex items-center gap-2">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              <span>正在同步当前页翻译库：{translationSyncingModIds.size} 个模组</span>
+            </div>
+          )}
+
           {error && (
             <div className="bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 p-3 rounded-xl text-xs flex items-center gap-2">
               <AlertTriangle className="h-4 w-4 text-amber-500 flex-shrink-0" />
@@ -438,13 +501,22 @@ export function OnlineMods({ onNavigate, isGameRunning = false, onQueueDownload 
               {paginatedMods.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-in fade-in duration-300">
                   {paginatedMods.map((mod) => {
+                    const isSyncingTranslation = translationSyncingModIds.has(getTranslationId(mod))
                     return (
                       <Card key={mod.Slug} className="border border-border/80 bg-card hover:border-primary/45 hover:shadow-md transition-all duration-300 flex flex-col justify-between overflow-hidden">
                         <CardHeader className="p-4 pb-2 space-y-1.5">
                           <div className="flex justify-between items-start gap-2">
-                            <CardTitle className="text-sm font-bold truncate pr-2 text-foreground" title={mod.Name}>
-                              {mod.Name}
-                            </CardTitle>
+                            <div className="min-w-0 flex items-center gap-1.5 pr-2">
+                              <CardTitle className="text-sm font-bold truncate text-foreground" title={mod.Name}>
+                                {mod.Name}
+                              </CardTitle>
+                              {isSyncingTranslation && (
+                                <span className="inline-flex shrink-0 items-center gap-1 text-[10px] font-semibold text-sky-600 dark:text-sky-400 bg-sky-500/10 border border-sky-500/20 rounded-md px-1.5 py-0.5">
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                  翻译库
+                                </span>
+                              )}
+                            </div>
                             {renderStatusBadge(mod.Compatibility?.Status || "ok")}
                           </div>
                           <CardDescription className="text-[11px] truncate text-muted-foreground font-medium">

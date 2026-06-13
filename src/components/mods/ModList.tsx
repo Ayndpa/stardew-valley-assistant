@@ -61,6 +61,7 @@ interface ModListProps {
   isLoading?: boolean
   onGoOnline?: () => void
   isGameRunning?: boolean
+  translationSyncingModIds?: Set<string>
 }
 
 export function ModList({
@@ -84,6 +85,7 @@ export function ModList({
   isLoading = false,
   onGoOnline,
   isGameRunning = false,
+  translationSyncingModIds = new Set(),
 }: ModListProps) {
   const lockedTitle = isGameRunning ? "游戏运行中，不能修改模组" : undefined
 
@@ -236,6 +238,7 @@ export function ModList({
           filteredMods.map((mod) => {
             const hasUpdate = mod.version !== mod.latestVersion
             const isSelected = mod.id === selectedModId
+            const isSyncingTranslation = translationSyncingModIds.has(mod.id)
             return (
               <div
                 key={mod.id}
@@ -287,6 +290,12 @@ export function ModList({
                         <h4 className="font-bold text-base truncate group-hover:text-primary transition-colors">
                           {mod.name}
                         </h4>
+                        {isSyncingTranslation && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-sky-600 dark:text-sky-400 bg-sky-500/10 border border-sky-500/20 rounded-md px-1.5 py-0.5">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            翻译库
+                          </span>
+                        )}
                         <span className="text-xs text-muted-foreground font-mono truncate max-w-[140px] lg:max-w-xs">
                           {mod.englishName}
                         </span>

@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { Mod } from "@/components/mods/ModList"
 import type { QueueSmapiDownloadRequest } from "@/hooks/useDownloadManager"
+import { syncModTranslations } from "@/lib/mod-translation-library"
 
 import { useSmapiInstaller } from "./useSmapiInstaller"
 import { useModProfiles } from "./useModProfiles"
@@ -34,6 +35,9 @@ export function useModManagement(options?: UseModManagementOptions) {
   const [selectedCategory, setSelectedCategory] = useState<string>("all")
   const [selectedModId, setSelectedModId] = useState<string>("")
   const [activeDetailTab, setActiveDetailTab] = useState<string>("info")
+  const completedTranslationModIdsRef = useRef<Set<string>>(new Set())
+  const syncingTranslationModIdsRef = useRef<Set<string>>(new Set())
+  const [translationSyncingModIds, setTranslationSyncingModIds] = useState<Set<string>>(new Set())
 
   // Interactive UI Actions States
   const [isScanning, setIsScanning] = useState(false)
@@ -62,6 +66,41 @@ export function useModManagement(options?: UseModManagementOptions) {
       return () => clearTimeout(timer)
     }
   }, [toast])
+
+  useEffect(() => {
+    const pendingMods = mods.filter((mod) => {
+      return !completedTranslationModIdsRef.current.has(mod.id) && !syncingTranslationModIdsRef.current.has(mod.id)
+    })
+    if (pendingMods.length === 0) return
+
+    pendingMods.forEach((mod) => syncingTranslationModIdsRef.current.add(mod.id))
+    setTranslationSyncingModIds(new Set(syncingTranslationModIdsRef.current))
+
+    syncModTranslations(pendingMods)
+      .then(({ mods: translatedMods }) => {
+        pendingMods.forEach((mod) => completedTranslationModIdsRef.current.add(mod.id))
+
+        const translatedById = new Map(translatedMods.map((mod) => [mod.id, mod]))
+        setMods((currentMods) =>
+          currentMods.map((mod) => {
+            const translated = translatedById.get(mod.id)
+            if (!translated) return mod
+            return {
+              ...mod,
+              name: translated.name,
+              description: translated.description,
+            }
+          })
+        )
+      })
+      .catch((err) => {
+        console.error("Failed to sync mod translations:", err)
+      })
+      .finally(() => {
+        pendingMods.forEach((mod) => syncingTranslationModIdsRef.current.delete(mod.id))
+        setTranslationSyncingModIds(new Set(syncingTranslationModIdsRef.current))
+      })
+  }, [mods])
 
   // Load game version on mount
   useEffect(() => {
@@ -398,6 +437,8 @@ export function useModManagement(options?: UseModManagementOptions) {
     installError: smapi.installError,
     isScanning,
     isCheckingUpdates,
+    isSyncingModTranslations: translationSyncingModIds.size > 0,
+    translationSyncingModIds,
     toast,
     setToast,
     isAddModalOpen: editor.isAddModalOpen,

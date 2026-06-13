@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useRef, useState } from "react"
 import { openUrl } from "@tauri-apps/plugin-opener"
 import {
   Trophy,
@@ -21,6 +22,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { useNexusModsRanking, type NexusRankedMod } from "@/hooks/useNexusModsRanking"
+import { syncNexusModNameTranslations } from "@/lib/mod-translation-library"
 
 export type { NexusRankedMod }
 
@@ -51,6 +53,46 @@ export function NexusModsRanking({ onOpenDetail }: NexusModsRankingProps = {}) {
     handleSearchSubmit,
     totalPages,
   } = useNexusModsRanking()
+  const completedTranslationModIdsRef = useRef<Set<string>>(new Set())
+  const syncingTranslationModIdsRef = useRef<Set<string>>(new Set())
+  const [translationSyncingModIds, setTranslationSyncingModIds] = useState<Set<string>>(new Set())
+  const [translatedNamesByNexusId, setTranslatedNamesByNexusId] = useState<Map<string, string>>(new Map())
+
+  useEffect(() => {
+    if (loading || ranking.length === 0) return
+
+    const pendingMods = ranking.filter((mod) => {
+      return !completedTranslationModIdsRef.current.has(mod.nexusId) && !syncingTranslationModIdsRef.current.has(mod.nexusId)
+    })
+    if (pendingMods.length === 0) return
+
+    pendingMods.forEach((mod) => syncingTranslationModIdsRef.current.add(mod.nexusId))
+    setTranslationSyncingModIds(new Set(syncingTranslationModIdsRef.current))
+
+    syncNexusModNameTranslations(pendingMods)
+      .then(({ mods: translatedMods }) => {
+        translatedMods.forEach((mod) => completedTranslationModIdsRef.current.add(mod.nexusId))
+        setTranslatedNamesByNexusId((current) => {
+          const next = new Map(current)
+          translatedMods.forEach((mod) => next.set(mod.nexusId, mod.name))
+          return next
+        })
+      })
+      .catch((err) => {
+        console.error("Failed to sync Nexus mod name translations:", err)
+      })
+      .finally(() => {
+        pendingMods.forEach((mod) => syncingTranslationModIdsRef.current.delete(mod.nexusId))
+        setTranslationSyncingModIds(new Set(syncingTranslationModIdsRef.current))
+      })
+  }, [loading, ranking])
+
+  const translatedRanking = useMemo(() => {
+    return ranking.map((mod) => ({
+      ...mod,
+      name: translatedNamesByNexusId.get(mod.nexusId) ?? mod.name,
+    }))
+  }, [ranking, translatedNamesByNexusId])
 
   const getRankIcon = (rank: number) => {
     if (rank === 1) return <Crown className="h-4 w-4 text-amber-500" />
@@ -78,6 +120,12 @@ export function NexusModsRanking({ onOpenDetail }: NexusModsRankingProps = {}) {
             <span className="flex items-center gap-1 text-[10px] text-muted-foreground font-normal ml-2">
               <Loader2 className="h-3 w-3 animate-spin" />
               后台校验中...
+            </span>
+          )}
+          {translationSyncingModIds.size > 0 && !loading && (
+            <span className="flex items-center gap-1 text-[10px] text-sky-600 dark:text-sky-400 font-normal ml-2">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              翻译库 {translationSyncingModIds.size}
             </span>
           )}
         </h3>
@@ -185,11 +233,13 @@ export function NexusModsRanking({ onOpenDetail }: NexusModsRankingProps = {}) {
       )}
 
       {/* Ranking / Browsing List */}
-      {!loading && ranking.length > 0 && (
+      {!loading && translatedRanking.length > 0 && (
         <div className="space-y-1.5 animate-in fade-in duration-300">
-          {ranking.map((mod) => (
-            <div
-              key={mod.nexusId + mod.rank}
+          {translatedRanking.map((mod) => {
+            const isSyncingTranslation = translationSyncingModIds.has(mod.nexusId)
+            return (
+              <div
+                key={mod.nexusId + mod.rank}
               className={`flex items-center gap-3 p-3 rounded-xl border transition-all hover:shadow-sm hover:border-primary/30 group ${getRankBg(mod.rank)} cursor-pointer`}
               onClick={(e) => {
                 if ((e.target as HTMLElement).closest("button")) return
@@ -202,16 +252,26 @@ export function NexusModsRanking({ onOpenDetail }: NexusModsRankingProps = {}) {
               </div>
 
               {/* Thumbnail */}
-              <div className="w-10 h-10 rounded-lg overflow-hidden bg-accent/30 border border-border/40 shrink-0 flex items-center justify-center">
+              <div className="group/thumb relative z-10 w-10 h-10 rounded-lg bg-accent/30 border border-border/40 shrink-0 flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
                 {mod.imageUrl ? (
-                  <img
-                    src={mod.imageUrl}
-                    alt={mod.name}
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = "none"
-                    }}
-                  />
+                  <>
+                    <img
+                      src={mod.imageUrl}
+                      alt={mod.name}
+                      className="w-full h-full rounded-lg object-cover"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = "none"
+                      }}
+                    />
+                    <div className="pointer-events-none absolute left-full top-1/2 z-50 ml-3 hidden h-36 w-36 -translate-y-1/2 scale-95 overflow-hidden rounded-xl border border-border bg-popover p-1 opacity-0 shadow-2xl ring-1 ring-border/50 transition-all duration-150 group-hover/thumb:scale-100 group-hover/thumb:opacity-100 sm:block">
+                      <img
+                        src={mod.imageUrl}
+                        alt=""
+                        className="h-full w-full rounded-lg object-cover"
+                        aria-hidden="true"
+                      />
+                    </div>
+                  </>
                 ) : (
                   <Trophy className="h-4 w-4 text-muted-foreground/40" />
                 )}
@@ -219,9 +279,17 @@ export function NexusModsRanking({ onOpenDetail }: NexusModsRankingProps = {}) {
 
               {/* Name & Author */}
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-bold text-foreground truncate group-hover:text-primary transition-colors">
-                  {mod.name}
-                </p>
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <p className="text-xs font-bold text-foreground truncate group-hover:text-primary transition-colors">
+                    {mod.name}
+                  </p>
+                  {isSyncingTranslation && (
+                    <span className="inline-flex shrink-0 items-center gap-1 text-[10px] font-semibold text-sky-600 dark:text-sky-400 bg-sky-500/10 border border-sky-500/20 rounded-md px-1.5 py-0.5">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      翻译库
+                    </span>
+                  )}
+                </div>
                 <p className="text-[10px] text-muted-foreground truncate">
                   {mod.author}
                 </p>
@@ -263,12 +331,13 @@ export function NexusModsRanking({ onOpenDetail }: NexusModsRankingProps = {}) {
                 </Button>
               </div>
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
       {/* Empty State */}
-      {!loading && ranking.length === 0 && (
+      {!loading && translatedRanking.length === 0 && (
         <div className="flex flex-col items-center justify-center py-12 text-muted-foreground border border-dashed border-border rounded-xl">
           <Trophy className="h-8 w-8 text-muted-foreground/40 mb-2" />
           <p className="text-xs font-medium">没有找到相关的 NexusMods 模组。</p>

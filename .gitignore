@@ -27,6 +27,7 @@ dist-ssr
 .env
 .env.local
 .env.*.local
+.gemini/
 
 # Rust / Tauri build outputs
 src-tauri/target/
