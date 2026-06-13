@@ -634,15 +634,6 @@ export function NPCs({ selectedSaveId }: NPCsProps) {
                   </div>
                 </div>
 
-                <div className="rounded-lg border bg-accent/10 p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Info className="h-4 w-4 text-primary" />
-                    <h3 className="text-sm font-bold">数据来源</h3>
-                  </div>
-                  <p className="text-sm text-muted-foreground leading-6">
-                    村民姓名、生日和婚恋类型直接解析自游戏内容文件；好感度、送礼次数和今日交互状态直接解析自当前存档。
-                  </p>
-                </div>
               </CardContent>
             </Card>
           ) : (

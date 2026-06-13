@@ -9,16 +9,16 @@ mod utils;
 
 use std::{fs, sync::Mutex, thread, time::Duration};
 
-use crate::farmer_avatar::get_npc_portraits;
 use crate::download_control::{pause_download_task, resume_download_task, DownloadControlState};
+use crate::farmer_avatar::get_npc_portraits;
 use crate::game::{auto_detect_game_dir, get_game_version, launch_game};
 use crate::game_data::{
     get_calendar_game_data, get_crop_game_data, get_fishing_map_data, get_fishing_map_detail,
-    get_npc_game_data,
+    get_item_game_data, get_npc_game_data,
 };
 use crate::mods::{
-    apply_profile, check_nexus_login_status, close_scraper_window, delete_mod, delete_profile, export_profile,
-    export_profile_to_file, fetch_nexus_api_key, fetch_nexus_download_metadata,
+    apply_profile, check_nexus_login_status, close_scraper_window, delete_mod, delete_profile,
+    export_profile, export_profile_to_file, fetch_nexus_api_key, fetch_nexus_download_metadata,
     fetch_smapi_compatibility_mods, import_profile, import_profile_from_file, install_mod_from_zip,
     install_nexus_mod, list_installed_mods, list_profiles, logout_nexus, open_nexus_login_window,
     open_nexus_ranking_scraper, open_scraper_window, save_mod_config, save_profile, toggle_mod,
@@ -283,6 +283,7 @@ pub fn run() {
             get_game_version,
             get_calendar_game_data,
             get_crop_game_data,
+            get_item_game_data,
             get_fishing_map_data,
             get_fishing_map_detail,
             get_npc_game_data,

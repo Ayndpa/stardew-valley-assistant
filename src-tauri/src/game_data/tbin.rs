@@ -1,10 +1,8 @@
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use super::xnb::{load_xnb_payload, XnbPayloadReader, require_reader, load_xnb_texture};
-use super::image_utils::{
-    Canvas, Texture, blend_pixel, object_texture_key, resolve_object_texture_path,
-};
+use super::image_utils::{object_texture_key, resolve_object_texture_path, Canvas, Texture};
+use super::xnb::{load_xnb_payload, load_xnb_texture, XnbPayloadReader};
 
 pub const MAX_MAP_PREVIEW_PIXELS: usize = 16_000_000;
 

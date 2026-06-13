@@ -207,8 +207,9 @@ pub fn download_file_with_headers_and_progress(
                         break;
                     }
 
-                    file.write_all(&buffer[..read])
-                        .map_err(|e| format!("Failed to write file to {}: {}", dest.display(), e))?;
+                    file.write_all(&buffer[..read]).map_err(|e| {
+                        format!("Failed to write file to {}: {}", dest.display(), e)
+                    })?;
                     downloaded_bytes += read as u64;
 
                     let progress = total_bytes
@@ -281,18 +282,20 @@ pub fn extract_zip(zip_path: &Path, dest_dir: &Path) -> Result<(), String> {
         .map_err(|e| format!("Failed to open zip file {}: {}", zip_path.display(), e))?;
 
     let mut signature = [0u8; 4];
-    let signature_len = file
-        .read(&mut signature)
-        .map_err(|e| format!("Failed to read file signature {}: {}", zip_path.display(), e))?;
+    let signature_len = file.read(&mut signature).map_err(|e| {
+        format!(
+            "Failed to read file signature {}: {}",
+            zip_path.display(),
+            e
+        )
+    })?;
     file.seek(SeekFrom::Start(0))
         .map_err(|e| format!("Failed to rewind file {}: {}", zip_path.display(), e))?;
 
     let is_zip = signature_len >= 4
         && matches!(
             signature,
-            [0x50, 0x4B, 0x03, 0x04]
-                | [0x50, 0x4B, 0x05, 0x06]
-                | [0x50, 0x4B, 0x07, 0x08]
+            [0x50, 0x4B, 0x03, 0x04] | [0x50, 0x4B, 0x05, 0x06] | [0x50, 0x4B, 0x07, 0x08]
         );
     if !is_zip {
         return Err(format!(

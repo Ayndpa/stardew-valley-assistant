@@ -22,6 +22,7 @@ import {
   Fish,
   PencilRuler,
   ArchiveRestore,
+  Package,
 } from "lucide-react"
 
 interface SidebarProps {
@@ -48,6 +49,7 @@ interface SidebarProps {
 const navItems: { id: Page; label: string; icon: React.ReactNode }[] = [
   { id: "dashboard", label: "仪表盘", icon: <LayoutDashboard /> },
   { id: "crops", label: "作物管理", icon: <Sprout /> },
+  { id: "items", label: "物品百科", icon: <Package className="h-4 w-4" /> },
   { id: "npcs", label: "村民关系", icon: <Users /> },
   { id: "calendar", label: "节日日历", icon: <CalendarDays /> },
   { id: "fishingMap", label: "钓鱼地图", icon: <Fish /> },

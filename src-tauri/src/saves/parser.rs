@@ -1,12 +1,9 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
 use tokio::task;
 
+use super::xml_utils::{extract_tag_i32, extract_tag_string, extract_tag_u64};
 use crate::farmer_avatar::{render_farmer_avatar, FarmerAppearance};
-use super::xml_utils::{
-    extract_tag_i32, extract_tag_string, extract_tag_u64, get_tag_value,
-};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]

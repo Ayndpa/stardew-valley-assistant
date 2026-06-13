@@ -1,10 +1,10 @@
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
-use serde::{Deserialize, Serialize};
 
 use super::xnb::{
-    load_string_dictionary_best_effort, load_localized_string_tables, load_xnb_payload,
-    XnbPayloadReader, require_reader,
+    load_localized_string_tables, load_string_dictionary_best_effort, load_xnb_payload,
+    require_reader, XnbPayloadReader,
 };
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -286,7 +286,10 @@ pub fn season_name(season: i32) -> &'static str {
     }
 }
 
-pub fn resolve_display_name(token: &str, object_strings: &HashMap<String, String>) -> Option<String> {
+pub fn resolve_display_name(
+    token: &str,
+    object_strings: &HashMap<String, String>,
+) -> Option<String> {
     if let Some(key) = token
         .strip_prefix("[LocalizedText Strings\\Objects:")
         .and_then(|value| value.strip_suffix(']'))

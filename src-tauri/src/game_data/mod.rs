@@ -1,19 +1,21 @@
-pub mod image_utils;
-pub mod xnb;
-pub mod tbin;
-pub mod fishing;
-pub mod crops;
 pub mod calendar;
+pub mod crops;
+pub mod fishing;
+pub mod image_utils;
+pub mod items;
 pub mod npc;
+pub mod tbin;
+pub mod xnb;
 
+use crate::game::find_stardew_valley;
 use std::fs;
 use std::path::{Path, PathBuf};
-use crate::game::find_stardew_valley;
 
-pub use crops::{get_crop_game_data, CropGameData, CropEncyclopediaEntry, CropLookup};
-pub use calendar::{get_calendar_game_data, CalendarGameData, CalendarFestival, CalendarBirthday};
-pub use npc::{get_npc_game_data, NpcGameData, NpcProfile};
-pub use fishing::{get_fishing_map_data, get_fishing_map_detail, FishingMapData, FishingMapDetail, FishingTile, FishingMapSummary};
+pub use calendar::get_calendar_game_data;
+pub use crops::get_crop_game_data;
+pub use fishing::{get_fishing_map_data, get_fishing_map_detail};
+pub use items::get_item_game_data;
+pub use npc::get_npc_game_data;
 
 pub fn locate_content_dir(game_dir: Option<&str>) -> Result<PathBuf, String> {
     let mut candidates = Vec::new();
@@ -117,8 +119,23 @@ mod tests {
         assert_eq!(crops["472"].harvest_item_id, "24");
         assert_eq!(objects["24"].price, 35);
         let mut texture_cache = HashMap::new();
-        let icon = image_utils::render_object_icon(&content, &objects["24"], &mut texture_cache).unwrap();
+        let icon =
+            image_utils::render_object_icon(&content, &objects["24"], &mut texture_cache).unwrap();
         assert!(icon.starts_with("data:image/png;base64,"));
+    }
+
+    #[test]
+    fn reads_object_game_data_fields_from_dev_source() {
+        let Some(content) = dev_content_dir() else {
+            return;
+        };
+        let objects = xnb::load_objects_xnb(&content.join("Data").join("Objects.xnb")).unwrap();
+        let parsnip = objects.get("24").unwrap();
+
+        assert!(!parsnip.name.is_empty());
+        assert!(parsnip.price >= 0);
+        assert!(parsnip.category <= 0);
+        assert!(parsnip.can_be_trashed);
     }
 
     #[test]
@@ -183,7 +200,14 @@ mod tests {
         };
         let localized_tables = xnb::load_localized_string_tables(
             &content,
-            &["Characters", "NPCNames", "UI", "1_6_Strings", "StringsFromCSFiles", "Objects"],
+            &[
+                "Characters",
+                "NPCNames",
+                "UI",
+                "1_6_Strings",
+                "StringsFromCSFiles",
+                "Objects",
+            ],
         );
         let npcs = npc::load_npc_profiles(&content, &localized_tables).unwrap();
 

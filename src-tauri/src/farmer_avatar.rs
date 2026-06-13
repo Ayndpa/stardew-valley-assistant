@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::game::find_stardew_valley;
-use crate::game_data::image_utils::{Pixel, Texture, Canvas, Rect};
+use crate::game_data::image_utils::{Canvas, Pixel, Rect, Texture};
 use crate::game_data::xnb::load_xnb_texture;
 
 const SPRITE_SCALE: i32 = 4;
@@ -122,7 +122,6 @@ fn from_rgba(color: RgbaColor) -> Pixel {
         a: color.a,
     }
 }
-
 
 pub fn render_farmer_avatar(
     appearance: &FarmerAppearance,
@@ -707,8 +706,6 @@ fn height_offset(appearance: &FarmerAppearance) -> i32 {
     }
 }
 
-
-
 fn change_brightness(color: Pixel, brightness: i32) -> Pixel {
     let blue_delta = if brightness > 0 {
         brightness * 5 / 6
@@ -727,7 +724,6 @@ fn change_brightness(color: Pixel, brightness: i32) -> Pixel {
 fn add_clamped(value: u8, delta: i32) -> u8 {
     (value as i32 + delta).clamp(0, 255) as u8
 }
-
 
 fn extract_tag_value<'a>(xml: &'a str, tag: &str) -> Option<&'a str> {
     let start_tag = format!("<{}>", tag);

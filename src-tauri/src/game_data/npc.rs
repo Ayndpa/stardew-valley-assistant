@@ -1,6 +1,6 @@
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
-use serde::{Deserialize, Serialize};
 
 use super::calendar::resolve_localized_text;
 use super::xnb::{
@@ -31,7 +31,14 @@ pub fn get_npc_game_data(game_dir: Option<String>) -> Result<NpcGameData, String
     let content_dir = super::locate_content_dir(game_dir.as_deref())?;
     let localized_tables = load_localized_string_tables(
         &content_dir,
-        &["Characters", "NPCNames", "UI", "1_6_Strings", "StringsFromCSFiles", "Objects"],
+        &[
+            "Characters",
+            "NPCNames",
+            "UI",
+            "1_6_Strings",
+            "StringsFromCSFiles",
+            "Objects",
+        ],
     );
     let mut npcs = load_npc_profiles(&content_dir, &localized_tables)?;
 
@@ -44,15 +51,22 @@ pub fn load_npc_profiles(
     content_dir: &Path,
     localized_tables: &HashMap<String, HashMap<String, String>>,
 ) -> Result<Vec<NpcProfile>, String> {
-    let gift_tastes = load_string_dictionary_xnb(&content_dir.join("Data").join("NPCGiftTastes.xnb"))?;
+    let gift_tastes =
+        load_string_dictionary_xnb(&content_dir.join("Data").join("NPCGiftTastes.xnb"))?;
     let objects = load_objects_xnb(&content_dir.join("Data").join("Objects.xnb"))?;
     let universal_loved = parse_taste_labels(
-        gift_tastes.get("Universal_Love").map(String::as_str).unwrap_or_default(),
+        gift_tastes
+            .get("Universal_Love")
+            .map(String::as_str)
+            .unwrap_or_default(),
         &objects,
         localized_tables,
     );
     let universal_hated = parse_taste_labels(
-        gift_tastes.get("Universal_Hate").map(String::as_str).unwrap_or_default(),
+        gift_tastes
+            .get("Universal_Hate")
+            .map(String::as_str)
+            .unwrap_or_default(),
         &objects,
         localized_tables,
     );
@@ -152,12 +166,18 @@ fn taste_token_label(
     }
 
     if let Some(object) = objects.get(token) {
-        return Some(resolve_localized_text(&object.display_name, localized_tables));
+        return Some(resolve_localized_text(
+            &object.display_name,
+            localized_tables,
+        ));
     }
 
     if let Some(stripped) = token.strip_prefix("(O)") {
         if let Some(object) = objects.get(stripped).or_else(|| objects.get(token)) {
-            return Some(resolve_localized_text(&object.display_name, localized_tables));
+            return Some(resolve_localized_text(
+                &object.display_name,
+                localized_tables,
+            ));
         }
     }
 

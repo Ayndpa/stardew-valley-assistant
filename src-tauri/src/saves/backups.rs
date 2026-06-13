@@ -28,7 +28,11 @@ pub fn current_backup_timestamp() -> Result<u64, String> {
         .map(|duration| duration.as_secs())
 }
 
-pub fn create_backup_with_timestamp(path: &PathBuf, contents: &str, timestamp: u64) -> Result<(), String> {
+pub fn create_backup_with_timestamp(
+    path: &PathBuf,
+    contents: &str,
+    timestamp: u64,
+) -> Result<(), String> {
     let file_name = path
         .file_name()
         .and_then(|name| name.to_str())
@@ -72,8 +76,13 @@ fn list_save_backups_sync(id: String) -> Result<SaveBackupCatalog, String> {
     let main_prefix = format!("{}.backup-", id);
     let mut backups = std::collections::BTreeMap::<u64, SaveBackupEntry>::new();
 
-    let entries = fs::read_dir(&save_folder)
-        .map_err(|e| format!("Failed to read save folder {}: {}", save_folder.display(), e))?;
+    let entries = fs::read_dir(&save_folder).map_err(|e| {
+        format!(
+            "Failed to read save folder {}: {}",
+            save_folder.display(),
+            e
+        )
+    })?;
 
     for entry in entries {
         let entry = match entry {
@@ -86,7 +95,8 @@ fn list_save_backups_sync(id: String) -> Result<SaveBackupCatalog, String> {
         }
 
         let file_name = entry.file_name().to_string_lossy().to_string();
-        let backup_match = if let Some(timestamp) = parse_backup_timestamp(&file_name, info_prefix) {
+        let backup_match = if let Some(timestamp) = parse_backup_timestamp(&file_name, info_prefix)
+        {
             Some((timestamp, true))
         } else {
             parse_backup_timestamp(&file_name, &main_prefix).map(|timestamp| (timestamp, false))

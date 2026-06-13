@@ -1,8 +1,7 @@
+use serde_json::Value;
 use std::fs;
 use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
-use serde_json::Value;
-use tauri::Emitter;
 use tauri::Manager;
 
 use super::browser::{
@@ -29,20 +28,15 @@ pub async fn open_nexus_login_window(app: tauri::AppHandle) -> Result<(), String
     tauri::async_runtime::spawn(async move {
         use tauri::Emitter;
 
-        let window = match create_nexus_webview(
-            &handle,
-            "nexus-login",
-            "NexusMods 登录",
-            url,
-            true,
-            true,
-        ) {
-            Ok(w) => w,
-            Err(e) => {
-                println!("[NexusLogin] Failed to build login window: {:?}", e);
-                return;
-            }
-        };
+        let window =
+            match create_nexus_webview(&handle, "nexus-login", "NexusMods 登录", url, true, true)
+            {
+                Ok(w) => w,
+                Err(e) => {
+                    println!("[NexusLogin] Failed to build login window: {:?}", e);
+                    return;
+                }
+            };
 
         let poll_window = window.clone();
         let poll_handle = handle.clone();

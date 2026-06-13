@@ -1,8 +1,8 @@
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use image::codecs::png::PngEncoder;
 use image::{ColorType, ImageEncoder};
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 pub const ITEM_ICON_SIZE: usize = 16;
 pub const DEFAULT_OBJECT_TEXTURE: &str = "Maps/springobjects";
@@ -212,7 +212,10 @@ pub fn object_texture_key(texture: &str) -> String {
     }
 }
 
-pub fn resolve_object_texture_path(content_dir: &Path, texture_key: &str) -> Result<PathBuf, String> {
+pub fn resolve_object_texture_path(
+    content_dir: &Path,
+    texture_key: &str,
+) -> Result<PathBuf, String> {
     let mut candidates = Vec::new();
     push_texture_path_candidate(&mut candidates, content_dir, texture_key);
 

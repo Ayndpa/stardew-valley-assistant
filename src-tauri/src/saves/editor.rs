@@ -2,12 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use tokio::task;
 
-use super::backups::{
-    create_backup_with_timestamp, current_backup_timestamp, ensure_save_paths,
-};
-use super::parser::{
-    parse_friendship_data, FriendshipInfo, SaveSummary,
-};
+use super::backups::{create_backup_with_timestamp, current_backup_timestamp, ensure_save_paths};
+use super::parser::{parse_friendship_data, FriendshipInfo, SaveSummary};
 use super::xml_utils::{
     extract_tag_i32, extract_tag_string, extract_tag_u64, replace_first_tag_value,
 };
@@ -182,8 +178,10 @@ fn update_save_editor_data_sync(update: SaveEditorUpdate) -> Result<SaveEditorDa
 
     for friendship in &update.friendships {
         let clamped_points = friendship.points.clamp(0, 2500);
-        updated_info = replace_friendship_points(&updated_info, &friendship.npc_name, clamped_points);
-        updated_main = replace_friendship_points(&updated_main, &friendship.npc_name, clamped_points);
+        updated_info =
+            replace_friendship_points(&updated_info, &friendship.npc_name, clamped_points);
+        updated_main =
+            replace_friendship_points(&updated_main, &friendship.npc_name, clamped_points);
     }
 
     fs::write(&save_game_info_path, updated_info)

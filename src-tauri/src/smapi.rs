@@ -354,7 +354,15 @@ pub async fn install_smapi(
     download_file_with_headers_and_progress(&app, &task_id, &download_url, &zip_path, &[])?;
 
     // Extract the downloaded installer by file content, not extension.
-    emit_download_progress(&app, &task_id, "extracting", 100.0, 0, None, "正在解压 SMAPI 安装包...");
+    emit_download_progress(
+        &app,
+        &task_id,
+        "extracting",
+        100.0,
+        0,
+        None,
+        "正在解压 SMAPI 安装包...",
+    );
     let extract_dir = temp_dir.join("extracted");
     fs::create_dir_all(&extract_dir).map_err(|e| format!("无法创建解压文件夹: {}", e))?;
     extract_zip(&zip_path, &extract_dir).map_err(|e| {
@@ -466,7 +474,15 @@ pub async fn install_smapi(
     })?;
 
     // Copy the extracted SMAPI files to game folder
-    emit_download_progress(&app, &task_id, "installing", 100.0, 0, None, "正在写入游戏目录...");
+    emit_download_progress(
+        &app,
+        &task_id,
+        "installing",
+        100.0,
+        0,
+        None,
+        "正在写入游戏目录...",
+    );
     copy_dir_all(&install_extract_dir, game_path)
         .map_err(|e| format!("拷贝文件到游戏目录失败: {}", e))?;
 

@@ -1,9 +1,9 @@
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::UNIX_EPOCH;
-use serde::{Deserialize, Serialize};
 use tokio::task;
 
 use super::tbin::{load_tbin_map_from_xnb, render_tbin_map_preview};
@@ -265,7 +265,9 @@ pub fn get_or_render_fishing_map_preview(
     preview
 }
 
-pub fn fingerprint_fishing_map_files(paths: &[PathBuf]) -> Result<FishingMapCacheFingerprint, String> {
+pub fn fingerprint_fishing_map_files(
+    paths: &[PathBuf],
+) -> Result<FishingMapCacheFingerprint, String> {
     let mut total_size = 0u64;
     let mut latest_modified_ms = 0u128;
 
@@ -287,7 +289,10 @@ pub fn fingerprint_fishing_map_files(paths: &[PathBuf]) -> Result<FishingMapCach
     })
 }
 
-pub fn parse_fishing_map(content_dir: &Path, path: &Path) -> Result<Option<FishingMapDetail>, String> {
+pub fn parse_fishing_map(
+    content_dir: &Path,
+    path: &Path,
+) -> Result<Option<FishingMapDetail>, String> {
     let Some(map) = load_tbin_map_from_xnb(path)? else {
         return Ok(None);
     };

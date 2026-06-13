@@ -50,7 +50,13 @@ pub fn is_paused(app: &AppHandle, task_id: &str) -> bool {
         .unwrap_or(false)
 }
 
-pub fn wait_if_paused(app: &AppHandle, task_id: &str, progress: f64, downloaded: u64, total: Option<u64>) {
+pub fn wait_if_paused(
+    app: &AppHandle,
+    task_id: &str,
+    progress: f64,
+    downloaded: u64,
+    total: Option<u64>,
+) {
     let mut announced = false;
     while is_paused(app, task_id) {
         if !announced {
@@ -82,7 +88,10 @@ pub fn wait_if_paused(app: &AppHandle, task_id: &str, progress: f64, downloaded:
 }
 
 #[tauri::command]
-pub fn pause_download_task(task_id: String, state: State<'_, DownloadControlState>) -> Result<(), String> {
+pub fn pause_download_task(
+    task_id: String,
+    state: State<'_, DownloadControlState>,
+) -> Result<(), String> {
     let mut paused = state
         .paused
         .lock()
@@ -92,7 +101,10 @@ pub fn pause_download_task(task_id: String, state: State<'_, DownloadControlStat
 }
 
 #[tauri::command]
-pub fn resume_download_task(task_id: String, state: State<'_, DownloadControlState>) -> Result<(), String> {
+pub fn resume_download_task(
+    task_id: String,
+    state: State<'_, DownloadControlState>,
+) -> Result<(), String> {
     let mut paused = state
         .paused
         .lock()

@@ -1,10 +1,10 @@
+use lzxd::{Lzxd, WindowSize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use lzxd::{Lzxd, WindowSize};
 
+use super::calendar::{resolve_localized_text, season_name, CalendarBirthday, CalendarFestival};
 use super::image_utils::{Pixel, Texture};
-use super::calendar::{CalendarFestival, CalendarBirthday, resolve_localized_text, season_name};
 use super::npc::NpcProfile;
 
 pub const XNB_FLAG_COMPRESSED_LZX: u8 = 0x80;
@@ -25,9 +25,15 @@ pub struct RawCropData {
 pub struct RawObjectData {
     pub name: String,
     pub display_name: String,
+    pub description: String,
+    pub object_type: String,
+    pub category: i32,
     pub price: i32,
     pub texture: String,
     pub sprite_index: i32,
+    pub edibility: i32,
+    pub can_be_given_as_gift: bool,
+    pub can_be_trashed: bool,
 }
 
 pub fn require_reader(
@@ -201,21 +207,21 @@ impl<'a> XnbPayloadReader<'a> {
     pub fn read_object_data(&mut self) -> Result<RawObjectData, String> {
         let name = self.read_object_string_any()?;
         let display_name = self.read_object_string_any()?;
-        let _description = self.read_object_string_any()?;
-        let _object_type = self.read_object_string_any()?;
-        let _category = self.read_i32()?;
+        let description = self.read_object_string_any()?;
+        let object_type = self.read_object_string_any()?;
+        let category = self.read_i32()?;
         let price = self.read_i32()?;
         let texture = self.read_object_string_any()?;
         let sprite_index = self.read_i32()?;
         let _color_overlay_from_next_index = self.read_bool()?;
-        let _edibility = self.read_i32()?;
+        let edibility = self.read_i32()?;
         let _is_drink = self.read_bool()?;
         self.skip_nullable_object_buffs()?;
         let _geode_drops_default_items = self.read_bool()?;
         self.skip_nullable_geode_drops()?;
         self.skip_nullable_artifact_spot_chances()?;
-        let _can_be_given_as_gift = self.read_bool()?;
-        let _can_be_trashed = self.read_bool()?;
+        let can_be_given_as_gift = self.read_bool()?;
+        let can_be_trashed = self.read_bool()?;
         let _exclude_from_fishing_collection = self.read_bool()?;
         let _exclude_from_shipping_collection = self.read_bool()?;
         let _exclude_from_random_sale = self.read_bool()?;
@@ -225,9 +231,15 @@ impl<'a> XnbPayloadReader<'a> {
         Ok(RawObjectData {
             name,
             display_name,
+            description,
+            object_type,
+            category,
             price,
             texture,
             sprite_index,
+            edibility,
+            can_be_given_as_gift,
+            can_be_trashed,
         })
     }
 

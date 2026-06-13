@@ -4,8 +4,7 @@ use std::time::Instant;
 use tokio::task;
 
 use super::xml_utils::{
-    extract_direct_child_blocks, extract_tag_i32, extract_tag_string,
-    get_direct_child_tag_value,
+    extract_direct_child_blocks, extract_tag_i32, extract_tag_string, get_direct_child_tag_value,
 };
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

@@ -1,8 +1,7 @@
+use serde_json::Value;
 use std::fs;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
-use serde_json::Value;
-use tauri::Emitter;
 use tauri::Manager;
 
 use super::browser::{
@@ -37,25 +36,23 @@ pub async fn open_nexus_ranking_scraper(
     tauri::async_runtime::spawn(async move {
         use tauri::Emitter;
 
-        let window =
-            match create_nexus_webview(
-                &handle,
-                &window_label,
-                "Nexus 模组加载中...",
-                url,
-                false,
-                true,
-            )
-            {
-                Ok(w) => w,
-                Err(e) => {
-                    println!(
-                        "[RankingScraper] Failed to build ranking scraper window: {:?}",
-                        e
-                    );
-                    return;
-                }
-            };
+        let window = match create_nexus_webview(
+            &handle,
+            &window_label,
+            "Nexus 模组加载中...",
+            url,
+            false,
+            true,
+        ) {
+            Ok(w) => w,
+            Err(e) => {
+                println!(
+                    "[RankingScraper] Failed to build ranking scraper window: {:?}",
+                    e
+                );
+                return;
+            }
+        };
 
         let poll_window = window.clone();
         let poll_handle = handle.clone();
@@ -330,9 +327,7 @@ pub async fn open_nexus_ranking_scraper(
 }
 
 #[tauri::command]
-pub async fn fetch_smapi_compatibility_mods(
-    app: tauri::AppHandle,
-) -> Result<Vec<Value>, String> {
+pub async fn fetch_smapi_compatibility_mods(app: tauri::AppHandle) -> Result<Vec<Value>, String> {
     // Determine cache path in app data directory
     let cache_dir = app
         .path()

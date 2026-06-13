@@ -1,22 +1,19 @@
-use log::{debug, error, info, warn};
-use serde_json::Value;
+use log::{error, info, warn};
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::OnceLock;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tauri::Emitter;
 use tauri::Manager;
 
-use crate::download_control::emit_download_progress;
-use super::url_utils::{
-    extract_nexus_download_params, looks_like_nexus_files_page,
-    looks_like_direct_download_url, is_zip_file, extract_nexus_mod_id,
-};
 use super::browser_scraper::{
-    fetch_nexus_download_metadata_via_browser,
-    resolve_nexus_download_params_from_files_tab_widget,
+    fetch_nexus_download_metadata_via_browser, resolve_nexus_download_params_from_files_tab_widget,
 };
+use super::url_utils::{
+    extract_nexus_download_params, extract_nexus_mod_id, is_zip_file,
+    looks_like_direct_download_url, looks_like_nexus_files_page,
+};
+use crate::download_control::emit_download_progress;
 
 static DOWNLOAD_COUNTER: OnceLock<AtomicU64> = OnceLock::new();
 
@@ -44,7 +41,6 @@ pub async fn fetch_nexus_download_metadata(
 
     fetch_nexus_download_metadata_via_browser(app, &referer_url).await
 }
-
 
 fn parse_download_url_from_payload(payload: &serde_json::Value) -> Option<String> {
     const KEYS: [&str; 6] = ["url", "download_url", "URI", "uri", "download", "link"];
@@ -132,7 +128,6 @@ pub fn parse_download_url_from_body(text: &str) -> Option<String> {
     parse_download_url_from_payload(&value).or_else(|| parse_download_url_from_text(text))
 }
 
-
 async fn download_nexus_file_to_path(
     app: tauri::AppHandle,
     task_id: &str,
@@ -141,10 +136,14 @@ async fn download_nexus_file_to_path(
     referer_url: &str,
     zip_path: &std::path::Path,
 ) -> Result<(), String> {
-    let page_download_url =
-        super::browser_scraper::fetch_nexus_download_url_via_browser(app.clone(), game_id, file_id, referer_url)
-            .await
-            .map_err(|err| format!("获取网页下载链接失败: {}", err))?;
+    let page_download_url = super::browser_scraper::fetch_nexus_download_url_via_browser(
+        app.clone(),
+        game_id,
+        file_id,
+        referer_url,
+    )
+    .await
+    .map_err(|err| format!("获取网页下载链接失败: {}", err))?;
 
     let target_url = if page_download_url.starts_with('/') {
         format!("https://www.nexusmods.com{}", page_download_url)
@@ -168,7 +167,6 @@ async fn download_nexus_file_to_path(
 
     crate::utils::download_file_with_headers_and_progress(&app, task_id, &target_url, zip_path, &[])
 }
-
 
 #[tauri::command]
 pub async fn install_nexus_mod(
@@ -237,7 +235,15 @@ pub async fn install_nexus_mod(
             "[NexusInstall] Parsed download params: game_id={}, file_id={}, referer={}",
             game_id, file_id, referer_url
         );
-        download_nexus_file_to_path(app.clone(), &task_id, &game_id, &file_id, &referer_url, &zip_path).await
+        download_nexus_file_to_path(
+            app.clone(),
+            &task_id,
+            &game_id,
+            &file_id,
+            &referer_url,
+            &zip_path,
+        )
+        .await
     } else if is_http_url && looks_like_nexus_files_page(&url) {
         let (game_id, file_id, _game_domain, referer_url) =
             resolve_nexus_download_params_from_files_tab_widget(app.clone(), &url)
@@ -247,7 +253,15 @@ pub async fn install_nexus_mod(
             "[NexusInstall] Resolved missing file_id from files tab widget: game_id={}, file_id={}, referer={}",
             game_id, file_id, referer_url
         );
-        download_nexus_file_to_path(app.clone(), &task_id, &game_id, &file_id, &referer_url, &zip_path).await
+        download_nexus_file_to_path(
+            app.clone(),
+            &task_id,
+            &game_id,
+            &file_id,
+            &referer_url,
+            &zip_path,
+        )
+        .await
     } else if is_http_url && looks_like_direct_download_url(&url) {
         info!(
             "[NexusInstall] Using direct HTTP download URL without browser resolution: {}",
@@ -287,7 +301,15 @@ pub async fn install_nexus_mod(
         cleanup();
         format!("创建解压目录失败: {}", e)
     })?;
-    emit_download_progress(&app, &task_id, "extracting", 100.0, 0, None, "正在解压模组压缩包...");
+    emit_download_progress(
+        &app,
+        &task_id,
+        "extracting",
+        100.0,
+        0,
+        None,
+        "正在解压模组压缩包...",
+    );
     if let Err(err) = crate::utils::extract_zip(&zip_path, &extract_dir) {
         error!("[NexusInstall] Extract zip failed: {}", err);
         cleanup();
@@ -295,7 +317,15 @@ pub async fn install_nexus_mod(
     }
 
     let mut installed_any = false;
-    emit_download_progress(&app, &task_id, "installing", 100.0, 0, None, "正在安装到 Mods 目录...");
+    emit_download_progress(
+        &app,
+        &task_id,
+        "installing",
+        100.0,
+        0,
+        None,
+        "正在安装到 Mods 目录...",
+    );
     let entries = fs::read_dir(&extract_dir).map_err(|e| format!("读取解压目录失败: {}", e))?;
     for entry in entries {
         let entry = entry.map_err(|e| format!("读取解压项失败: {}", e))?;
@@ -410,4 +440,3 @@ mod tests {
         ));
     }
 }
-

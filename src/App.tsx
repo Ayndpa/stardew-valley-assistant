@@ -2,6 +2,7 @@ import { lazy, Suspense, useState, useEffect, useRef, useCallback } from "react"
 import { Sidebar } from "@/components/Sidebar"
 import { Dashboard } from "@/pages/Dashboard"
 import { Crops } from "@/pages/Crops"
+import { Items } from "@/pages/Items"
 import { Calendar } from "@/pages/Calendar"
 import { FishingMap } from "@/pages/FishingMap"
 import { SaveEditor } from "@/pages/SaveEditor"
@@ -19,7 +20,7 @@ import { useNxmDeepLink } from "@/hooks/useNxmDeepLink"
 import { useGlobalDragAndDrop } from "@/hooks/useGlobalDragAndDrop"
 import "./index.css"
 
-export type Page = "dashboard" | "crops" | "npcs" | "calendar" | "fishingMap" | "saveEditor" | "saveBackups" | "settings" | "mods" | "onlineMods" | "downloads"
+export type Page = "dashboard" | "crops" | "items" | "npcs" | "calendar" | "fishingMap" | "saveEditor" | "saveBackups" | "settings" | "mods" | "onlineMods" | "downloads"
 
 export interface SaveSummary {
   id: string
@@ -217,6 +218,8 @@ function App() {
         return <Dashboard selectedSaveId={selectedSaveId} />
       case "crops":
         return <Crops selectedSaveId={selectedSaveId} />
+      case "items":
+        return <Items />
       case "npcs":
         return (
           <Suspense
@@ -365,5 +368,4 @@ function App() {
 }
 
 export default App
-
 

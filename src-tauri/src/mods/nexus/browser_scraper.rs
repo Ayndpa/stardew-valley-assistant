@@ -1,19 +1,18 @@
-use log::{info, error, warn, debug};
+use log::{debug, error, info, warn};
 use serde_json::Value;
-use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::OnceLock;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tauri::Emitter;
 use tauri::Manager;
 
 use super::browser::{
     check_cloudflare_challenge, create_nexus_webview, eval_js_timeout,
     update_window_visibility_for_cf,
 };
-use super::url_utils::{
-    extract_nexus_mod_id, extract_game_domain, game_id_from_domain, extract_nexus_download_params,
-};
 use super::download::NexusDownloadMetadata;
+use super::url_utils::{
+    extract_game_domain, extract_nexus_download_params, extract_nexus_mod_id, game_id_from_domain,
+};
 
 static DOWNLOAD_COUNTER: OnceLock<AtomicU64> = OnceLock::new();
 
@@ -31,14 +30,8 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
         use tauri::Emitter;
 
         let window =
-            match create_nexus_webview(
-                &handle,
-                &window_label,
-                "Nexus 验证中...",
-                url,
-                false,
-                true,
-            ) {
+            match create_nexus_webview(&handle, &window_label, "Nexus 验证中...", url, false, true)
+            {
                 Ok(w) => w,
                 Err(e) => {
                     error!(
@@ -257,9 +250,12 @@ pub async fn close_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resu
             "[Scraper] Closing Nexus scraper window for mod_id={}, label={}",
             mod_id, window_label
         );
-        window
-            .destroy()
-            .map_err(|e| format!("Failed to destroy WebView window ({}): {:?}", window_label, e))?;
+        window.destroy().map_err(|e| {
+            format!(
+                "Failed to destroy WebView window ({}): {:?}",
+                window_label, e
+            )
+        })?;
     }
     Ok(())
 }
