@@ -2,6 +2,8 @@ use std::fs;
 use std::io::Read;
 use std::path::Path;
 
+use log::{error, info, warn};
+
 #[tauri::command]
 pub fn open_in_file_manager(path: String) -> Result<(), String> {
     let p = Path::new(&path);
@@ -41,6 +43,12 @@ pub fn download_file_with_headers(
     dest: &Path,
     headers: &[(&str, &str)],
 ) -> Result<(), String> {
+    info!(
+        "[HTTPDownload] Starting download: url={}, dest={}, headers={}",
+        url,
+        dest.display(),
+        headers.len()
+    );
     let agent = ureq::AgentBuilder::new()
         .timeout_connect(std::time::Duration::from_secs(15))
         .timeout_read(std::time::Duration::from_secs(60))
@@ -70,6 +78,12 @@ pub fn download_file_with_headers(
                 fs::write(dest, &bytes)
                     .map_err(|e| format!("Failed to write file to {}: {}", dest.display(), e))?;
 
+                info!(
+                    "[HTTPDownload] Download succeeded: url={}, bytes={}, dest={}",
+                    url,
+                    bytes.len(),
+                    dest.display()
+                );
                 return Ok(());
             }
             Err(e) => {
@@ -77,6 +91,7 @@ pub fn download_file_with_headers(
                     "HTTP request failed (attempt {}/{}): {}",
                     attempt, max_retries, e
                 );
+                warn!("[HTTPDownload] {}", last_err);
                 if attempt < max_retries {
                     std::thread::sleep(std::time::Duration::from_secs(2));
                 }
@@ -84,6 +99,10 @@ pub fn download_file_with_headers(
         }
     }
 
+    error!(
+        "[HTTPDownload] Download failed after retries: url={}, error={}",
+        url, last_err
+    );
     Err(last_err)
 }
 

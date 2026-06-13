@@ -1,3 +1,4 @@
+use log::{debug, error, info, warn};
 use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
@@ -104,7 +105,7 @@ fn eval_js_timeout(win: &tauri::WebviewWindow, js: &str, timeout_secs: u64) -> O
     if let Err(e) = win.eval_with_callback(js, move |result| {
         let _ = tx.send(result);
     }) {
-        println!(
+        warn!(
             "[eval_js_timeout] ({}) eval_with_callback error: {:?}",
             win.label(),
             e
@@ -114,7 +115,7 @@ fn eval_js_timeout(win: &tauri::WebviewWindow, js: &str, timeout_secs: u64) -> O
     match rx.recv_timeout(std::time::Duration::from_secs(timeout_secs)) {
         Ok(res) => Some(res),
         Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-            println!(
+            warn!(
                 "[eval_js_timeout] ({}) JS evaluation timed out after {} seconds",
                 win.label(),
                 timeout_secs
@@ -1304,10 +1305,12 @@ pub fn logout_nexus(app: tauri::AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Result<(), String> {
+    info!("[Scraper] Opening Nexus scraper for mod_id={}", mod_id);
     let url_str = format!("https://www.nexusmods.com/stardewvalley/mods/{}", mod_id);
     let url = url_str.parse::<tauri::Url>().map_err(|e| e.to_string())?;
 
     let handle = app.clone();
+    let request_mod_id = mod_id.clone();
 
     tauri::async_runtime::spawn(async move {
         use tauri::Emitter;
@@ -1316,13 +1319,17 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
             match create_nexus_webview(&handle, "nexus-scraper", "Nexus 验证中...", url, false) {
                 Ok(w) => w,
                 Err(e) => {
-                    println!("Failed to build scraper window: {:?}", e);
+                    error!(
+                        "[Scraper] Failed to build scraper window for mod_id={}: {:?}",
+                        request_mod_id, e
+                    );
                     return;
                 }
             };
 
         let poll_window = window.clone();
         let poll_handle = handle.clone();
+        let poll_mod_id = request_mod_id.clone();
         tauri::async_runtime::spawn(async move {
             let timeout = std::time::Instant::now() + std::time::Duration::from_secs(180);
             let mut cf_shown = false;
@@ -1336,16 +1343,23 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
             loop {
                 // Check if window still exists
                 if poll_handle.get_webview_window("nexus-scraper").is_none() {
-                    println!("[Scraper] Window was destroyed, exiting loop");
+                    info!(
+                        "[Scraper] Window destroyed, exiting loop for mod_id={}",
+                        poll_mod_id
+                    );
                     break;
                 }
 
                 // Timeout: destroy window and notify frontend
                 if std::time::Instant::now() > timeout {
-                    println!("[Scraper] Timeout reached, destroying window");
+                    warn!(
+                        "[Scraper] Timeout reached for mod_id={}, destroying window",
+                        poll_mod_id
+                    );
                     let _ = poll_handle.emit(
                         "respond-nexus-html",
                         serde_json::json!({
+                            "modId": poll_mod_id.clone(),
                             "error": "加载超时，请重试"
                         }),
                     );
@@ -1359,6 +1373,7 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
                     let _ = poll_handle.emit(
                         "respond-nexus-html",
                         serde_json::json!({
+                            "modId": poll_mod_id.clone(),
                             "status": "challenge"
                         }),
                     );
@@ -1367,6 +1382,7 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
                     let _ = poll_handle.emit(
                         "respond-nexus-html",
                         serde_json::json!({
+                            "modId": poll_mod_id.clone(),
                             "status": "loading"
                         }),
                     );
@@ -1470,13 +1486,15 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
                     if has_rich_content {
                         // Rich content (stats, images, sidebar) loaded — emit immediately
                         let _ = poll_window.set_title("Nexus 信息已获取");
-                        println!(
-                            "[Scraper] Got HTML with rich content, length: {}",
+                        info!(
+                            "[Scraper] Got HTML with rich content for mod_id={}, length={}",
+                            poll_mod_id,
                             html.len()
                         );
                         let _ = poll_handle.emit(
                             "respond-nexus-html",
                             serde_json::json!({
+                                "modId": poll_mod_id.clone(),
                                 "html": html
                             }),
                         );
@@ -1487,13 +1505,15 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
                     details_ready_count += 1;
                     if details_ready_count >= 12 {
                         let _ = poll_window.set_title("Nexus 信息已获取");
-                        println!(
-                            "[Scraper] Got HTML (fallback after wait), length: {}",
+                        info!(
+                            "[Scraper] Got HTML fallback for mod_id={}, length={}",
+                            poll_mod_id,
                             html.len()
                         );
                         let _ = poll_handle.emit(
                             "respond-nexus-html",
                             serde_json::json!({
+                                "modId": poll_mod_id.clone(),
                                 "html": html
                             }),
                         );
@@ -1584,6 +1604,29 @@ fn extract_nexus_download_params(url: &str) -> Option<(String, String, String, S
         url.to_string()
     };
     Some((game_id, file_id, game_domain, referer_url))
+}
+
+fn looks_like_nexus_files_page(url: &str) -> bool {
+    let lower = url.trim().to_ascii_lowercase();
+    if !lower.starts_with("http://") && !lower.starts_with("https://") {
+        return false;
+    }
+
+    if !lower.contains("nexusmods.com") {
+        return false;
+    }
+
+    let game_domain = match extract_game_domain(&lower) {
+        Some(value) => value,
+        None => return false,
+    };
+    if game_id_from_domain(&game_domain).is_none() {
+        return false;
+    }
+
+    extract_nexus_mod_id(&lower)
+        .map(|mod_id| mod_id.chars().all(|ch| ch.is_ascii_digit()))
+        .unwrap_or(false)
 }
 
 async fn fetch_nexus_download_metadata_via_browser(
@@ -1853,12 +1896,429 @@ fn parse_download_url_from_body(text: &str) -> Option<String> {
     parse_download_url_from_payload(&value).or_else(|| parse_download_url_from_text(text))
 }
 
+fn looks_like_direct_download_url(url: &str) -> bool {
+    let lower = url.trim().to_ascii_lowercase();
+    if lower.is_empty() {
+        return false;
+    }
+
+    if lower.contains("/users/myaccount")
+        || lower.contains("tab=download+history")
+        || lower.contains("tab=download%20history")
+        || lower.contains("/collections")
+        || lower.contains("imasdk.googleapis.com")
+        || lower.contains("googlesyndication.com")
+        || lower.contains("doubleclick.net")
+    {
+        return false;
+    }
+
+    let path = lower
+        .split('#')
+        .next()
+        .unwrap_or(&lower)
+        .split('?')
+        .next()
+        .unwrap_or(&lower);
+    path.ends_with(".zip") || path.ends_with(".zip/")
+}
+
+fn is_zip_file(path: &std::path::Path) -> Result<bool, String> {
+    let bytes = fs::read(path).map_err(|e| format!("读取下载文件失败: {}", e))?;
+    if bytes.len() < 4 {
+        return Ok(false);
+    }
+
+    Ok(bytes.starts_with(b"PK\x03\x04")
+        || bytes.starts_with(b"PK\x05\x06")
+        || bytes.starts_with(b"PK\x07\x08"))
+}
+
+async fn resolve_nexus_download_params_from_files_tab_widget(
+    app: tauri::AppHandle,
+    page_url: &str,
+) -> Result<(String, String, String, String), String> {
+    let mod_id =
+        extract_nexus_mod_id(page_url).ok_or_else(|| "无法从文件页链接解析 mod_id".to_string())?;
+    let game_domain = extract_game_domain(page_url).unwrap_or_else(|| "stardewvalley".to_string());
+    let game_id =
+        game_id_from_domain(&game_domain).ok_or_else(|| "无法识别游戏域名".to_string())?;
+
+    info!(
+        "[NexusFilesTab] Resolving file_id via ModFilesTab widget: mod_id={}, game_id={}, page_url={}",
+        mod_id, game_id, page_url
+    );
+
+    let parse_url = page_url
+        .parse::<tauri::Url>()
+        .map_err(|e| format!("解析文件页 URL 失败: {}", e))?;
+    let handle = app.clone();
+    let request_id = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_else(|_| Duration::from_secs(0))
+        .as_millis();
+    let sequence = DOWNLOAD_COUNTER
+        .get_or_init(|| std::sync::atomic::AtomicU64::new(1))
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let window_label = format!("nexus-files-tab-{}-{}-{}", mod_id, request_id, sequence);
+
+    let window = create_nexus_webview(
+        &handle,
+        &window_label,
+        "Nexus 文件列表获取中...",
+        parse_url,
+        false,
+    )
+    .map_err(|e| format!("创建文件列表窗口失败: {}", e))?;
+
+    let poll_window = window.clone();
+    let poll_handle = handle.clone();
+    let fetch_js_template = r##"
+        (() => {
+            try {
+                if (window.__nexusFilesTabStarted) return 'skip';
+                window.__nexusFilesTabStarted = true;
+                window.__nexusFilesTabDone = false;
+                window.__nexusFilesTabError = null;
+                window.__nexusFilesTabPayload = null;
+
+                fetch('/Core/Libs/Common/Widgets/ModFilesTab?id={mod_id}&game_id={game_id}', {
+                    method: 'GET',
+                    headers: {
+                        'accept': 'text/html, */*; q=0.01',
+                        'x-requested-with': 'XMLHttpRequest'
+                    },
+                    credentials: 'include',
+                    cache: 'no-cache'
+                })
+                .then(async response => {
+                    const text = await response.text();
+                    if (!response.ok) {
+                        window.__nexusFilesTabDone = true;
+                        window.__nexusFilesTabError = `HTTP ${response.status}: ${text}`;
+                        return;
+                    }
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(text, 'text/html');
+                    const modPath = '/{game_domain}/mods/{mod_id}';
+                    const modPathLower = modPath.toLowerCase();
+                    const blockedPatterns = [
+                        '/users/myaccount',
+                        'download+history',
+                        'download%20history',
+                        '/collections',
+                        'imasdk.googleapis.com',
+                        'googlesyndication.com',
+                        'doubleclick.net'
+                    ];
+                    const candidates = [];
+                    const seenFileIds = new Set();
+                    const rawSamples = [];
+
+                    const normalizeEntities = (value) => String(value || '')
+                        .replace(/&amp;/g, '&')
+                        .replace(/&quot;/g, '"')
+                        .replace(/&#39;/g, "'")
+                        .replace(/&lt;/g, '<')
+                        .replace(/&gt;/g, '>');
+                    const hasBlockedValue = (value) => {
+                        const lower = String(value || '').toLowerCase();
+                        return blockedPatterns.some(pattern => lower.includes(pattern));
+                    };
+                    const pushRawSample = (source, value) => {
+                        if (rawSamples.length >= 8) return;
+                        const raw = normalizeEntities(value).trim();
+                        if (!raw || hasBlockedValue(raw)) return;
+                        if (!/(file_id|fid|nmm=1|downloadpopup|modrequirementspopup|generatedownloadurl|\/files\/|download)/i.test(raw)) return;
+                        rawSamples.push({ source, value: raw.slice(0, 220) });
+                    };
+                    const canonicalHref = (fileId) => {
+                        return `https://www.nexusmods.com${modPath}?tab=files&file_id=${encodeURIComponent(fileId)}&nmm=1`;
+                    };
+                    const pushCandidate = (fileId, href, nmm, source, label) => {
+                        const normalizedFileId = String(fileId || '').trim();
+                        if (!/^\d+$/.test(normalizedFileId)) return;
+                        if (normalizedFileId === '{mod_id}' || normalizedFileId === '{game_id}') return;
+                        if (seenFileIds.has(normalizedFileId)) return;
+                        seenFileIds.add(normalizedFileId);
+                        candidates.push({
+                            href: href || canonicalHref(normalizedFileId),
+                            fileId: normalizedFileId,
+                            nmm: Boolean(nmm),
+                            source,
+                            text: String(label || '').trim().replace(/\s+/g, ' ').slice(0, 100)
+                        });
+                    };
+                    const inspectUrl = (rawValue, source, label) => {
+                        const value = normalizeEntities(rawValue).trim();
+                        if (!value || hasBlockedValue(value)) return;
+                        pushRawSample(source, value);
+                        const urlParts = [value, ...Array.from(value.matchAll(/(?:https?:\/\/(?:www\.)?nexusmods\.com\/|\/)(?:Core\/Libs\/Common\/(?:Widgets\/DownloadPopUp|Widgets\/ModRequirementsPopUp|Managers\/Downloads)|{game_domain}\/mods\/{mod_id})[^\s"'<>)]*/gi)).map(match => match[0])];
+                        for (const part of urlParts) {
+                            try {
+                                const absolute = new URL(part, location.origin);
+                                if (!absolute.hostname.endsWith('nexusmods.com')) continue;
+                                const path = absolute.pathname.toLowerCase();
+                                const search = absolute.searchParams;
+                                if (path === modPathLower) {
+                                    const fileId = search.get('file_id') || search.get('fid');
+                                    if (fileId) {
+                                        pushCandidate(fileId, canonicalHref(fileId), search.get('nmm') === '1', `${source}:mod-url`, label);
+                                    }
+                                    continue;
+                                }
+
+                                const filePathMatch = path.match(new RegExp(`^${modPathLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/files/(\\d+)`));
+                                if (filePathMatch) {
+                                    pushCandidate(filePathMatch[1], canonicalHref(filePathMatch[1]), true, `${source}:file-path`, label);
+                                    continue;
+                                }
+
+                                if (
+                                    path.includes('/core/libs/common/widgets/downloadpopup') ||
+                                    path.includes('/core/libs/common/widgets/modrequirementspopup') ||
+                                    path.includes('/core/libs/common/managers/downloads')
+                                ) {
+                                    const fileId = search.get('file_id') || search.get('fid') || search.get('id');
+                                    if (fileId) {
+                                        pushCandidate(fileId, canonicalHref(fileId), search.get('nmm') === '1', `${source}:download-endpoint`, label);
+                                    }
+                                }
+                            } catch (_) {
+                                // Ignore non-URL attribute values.
+                            }
+                        }
+
+                        const contextual = /(?:file_id|fid)\s*[:=]\s*["']?(\d{3,})/ig;
+                        let match;
+                        while ((match = contextual.exec(value))) {
+                            pushCandidate(match[1], canonicalHref(match[1]), /nmm\s*=\s*1/i.test(value), `${source}:inline-file-id`, label);
+                        }
+                    };
+
+                    const elements = Array.from(doc.querySelectorAll('*'));
+                    for (const element of elements) {
+                        const label = [
+                            element.textContent || '',
+                            element.getAttribute('title') || '',
+                            element.getAttribute('aria-label') || '',
+                            element.getAttribute('class') || '',
+                            element.id || ''
+                        ].join(' ');
+                        for (const attr of Array.from(element.attributes || [])) {
+                            inspectUrl(attr.value, `${element.tagName.toLowerCase()}@${attr.name}`, label);
+                        }
+
+                        const labelHasDownloadIntent = /(download|manual|mod manager|nmm|file|下载)/i.test(label);
+                        if (labelHasDownloadIntent) {
+                            for (const attr of Array.from(element.attributes || [])) {
+                                const value = normalizeEntities(attr.value).trim();
+                                if (/^(data-)?(file-?id|fid|download-?id)$/i.test(attr.name) && /^\d{3,}$/.test(value)) {
+                                    pushCandidate(value, canonicalHref(value), /nmm|mod manager/i.test(label), `${element.tagName.toLowerCase()}@${attr.name}:data-id`, label);
+                                }
+                            }
+                        }
+                    }
+
+                    if (candidates.length === 0) {
+                        inspectUrl(text, 'html-text', '');
+                    }
+
+                    const picked = candidates.find(candidate => candidate.nmm) || candidates[0] || null;
+                    window.__nexusFilesTabDone = true;
+                    window.__nexusFilesTabPayload = {
+                        href: picked ? picked.href : '',
+                        fileId: picked ? picked.fileId : '',
+                        nmm: picked ? picked.nmm : false,
+                        source: picked ? picked.source : '',
+                        htmlLength: text.length,
+                        elementCount: elements.length,
+                        candidateCount: candidates.length,
+                        samples: candidates.slice(0, 8),
+                        rawSamples
+                    };
+                })
+                .catch(error => {
+                    window.__nexusFilesTabDone = true;
+                    window.__nexusFilesTabError = String(error);
+                });
+                return 'started';
+            } catch (error) {
+                return 'error:' + String(error);
+            }
+        })()
+        "##;
+    let fetch_js = fetch_js_template
+        .replace("{mod_id}", &mod_id)
+        .replace("{game_id}", &game_id)
+        .replace("{game_domain}", &game_domain);
+
+    let status_js = r##"
+        (() => {
+            if (window.__nexusFilesTabError) return { s: "error", e: window.__nexusFilesTabError };
+            if (window.__nexusFilesTabDone) return { s: "done", p: window.__nexusFilesTabPayload };
+            if (window.__nexusFilesTabStarted) return { s: "fetching" };
+            return { s: "idle" };
+        })()
+    "##;
+
+    let result = tokio::time::timeout(Duration::from_secs(60), async move {
+        let mut cf_shown = false;
+        loop {
+            if poll_handle.get_webview_window(&window_label).is_none() {
+                return Err("文件列表窗口已关闭".to_string());
+            }
+
+            let is_cf = check_cloudflare_challenge(&poll_window);
+            update_window_visibility_for_cf(
+                &poll_window,
+                &poll_handle,
+                is_cf,
+                &mut cf_shown,
+                false,
+                "Nexus 需要验证",
+                "Nexus 文件列表获取中...",
+            );
+            if is_cf {
+                tokio::time::sleep(Duration::from_millis(800)).await;
+                continue;
+            }
+
+            let _ = eval_js_timeout(&poll_window, &fetch_js, 5);
+
+            let status_json = match eval_js_timeout(&poll_window, status_js, 5) {
+                Some(v) => v,
+                None => {
+                    tokio::time::sleep(Duration::from_millis(300)).await;
+                    continue;
+                }
+            };
+
+            let status: Value = match serde_json::from_str(&status_json) {
+                Ok(s) => s,
+                Err(_) => {
+                    tokio::time::sleep(Duration::from_millis(300)).await;
+                    continue;
+                }
+            };
+
+            match status.get("s").and_then(|v| v.as_str()) {
+                Some("done") => {
+                    let payload = status.get("p").cloned().unwrap_or(Value::Null);
+                    let html_length = payload
+                        .get("htmlLength")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0);
+                    let candidate_count = payload
+                        .get("candidateCount")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0);
+                    let element_count = payload
+                        .get("elementCount")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0);
+                    let href = payload
+                        .get("href")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .trim();
+                    let source = payload
+                        .get("source")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+
+                    debug!(
+                        "[NexusFilesTab] Widget parsed for mod_id={}: html_length={}, element_count={}, candidate_count={}, source={}, href={}",
+                        mod_id, html_length, element_count, candidate_count, source, href
+                    );
+
+                    if href.is_empty() {
+                        warn!(
+                            "[NexusFilesTab] No usable download link found for mod_id={}: html_length={}, element_count={}, candidate_count={}, samples={}, raw_samples={}",
+                            mod_id,
+                            html_length,
+                            element_count,
+                            candidate_count,
+                            payload.get("samples").unwrap_or(&Value::Null),
+                            payload.get("rawSamples").unwrap_or(&Value::Null)
+                        );
+                        return Err("ModFilesTab 响应中未找到可用文件下载链接".to_string());
+                    }
+
+                    info!(
+                        "[NexusFilesTab] Resolved file link for mod_id={}: source={}, {}",
+                        mod_id, source, href
+                    );
+                    return extract_nexus_download_params(href).ok_or_else(|| {
+                        format!("无法从 ModFilesTab 响应解析下载参数: {}", href)
+                    });
+                }
+                Some("error") => {
+                    let err = status.get("e").and_then(|v| v.as_str()).unwrap_or_default();
+                    return Err(format!("网页端获取 ModFilesTab 失败: {}", err));
+                }
+                _ => {
+                    tokio::time::sleep(Duration::from_millis(500)).await;
+                    continue;
+                }
+            }
+        }
+    })
+    .await;
+
+    let _ = window.destroy();
+
+    match result {
+        Ok(res) => res,
+        Err(_) => Err("获取 Nexus 文件列表超时，请确保已登录并完成 Cloudflare 校验".to_string()),
+    }
+}
+
+async fn download_nexus_file_to_path(
+    app: tauri::AppHandle,
+    game_id: &str,
+    file_id: &str,
+    referer_url: &str,
+    zip_path: &std::path::Path,
+) -> Result<(), String> {
+    let page_download_url =
+        fetch_nexus_download_url_via_browser(app.clone(), game_id, file_id, referer_url)
+            .await
+            .map_err(|err| format!("获取网页下载链接失败: {}", err))?;
+
+    let target_url = if page_download_url.starts_with('/') {
+        format!("https://www.nexusmods.com{}", page_download_url)
+    } else {
+        page_download_url
+    };
+
+    info!(
+        "[NexusInstall] Final resolved download target for file_id={}: {}",
+        file_id, target_url
+    );
+    if target_url.contains("/users/myaccount")
+        || target_url.contains("download+history")
+        || target_url.contains("download%20history")
+    {
+        warn!(
+            "[NexusInstall] Resolved target URL is an account/history page: {}",
+            target_url
+        );
+    }
+
+    crate::utils::download_file(&target_url, zip_path)
+}
+
 async fn fetch_nexus_download_url_via_browser(
     app: tauri::AppHandle,
     game_id: &str,
     file_id: &str,
     referer_url: &str,
 ) -> Result<String, String> {
+    info!(
+        "[NexusDownload] Resolving download URL via browser: game_id={}, file_id={}, referer={}",
+        game_id, file_id, referer_url
+    );
     let parse_url = referer_url
         .parse::<tauri::Url>()
         .map_err(|e| format!("解析页面 URL 失败: {}", e))?;
@@ -1989,16 +2449,43 @@ async fn fetch_nexus_download_url_via_browser(
                 Some("done") => {
                     let payload = status.get("p").and_then(|v| v.as_str()).unwrap_or("");
                     if payload.is_empty() {
+                        warn!(
+                            "[NexusDownload] GenerateDownloadUrl returned empty payload for file_id={}",
+                            file_id
+                        );
                         return Err("GenerateDownloadUrl 未返回内容".to_string());
                     }
 
+                     debug!(
+                        "[NexusDownload] GenerateDownloadUrl raw payload for file_id={}: {}",
+                        file_id, payload
+                    );
+
                     let url = parse_download_url_from_body(payload)
                         .ok_or_else(|| format!("生成下载链接失败，响应: {}", payload))?;
+
+                    info!(
+                        "[NexusDownload] Parsed browser download URL for file_id={}: {}",
+                        file_id, url
+                    );
+                    if url.contains("/users/myaccount")
+                        || url.contains("download+history")
+                        || url.contains("download%20history")
+                    {
+                        warn!(
+                            "[NexusDownload] Parsed URL looks like account/history page instead of file URL: {}",
+                            url
+                        );
+                    }
 
                     return Ok(url);
                 }
                 Some("error") => {
                     let err = status.get("e").and_then(|v| v.as_str()).unwrap_or_default();
+                    error!(
+                        "[NexusDownload] Browser-side GenerateDownloadUrl failed for file_id={}: {}",
+                        file_id, err
+                    );
                     return Err(format!("网页端生成下载链接失败: {}", err));
                 }
                 _ => {}
@@ -2013,7 +2500,13 @@ async fn fetch_nexus_download_url_via_browser(
 
     match result {
         Ok(res) => res,
-        Err(_) => Err("获取下载链接超时，请确保已登录 Nexus 并完成 Cloudflare 校验".to_string()),
+        Err(_) => {
+            error!(
+                "[NexusDownload] Timed out resolving browser download URL for file_id={}",
+                file_id
+            );
+            Err("获取下载链接超时，请确保已登录 Nexus 并完成 Cloudflare 校验".to_string())
+        }
     }
 }
 
@@ -2023,8 +2516,16 @@ pub async fn install_nexus_mod(
     game_dir: String,
     download_url: String,
 ) -> Result<serde_json::Value, String> {
+    info!(
+        "[NexusInstall] Starting install_nexus_mod: game_dir={}, input_url={}",
+        game_dir, download_url
+    );
     let game_path = PathBuf::from(&game_dir);
     if !game_path.exists() {
+        error!(
+            "[NexusInstall] Game directory does not exist: {}",
+            game_path.display()
+        );
         return Err("游戏目录不存在".to_string());
     }
 
@@ -2058,6 +2559,10 @@ pub async fn install_nexus_mod(
     let url = download_url.trim().to_string();
     let is_http_url = url.starts_with("http://") || url.starts_with("https://");
     let is_nxm_url = url.to_ascii_lowercase().starts_with("nxm://");
+    info!(
+        "[NexusInstall] Input classification: is_http_url={}, is_nxm_url={}, url={}",
+        is_http_url, is_nxm_url, url
+    );
     if !is_http_url && !is_nxm_url {
         cleanup();
         return Err("下载链接不合法".to_string());
@@ -2066,28 +2571,54 @@ pub async fn install_nexus_mod(
     let download_result = if let Some((game_id, file_id, _game_domain, referer_url)) =
         extract_nexus_download_params(&url)
     {
-        let page_download_url =
-            fetch_nexus_download_url_via_browser(app.clone(), &game_id, &file_id, &referer_url)
+        info!(
+            "[NexusInstall] Parsed download params: game_id={}, file_id={}, referer={}",
+            game_id, file_id, referer_url
+        );
+        download_nexus_file_to_path(app.clone(), &game_id, &file_id, &referer_url, &zip_path).await
+    } else if is_http_url && looks_like_nexus_files_page(&url) {
+        let (game_id, file_id, _game_domain, referer_url) =
+            resolve_nexus_download_params_from_files_tab_widget(app.clone(), &url)
                 .await
-                .map_err(|err| format!("获取网页下载链接失败: {}", err))?;
-
-        let target_url = if page_download_url.starts_with('/') {
-            format!("https://www.nexusmods.com{}", page_download_url)
-        } else {
-            page_download_url
-        };
-
-        crate::utils::download_file(&target_url, &zip_path)
-    } else if is_http_url
-        && (url.ends_with(".zip") || url.ends_with(".zip/") || url.contains("download"))
-    {
+                .map_err(|err| format!("从 Nexus 文件页解析下载参数失败: {}", err))?;
+        info!(
+            "[NexusInstall] Resolved missing file_id from files tab widget: game_id={}, file_id={}, referer={}",
+            game_id, file_id, referer_url
+        );
+        download_nexus_file_to_path(app.clone(), &game_id, &file_id, &referer_url, &zip_path).await
+    } else if is_http_url && looks_like_direct_download_url(&url) {
+        info!(
+            "[NexusInstall] Using direct HTTP download URL without browser resolution: {}",
+            url
+        );
         crate::utils::download_file(&url, &zip_path)
     } else {
+        warn!(
+            "[NexusInstall] Could not parse Nexus download params and URL is not a direct download: {}",
+            url
+        );
         Err("无法解析 Nexus 下载参数（file_id 或游戏域名），且当前链接不是直接下载链接".to_string())
     };
     if let Err(err) = download_result {
+        error!("[NexusInstall] Download failed: {}", err);
         cleanup();
         return Err(format!("下载失败: {}", err));
+    }
+    match is_zip_file(&zip_path) {
+        Ok(true) => {}
+        Ok(false) => {
+            error!(
+                "[NexusInstall] Downloaded file is not a valid ZIP archive: {}",
+                zip_path.display()
+            );
+            cleanup();
+            return Err("下载结果不是有效的 ZIP 文件".to_string());
+        }
+        Err(err) => {
+            error!("[NexusInstall] Failed to validate downloaded ZIP: {}", err);
+            cleanup();
+            return Err(err);
+        }
     }
 
     fs::create_dir_all(&extract_dir).map_err(|e| {
@@ -2095,6 +2626,7 @@ pub async fn install_nexus_mod(
         format!("创建解压目录失败: {}", e)
     })?;
     if let Err(err) = crate::utils::extract_zip(&zip_path, &extract_dir) {
+        error!("[NexusInstall] Extract zip failed: {}", err);
         cleanup();
         return Err(format!("解压失败: {}", err));
     }
@@ -2126,10 +2658,18 @@ pub async fn install_nexus_mod(
     }
 
     if !installed_any {
+        warn!(
+            "[NexusInstall] Extracted archive was empty: {}",
+            zip_path.display()
+        );
         cleanup();
         return Err("安装文件为空，未写入任何内容".to_string());
     }
 
+    info!(
+        "[NexusInstall] Install completed successfully into {}",
+        mods_path.display()
+    );
     cleanup();
     Ok(serde_json::json!({
         "success": true,
@@ -2139,7 +2679,9 @@ pub async fn install_nexus_mod(
 
 #[cfg(test)]
 mod tests {
-    use super::extract_nexus_download_params;
+    use super::{
+        extract_nexus_download_params, looks_like_direct_download_url, looks_like_nexus_files_page,
+    };
 
     #[test]
     fn parses_nxm_download_url() {
@@ -2169,5 +2711,37 @@ mod tests {
         assert_eq!(file_id, "170963");
         assert_eq!(game_domain, "stardewvalley");
         assert_eq!(referer_url, url);
+    }
+
+    #[test]
+    fn accepts_nexus_mod_page_as_files_tab_fallback_candidate() {
+        assert!(looks_like_nexus_files_page(
+            "https://www.nexusmods.com/stardewvalley/mods/47260"
+        ));
+        assert!(looks_like_nexus_files_page(
+            "https://www.nexusmods.com/stardewvalley/mods/47260?tab=files"
+        ));
+        assert!(!looks_like_nexus_files_page(
+            "https://www.nexusmods.com/stardewvalley/users/myaccount?tab=download+history"
+        ));
+        assert!(!looks_like_nexus_files_page(
+            "https://imasdk.googleapis.com/js/core/bridge3.html?fid=170963"
+        ));
+    }
+
+    #[test]
+    fn rejects_non_zip_download_like_urls_as_direct_downloads() {
+        assert!(looks_like_direct_download_url(
+            "https://example.com/files/choose-your-catch.zip"
+        ));
+        assert!(!looks_like_direct_download_url(
+            "https://www.nexusmods.com/stardewvalley/users/myaccount?tab=download+history"
+        ));
+        assert!(!looks_like_direct_download_url(
+            "https://imasdk.googleapis.com/js/core/bridge3.html?fid=170963"
+        ));
+        assert!(!looks_like_direct_download_url(
+            "https://www.nexusmods.com/stardewvalley/mods/47260?tab=files"
+        ));
     }
 }

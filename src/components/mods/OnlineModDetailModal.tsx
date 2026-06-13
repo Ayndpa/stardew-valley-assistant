@@ -153,8 +153,7 @@ async function getTauriInvoke() {
     try {
       const mod = await import("@tauri-apps/api/core");
       return mod.invoke;
-    } catch (err) {
-      console.error("Failed to load Tauri core invoke plugin", err);
+    } catch {
     }
   }
   return null;
@@ -165,8 +164,7 @@ async function getTauriListen() {
     try {
       const mod = await import("@tauri-apps/api/event");
       return mod.listen;
-    } catch (err) {
-      console.error("Failed to load Tauri event listen plugin", err);
+    } catch {
     }
   }
   return null;
@@ -203,6 +201,7 @@ export function OnlineModDetailModal({
   const [installError, setInstallError] = useState<string | null>(null)
   const { nexusLoggedIn, nexusChecking } = useNexus()
   const nexusUrl = mod?.ModPages.find(p => p.Text === "Nexus" || p.Url.includes("nexusmods.com"))?.Url || ""
+  const installDisabled = loading || !details || isInstalling || isGameRunning
 
   const resolveNexusUrl = (href: string) => {
     const value = href.trim()
@@ -217,25 +216,71 @@ export function OnlineModDetailModal({
     const hrefCandidates = new Set<string>()
     const parser = new DOMParser()
     const doc = parser.parseFromString(htmlString, "text/html")
+    const normalizedNexusUrl = resolveNexusUrl(nexusUrl)
+    const expectedBasePath = normalizedNexusUrl ? normalizedNexusUrl.split("?")[0].toLowerCase() : ""
+
+    const isBlockedDownloadCandidate = (value: string) => {
+      const lower = value.toLowerCase()
+      return (
+        lower.includes("/users/myaccount") ||
+        lower.includes("tab=download+history") ||
+        lower.includes("tab=download%20history") ||
+        lower.includes("download-history") ||
+        lower.includes("/collections") ||
+        lower.includes("cookiebot.renew") ||
+        lower.includes("imasdk.googleapis.com") ||
+        lower.includes("googlesyndication.com") ||
+        lower.includes("doubleclick.net") ||
+        lower.endsWith("#") ||
+        lower.includes("#maincontent")
+      )
+    }
 
     const pushCandidate = (candidate: string | null) => {
       const normalized = resolveNexusUrl(candidate || "")
       if (!normalized) return
       const lower = normalized.toLowerCase()
       if (!lower.includes("nexusmods.com")) return
+      if (isBlockedDownloadCandidate(lower)) return
+      if (expectedBasePath && !lower.startsWith(expectedBasePath)) return
       hrefCandidates.add(normalized)
     }
+
+    const explicitDownloadSelectors = [
+      "#action-nmm a[href]",
+      "#action-manual a[href]",
+      "li#action-nmm a[href]",
+      "li#action-manual a[href]",
+    ]
+    explicitDownloadSelectors.forEach((selector) => {
+      doc.querySelectorAll(selector).forEach((el) => {
+        pushCandidate(el.getAttribute("href"))
+      })
+    })
+
+    const filePageLinks = [
+      ...doc.querySelectorAll("a[href*='tab=files'][href*='file_id=']"),
+      ...doc.querySelectorAll("a[href*='tab=files'][href*='nmm=1']"),
+    ]
+    filePageLinks.forEach((el) => {
+      pushCandidate(el.getAttribute("href"))
+    })
 
     doc.querySelectorAll("a[href]").forEach((a) => {
       const href = a.getAttribute("href") || ""
       const lower = href.toLowerCase()
       if (!href) return
-      if (lower.includes("file_id=") || lower.includes("/files/") || lower.includes("download")) {
+      if (
+        lower.includes("file_id=") ||
+        lower.includes("&nmm=1") ||
+        lower.includes("?nmm=1") ||
+        (lower.includes("/mods/") && lower.includes("tab=files"))
+      ) {
         pushCandidate(href)
       }
     })
 
-    const htmlCandidates = [...htmlString.matchAll(/https?:\/\/[^\s"']*?(?:file_id|download)[^"'\s]*/gi)].map(match => match[0])
+    const htmlCandidates = [...htmlString.matchAll(/https?:\/\/(?:www\.)?nexusmods\.com\/[^\s"']*?(?:file_id|nmm=1)[^"'\s]*/gi)].map(match => match[0])
     htmlCandidates.forEach(pushCandidate)
 
     doc.querySelectorAll("[data-file-id][href]").forEach((el) => {
@@ -243,21 +288,24 @@ export function OnlineModDetailModal({
       if (!fileId) return
       const fileIdDigits = fileId.trim()
       if (!fileIdDigits) return
-      if (hrefCandidates.size === 0 && nexusUrl) {
-        const base = resolveNexusUrl(nexusUrl).split("?")[0]
+      if (hrefCandidates.size === 0 && normalizedNexusUrl) {
+        const base = normalizedNexusUrl.split("?")[0]
         hrefCandidates.add(`${base}?tab=files&file_id=${encodeURIComponent(fileIdDigits)}&nmm=1`)
       }
     })
 
-    const rawFileIdMatches = [...htmlString.matchAll(/(?:file_id|fid)\s*=\s*([0-9]{3,})/gi)]
-    if (rawFileIdMatches.length > 0 && hrefCandidates.size === 0 && nexusUrl) {
-      const base = resolveNexusUrl(nexusUrl).split("?")[0]
+    const rawFileIdMatches = [...htmlString.matchAll(/file_id\s*=\s*([0-9]{3,})/gi)]
+    if (rawFileIdMatches.length > 0 && hrefCandidates.size === 0 && normalizedNexusUrl) {
+      const base = normalizedNexusUrl.split("?")[0]
       hrefCandidates.add(`${base}?tab=files&file_id=${rawFileIdMatches[0][1]}&nmm=1`)
     }
 
     const candidates = [...hrefCandidates]
-    const directZip = candidates.find((item) => item.toLowerCase().includes(".zip") && (item.includes("file_id") || item.includes("download")))
+    const directZip = candidates.find((item) => item.toLowerCase().includes(".zip") && (item.includes("file_id") || item.includes("nmm=1")))
     if (directZip) return directZip
+
+    const nmmCandidate = candidates.find(item => item.includes("nmm=1") && item.includes("file_id"))
+    if (nmmCandidate) return nmmCandidate
 
     const fileApi = candidates.find(item => item.includes("file_id"))
     return fileApi || candidates[0] || ""
@@ -395,6 +443,7 @@ export function OnlineModDetailModal({
       if (result.ok) {
         setInstallMessage(result.message)
         setInstallError(null)
+        onClose()
       } else {
         setInstallError(result.message)
         setInstallMessage(null)
@@ -408,7 +457,6 @@ export function OnlineModDetailModal({
       await invoke("install_nexus_mod", { gameDir, downloadUrl })
       setInstallMessage("已成功安装：模组已写入 Mods 目录。")
     } catch (err: any) {
-      console.error("Install mod failed:", err)
       setInstallError(`安装失败: ${err}`)
       setInstallMessage(null)
     } finally {
@@ -607,7 +655,11 @@ export function OnlineModDetailModal({
     if (invoke && listen) {
       try {
         // 1. Listen for the HTML response
-        const unlisten = await listen<{ html?: string; error?: string; status?: "loading" | "challenge" }>("respond-nexus-html", (event) => {
+        const requestNexusId = nexusId
+        const unlisten = await listen<{ modId?: string; html?: string; error?: string; status?: "loading" | "challenge" }>("respond-nexus-html", (event) => {
+          if (event.payload.modId && event.payload.modId !== requestNexusId) {
+            return
+          }
           if (event.payload.status === "challenge") {
             setScrapeStatus("challenge")
             return
@@ -637,7 +689,6 @@ export function OnlineModDetailModal({
             return
           }
 
-          console.log("Successfully received HTML payload from scraper window!")
           const parsed = parseHtml(event.payload.html)
           setDetails(parsed)
           setLoading(false)
@@ -665,7 +716,6 @@ export function OnlineModDetailModal({
         }, 185000)
 
       } catch (err: any) {
-        console.error("Scraper invocation error:", err)
         setError("启动网页抓取器失败: " + err)
         setLoading(false)
       }
@@ -1093,15 +1143,23 @@ export function OnlineModDetailModal({
           <Button 
             variant="default" 
             size="sm" 
-            disabled={isInstalling || isGameRunning}
+            disabled={installDisabled}
             onClick={handleDownloadAndInstall}
             className="h-8 text-xs rounded-lg gap-1 bg-primary text-primary-foreground hover:bg-primary/95 cursor-pointer group relative"
-            title={isGameRunning ? "游戏运行中，不能下载并安装模组" : undefined}
+            title={
+              loading || !details
+                ? "模组详情加载完成后才能安装"
+                : isGameRunning
+                  ? "游戏运行中，不能下载并安装模组"
+                  : undefined
+            }
           >
             {isInstalling ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
-            <span>{isGameRunning ? "游戏运行中" : isInstalling ? "安装中..." : "加入下载管理"}</span>
+            <span>
+              {loading || !details ? "加载中..." : isGameRunning ? "游戏运行中" : isInstalling ? "安装中..." : "安装"}
+            </span>
             <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-popover text-popover-foreground border text-[9px] px-2 py-1 rounded shadow-lg whitespace-nowrap z-50">
-              {isGameRunning ? "退出游戏后可加入下载队列" : "加入侧边栏的全局下载队列"}
+              {loading || !details ? "请等待详情和下载信息加载完成" : isGameRunning ? "退出游戏后可加入下载队列" : "加入侧边栏的全局下载队列"}
             </span>
           </Button>
         </div>

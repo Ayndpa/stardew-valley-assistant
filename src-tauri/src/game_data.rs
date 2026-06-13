@@ -58,6 +58,48 @@ pub struct CropGameData {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
+pub struct CalendarFestival {
+    pub name: String,
+    pub date: String,
+    pub day: i32,
+    pub season: String,
+    pub description: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CalendarBirthday {
+    pub name: String,
+    pub date: String,
+    pub day: i32,
+    pub season: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CalendarGameData {
+    pub festivals: Vec<CalendarFestival>,
+    pub birthdays: Vec<CalendarBirthday>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct NpcProfile {
+    pub id: String,
+    pub name: String,
+    pub birthday: Option<String>,
+    pub gender: String,
+    pub marriage_candidate: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct NpcGameData {
+    pub npcs: Vec<NpcProfile>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct FishingTile {
     pub x: i32,
     pub y: i32,
@@ -226,6 +268,50 @@ pub fn get_crop_game_data(game_dir: Option<String>) -> Result<CropGameData, Stri
         lookup,
         seasons: derive_season_filters(),
     })
+}
+
+#[tauri::command]
+pub fn get_calendar_game_data(game_dir: Option<String>) -> Result<CalendarGameData, String> {
+    let content_dir = locate_content_dir(game_dir.as_deref())?;
+    let localized_tables = load_localized_string_tables(
+        &content_dir,
+        &["Characters", "NPCNames", "UI", "1_6_Strings"],
+    );
+
+    let mut festivals = load_calendar_festivals(&content_dir, &localized_tables)?;
+    festivals.sort_by(|a, b| {
+        season_order(&a.season)
+            .cmp(&season_order(&b.season))
+            .then(a.day.cmp(&b.day))
+            .then(a.name.cmp(&b.name))
+    });
+
+    let mut birthdays = load_calendar_birthdays(&content_dir, &localized_tables)?;
+    birthdays.sort_by(|a, b| {
+        season_order(&a.season)
+            .cmp(&season_order(&b.season))
+            .then(a.day.cmp(&b.day))
+            .then(a.name.cmp(&b.name))
+    });
+
+    Ok(CalendarGameData {
+        festivals,
+        birthdays,
+    })
+}
+
+#[tauri::command]
+pub fn get_npc_game_data(game_dir: Option<String>) -> Result<NpcGameData, String> {
+    let content_dir = locate_content_dir(game_dir.as_deref())?;
+    let localized_tables = load_localized_string_tables(
+        &content_dir,
+        &["Characters", "NPCNames", "UI", "1_6_Strings"],
+    );
+    let mut npcs = load_npc_profiles(&content_dir, &localized_tables)?;
+
+    npcs.sort_by(|a, b| a.name.cmp(&b.name).then(a.id.cmp(&b.id)));
+
+    Ok(NpcGameData { npcs })
 }
 
 #[tauri::command]
@@ -919,6 +1005,275 @@ fn load_string_dictionary_xnb(path: &Path) -> Result<HashMap<String, String>, St
         values.insert(key, value);
     }
     Ok(values)
+}
+
+fn load_localized_string_tables(
+    content_dir: &Path,
+    asset_names: &[&str],
+) -> HashMap<String, HashMap<String, String>> {
+    let mut tables = HashMap::new();
+    for asset_name in asset_names {
+        let values = load_string_dictionary_best_effort(&[
+            content_dir
+                .join("Strings")
+                .join(format!("{}.zh-CN.xnb", asset_name)),
+            content_dir
+                .join("Strings")
+                .join(format!("{}.xnb", asset_name)),
+        ]);
+        if !values.is_empty() {
+            tables.insert((*asset_name).to_string(), values);
+        }
+    }
+    tables
+}
+
+fn load_calendar_festivals(
+    content_dir: &Path,
+    localized_tables: &HashMap<String, HashMap<String, String>>,
+) -> Result<Vec<CalendarFestival>, String> {
+    let festival_dates = load_string_dictionary_best_effort(&[
+        content_dir
+            .join("Data")
+            .join("Festivals")
+            .join("FestivalDates.zh-CN.xnb"),
+        content_dir
+            .join("Data")
+            .join("Festivals")
+            .join("FestivalDates.xnb"),
+    ]);
+
+    let mut festivals = Vec::new();
+    for festival_id in festival_dates.keys() {
+        let Some((season, day)) = parse_calendar_day_id(festival_id) else {
+            continue;
+        };
+        let data = load_string_dictionary_best_effort(&[
+            content_dir
+                .join("Data")
+                .join("Festivals")
+                .join(format!("{}.zh-CN.xnb", festival_id)),
+            content_dir
+                .join("Data")
+                .join("Festivals")
+                .join(format!("{}.xnb", festival_id)),
+        ]);
+        let Some(name) = data
+            .get("name")
+            .map(|value| resolve_localized_text(value, localized_tables))
+            .filter(|value| !value.trim().is_empty())
+        else {
+            continue;
+        };
+        festivals.push(CalendarFestival {
+            name,
+            date: format!("{} {}日", season, day),
+            day,
+            season: season.to_string(),
+            description: None,
+        });
+    }
+
+    festivals.extend(load_passive_calendar_festivals(
+        content_dir,
+        localized_tables,
+    )?);
+    festivals.extend(load_special_calendar_festivals(localized_tables));
+    Ok(festivals)
+}
+
+fn load_passive_calendar_festivals(
+    content_dir: &Path,
+    localized_tables: &HashMap<String, HashMap<String, String>>,
+) -> Result<Vec<CalendarFestival>, String> {
+    let path = content_dir.join("Data").join("PassiveFestivals.xnb");
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+
+    let payload = load_xnb_payload(&path)?;
+    let mut reader = XnbPayloadReader::new(&payload);
+    let type_readers = reader.read_type_readers()?;
+    let root_reader = reader.read_7bit_usize()?;
+    if root_reader == 0 {
+        return Ok(Vec::new());
+    }
+    require_reader(&type_readers, root_reader, "DictionaryReader")?;
+
+    let count = reader.read_i32()?.max(0) as usize;
+    let mut festivals = Vec::with_capacity(count);
+    for _ in 0..count {
+        let key = reader.read_object_string(&type_readers)?;
+        let value_reader = reader.read_7bit_usize()?;
+        if value_reader == 0 {
+            continue;
+        }
+        require_reader(&type_readers, value_reader, "ReflectiveReader")
+            .map_err(|e| format!("Failed to parse passive festival '{}': {}", key, e))?;
+        if let Some(festival) = reader
+            .read_passive_festival_data(localized_tables)
+            .map_err(|e| format!("Failed to parse passive festival '{}': {}", key, e))?
+        {
+            festivals.extend(festival);
+        }
+    }
+
+    Ok(festivals)
+}
+
+fn load_special_calendar_festivals(
+    localized_tables: &HashMap<String, HashMap<String, String>>,
+) -> Vec<CalendarFestival> {
+    let mut festivals = Vec::new();
+    let trout_derby = resolve_localized_text(
+        "[LocalizedText Strings\\1_6_Strings:TroutDerby]",
+        localized_tables,
+    );
+    if !trout_derby.is_empty() {
+        for day in [20, 21] {
+            festivals.push(CalendarFestival {
+                name: trout_derby.clone(),
+                date: format!("夏季 {}日", day),
+                day,
+                season: "夏季".to_string(),
+                description: None,
+            });
+        }
+    }
+
+    let squid_fest = resolve_localized_text(
+        "[LocalizedText Strings\\1_6_Strings:SquidFest]",
+        localized_tables,
+    );
+    if !squid_fest.is_empty() {
+        for day in [12, 13] {
+            festivals.push(CalendarFestival {
+                name: squid_fest.clone(),
+                date: format!("冬季 {}日", day),
+                day,
+                season: "冬季".to_string(),
+                description: None,
+            });
+        }
+    }
+
+    festivals
+}
+
+fn load_calendar_birthdays(
+    content_dir: &Path,
+    localized_tables: &HashMap<String, HashMap<String, String>>,
+) -> Result<Vec<CalendarBirthday>, String> {
+    let path = content_dir.join("Data").join("Characters.xnb");
+    let payload = load_xnb_payload(&path)?;
+    let mut reader = XnbPayloadReader::new(&payload);
+    let type_readers = reader.read_type_readers()?;
+    let root_reader = reader.read_7bit_usize()?;
+    if root_reader == 0 {
+        return Ok(Vec::new());
+    }
+    require_reader(&type_readers, root_reader, "DictionaryReader")?;
+
+    let count = reader.read_i32()?.max(0) as usize;
+    let mut birthdays = Vec::new();
+    for _ in 0..count {
+        let key = reader.read_object_string(&type_readers)?;
+        let value_reader = reader.read_7bit_usize()?;
+        if value_reader == 0 {
+            continue;
+        }
+        require_reader(&type_readers, value_reader, "ReflectiveReader")
+            .map_err(|e| format!("Failed to parse character '{}': {}", key, e))?;
+        if let Some(birthday) = reader
+            .read_calendar_birthday(localized_tables)
+            .map_err(|e| format!("Failed to parse character '{}': {}", key, e))?
+        {
+            birthdays.push(birthday);
+        }
+    }
+
+    Ok(birthdays)
+}
+
+fn load_npc_profiles(
+    content_dir: &Path,
+    localized_tables: &HashMap<String, HashMap<String, String>>,
+) -> Result<Vec<NpcProfile>, String> {
+    let path = content_dir.join("Data").join("Characters.xnb");
+    let payload = load_xnb_payload(&path)?;
+    let mut reader = XnbPayloadReader::new(&payload);
+    let type_readers = reader.read_type_readers()?;
+    let root_reader = reader.read_7bit_usize()?;
+    if root_reader == 0 {
+        return Ok(Vec::new());
+    }
+    require_reader(&type_readers, root_reader, "DictionaryReader")?;
+
+    let count = reader.read_i32()?.max(0) as usize;
+    let mut npcs = Vec::new();
+    for _ in 0..count {
+        let key = reader.read_object_string(&type_readers)?;
+        let value_reader = reader.read_7bit_usize()?;
+        if value_reader == 0 {
+            continue;
+        }
+        require_reader(&type_readers, value_reader, "ReflectiveReader")
+            .map_err(|e| format!("Failed to parse character '{}': {}", key, e))?;
+        if let Some(npc) = reader
+            .read_npc_profile(&key, localized_tables)
+            .map_err(|e| format!("Failed to parse character '{}': {}", key, e))?
+        {
+            npcs.push(npc);
+        }
+    }
+
+    Ok(npcs)
+}
+
+fn parse_calendar_day_id(value: &str) -> Option<(&'static str, i32)> {
+    let lower = value.to_ascii_lowercase();
+    let (season, digits) = if let Some(rest) = lower.strip_prefix("spring") {
+        ("春季", rest)
+    } else if let Some(rest) = lower.strip_prefix("summer") {
+        ("夏季", rest)
+    } else if let Some(rest) = lower.strip_prefix("fall") {
+        ("秋季", rest)
+    } else if let Some(rest) = lower.strip_prefix("winter") {
+        ("冬季", rest)
+    } else {
+        return None;
+    };
+    let day = digits.parse::<i32>().ok()?;
+    Some((season, day))
+}
+
+fn resolve_localized_text(
+    token: &str,
+    localized_tables: &HashMap<String, HashMap<String, String>>,
+) -> String {
+    if let Some(inner) = token
+        .strip_prefix("[LocalizedText Strings\\")
+        .and_then(|value| value.strip_suffix(']'))
+    {
+        if let Some((table, key)) = inner.split_once(':') {
+            if let Some(values) = localized_tables.get(table) {
+                if let Some(text) = values.get(key) {
+                    return text.clone();
+                }
+            }
+        }
+    }
+    token.to_string()
+}
+
+fn season_order(season: &str) -> i32 {
+    match season {
+        "春季" => 0,
+        "夏季" => 1,
+        "秋季" => 2,
+        "冬季" => 3,
+        _ => 9,
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1792,11 +2147,265 @@ impl<'a> XnbPayloadReader<'a> {
         })
     }
 
+    fn read_passive_festival_data(
+        &mut self,
+        localized_tables: &HashMap<String, HashMap<String, String>>,
+    ) -> Result<Option<Vec<CalendarFestival>>, String> {
+        let display_name =
+            resolve_localized_text(&self.read_object_string_any()?, localized_tables);
+        let _condition = self.read_object_string_any()?;
+        let show_on_calendar = self.read_bool()?;
+        let season = season_name(self.read_i32()?);
+        let start_day = self.read_i32()?;
+        let end_day = self.read_i32()?;
+        let _start_time = self.read_i32()?;
+        let _start_message = self.read_object_string_any()?;
+        let _only_show_message_on_first_day = self.read_bool()?;
+        self.skip_nullable_string_dictionary()?;
+        let _daily_setup_method = self.read_object_string_any()?;
+        let _cleanup_method = self.read_object_string_any()?;
+        self.skip_nullable_string_dictionary()?;
+
+        if !show_on_calendar || display_name.trim().is_empty() || start_day <= 0 || end_day <= 0 {
+            return Ok(None);
+        }
+
+        let mut festivals = Vec::new();
+        for day in start_day..=end_day {
+            festivals.push(CalendarFestival {
+                name: display_name.clone(),
+                date: if start_day == end_day {
+                    format!("{} {}日", season, day)
+                } else {
+                    format!("{} {}-{}日", season, start_day, end_day)
+                },
+                day,
+                season: season.to_string(),
+                description: None,
+            });
+        }
+        Ok(Some(festivals))
+    }
+
+    fn read_calendar_birthday(
+        &mut self,
+        localized_tables: &HashMap<String, HashMap<String, String>>,
+    ) -> Result<Option<CalendarBirthday>, String> {
+        let name = resolve_localized_text(&self.read_object_string_any()?, localized_tables);
+        let birth_season = self.read_nullable_i32()?;
+        let birth_day = self.read_i32()?;
+
+        self.skip_character_data_tail()?;
+
+        let Some(birth_season) = birth_season else {
+            return Ok(None);
+        };
+        if birth_day <= 0 {
+            return Ok(None);
+        }
+
+        let season = season_name(birth_season).to_string();
+        if season == "未知" || name.trim().is_empty() {
+            return Ok(None);
+        }
+
+        Ok(Some(CalendarBirthday {
+            name,
+            date: format!("{} {}日", season, birth_day),
+            day: birth_day,
+            season,
+        }))
+    }
+
+    fn read_npc_profile(
+        &mut self,
+        id: &str,
+        localized_tables: &HashMap<String, HashMap<String, String>>,
+    ) -> Result<Option<NpcProfile>, String> {
+        let name = resolve_localized_text(&self.read_object_string_any()?, localized_tables);
+        let birth_season = self.read_nullable_i32()?;
+        let birth_day = self.read_i32()?;
+
+        let _home_region = self.read_object_string_any()?;
+        let _language = self.read_i32()?;
+        let gender = self.read_i32()?;
+        let _age = self.read_i32()?;
+        let _manner = self.read_i32()?;
+        let _social_anxiety = self.read_i32()?;
+        let _optimism = self.read_i32()?;
+        let _is_dark_skinned = self.read_bool()?;
+        let can_be_romanced = self.read_bool()?;
+        let _love_interest = self.read_object_string_any()?;
+        let _calendar = self.read_i32()?;
+        let social_tab = self.read_i32()?;
+
+        self.skip_character_data_tail_after_social_tab()?;
+
+        if name.trim().is_empty() {
+            return Ok(None);
+        }
+
+        let birthday = birth_season.and_then(|season| {
+            if birth_day <= 0 {
+                return None;
+            }
+            let season_name = season_name(season);
+            (season_name != "未知").then(|| format!("{} {}日", season_name, birth_day))
+        });
+
+        let include = social_tab >= 0 || can_be_romanced || birthday.is_some();
+        if !include {
+            return Ok(None);
+        }
+
+        let gender = if can_be_romanced {
+            match gender {
+                0 => "marriageable_male",
+                1 => "marriageable_female",
+                _ => "other",
+            }
+        } else {
+            "other"
+        }
+        .to_string();
+
+        Ok(Some(NpcProfile {
+            id: id.to_string(),
+            name,
+            birthday,
+            gender,
+            marriage_candidate: can_be_romanced,
+        }))
+    }
+
+    fn skip_character_data_tail(&mut self) -> Result<(), String> {
+        let _home_region = self.read_object_string_any()?;
+        let _language = self.read_i32()?;
+        let _gender = self.read_i32()?;
+        let _age = self.read_i32()?;
+        let _manner = self.read_i32()?;
+        let _social_anxiety = self.read_i32()?;
+        let _optimism = self.read_i32()?;
+        let _is_dark_skinned = self.read_bool()?;
+        let _can_be_romanced = self.read_bool()?;
+        let _love_interest = self.read_object_string_any()?;
+        let _calendar = self.read_i32()?;
+        let _social_tab = self.read_i32()?;
+        let _can_socialize = self.read_object_string_any()?;
+        let _can_receive_gifts = self.read_bool()?;
+        let _can_greet_nearby_characters = self.read_bool()?;
+        self.skip_nullable_bool()?;
+        let _can_visit_island = self.read_object_string_any()?;
+        self.skip_nullable_bool()?;
+        let _item_delivery_quests = self.read_object_string_any()?;
+        let _perfection_score = self.read_bool()?;
+        let _end_slide_show = self.read_i32()?;
+        let _spouse_adopts = self.read_object_string_any()?;
+        let _spouse_wants_children = self.read_object_string_any()?;
+        let _spouse_gift_jealousy = self.read_object_string_any()?;
+        let _spouse_gift_jealousy_friendship_change = self.read_i32()?;
+        self.skip_nullable_character_spouse_room_data()?;
+        self.skip_nullable_character_spouse_patio_data()?;
+        self.skip_nullable_string_list()?;
+        self.skip_nullable_string_list()?;
+        let _dumpster_dive_friendship_effect = self.read_i32()?;
+        self.skip_nullable_i32()?;
+        self.skip_nullable_string_dictionary()?;
+        self.skip_nullable_bool()?;
+        self.skip_nullable_generic_spawn_item_data_with_condition_list()?;
+        let _winter_star_participant = self.read_object_string_any()?;
+        let _unlock_conditions = self.read_object_string_any()?;
+        let _spawn_if_missing = self.read_bool()?;
+        self.skip_nullable_character_home_data_list()?;
+        let _texture_name = self.read_object_string_any()?;
+        self.skip_nullable_character_appearance_data_list()?;
+        self.skip_nullable_rectangle()?;
+        self.skip_point()?;
+        let _breather = self.read_bool()?;
+        self.skip_nullable_rectangle()?;
+        self.skip_nullable_point()?;
+        self.skip_nullable_character_shadow_data()?;
+        self.skip_point()?;
+        self.skip_object_i32_list()?;
+        let _kiss_sprite_index = self.read_i32()?;
+        let _kiss_sprite_facing_right = self.read_bool()?;
+        let _hidden_profile_emote_sound = self.read_object_string_any()?;
+        let _hidden_profile_emote_duration = self.read_i32()?;
+        let _hidden_profile_emote_start_frame = self.read_i32()?;
+        let _hidden_profile_emote_frame_count = self.read_i32()?;
+        let _hidden_profile_emote_frame_duration = self.read_f32()?;
+        self.skip_nullable_string_list()?;
+        let _festival_vanilla_actor_index = self.read_i32()?;
+        self.skip_nullable_string_dictionary()?;
+        Ok(())
+    }
+
+    fn skip_character_data_tail_after_social_tab(&mut self) -> Result<(), String> {
+        let _can_socialize = self.read_object_string_any()?;
+        let _can_receive_gifts = self.read_bool()?;
+        let _can_greet_nearby_characters = self.read_bool()?;
+        self.skip_nullable_bool()?;
+        let _can_visit_island = self.read_object_string_any()?;
+        self.skip_nullable_bool()?;
+        let _item_delivery_quests = self.read_object_string_any()?;
+        let _perfection_score = self.read_bool()?;
+        let _end_slide_show = self.read_i32()?;
+        let _spouse_adopts = self.read_object_string_any()?;
+        let _spouse_wants_children = self.read_object_string_any()?;
+        let _spouse_gift_jealousy = self.read_object_string_any()?;
+        let _spouse_gift_jealousy_friendship_change = self.read_i32()?;
+        self.skip_nullable_character_spouse_room_data()?;
+        self.skip_nullable_character_spouse_patio_data()?;
+        self.skip_nullable_string_list()?;
+        self.skip_nullable_string_list()?;
+        let _dumpster_dive_friendship_effect = self.read_i32()?;
+        self.skip_nullable_i32()?;
+        self.skip_nullable_string_dictionary()?;
+        self.skip_nullable_bool()?;
+        self.skip_nullable_generic_spawn_item_data_with_condition_list()?;
+        let _winter_star_participant = self.read_object_string_any()?;
+        let _unlock_conditions = self.read_object_string_any()?;
+        let _spawn_if_missing = self.read_bool()?;
+        self.skip_nullable_character_home_data_list()?;
+        let _texture_name = self.read_object_string_any()?;
+        self.skip_nullable_character_appearance_data_list()?;
+        self.skip_nullable_rectangle()?;
+        self.skip_point()?;
+        let _breather = self.read_bool()?;
+        self.skip_nullable_rectangle()?;
+        self.skip_nullable_point()?;
+        self.skip_nullable_character_shadow_data()?;
+        self.skip_point()?;
+        self.skip_object_i32_list()?;
+        let _kiss_sprite_index = self.read_i32()?;
+        let _kiss_sprite_facing_right = self.read_bool()?;
+        let _hidden_profile_emote_sound = self.read_object_string_any()?;
+        let _hidden_profile_emote_duration = self.read_i32()?;
+        let _hidden_profile_emote_start_frame = self.read_i32()?;
+        let _hidden_profile_emote_frame_count = self.read_i32()?;
+        let _hidden_profile_emote_frame_duration = self.read_f32()?;
+        self.skip_nullable_string_list()?;
+        let _festival_vanilla_actor_index = self.read_i32()?;
+        self.skip_nullable_string_dictionary()?;
+        Ok(())
+    }
+
     fn read_object_i32_list(&mut self) -> Result<Vec<i32>, String> {
         if self.read_7bit_usize()? == 0 {
             return Ok(Vec::new());
         }
         self.read_i32_list()
+    }
+
+    fn skip_object_i32_list(&mut self) -> Result<(), String> {
+        if self.read_7bit_usize()? == 0 {
+            return Ok(());
+        }
+        let count = self.read_i32()?.max(0) as usize;
+        for _ in 0..count {
+            let _ = self.read_i32()?;
+        }
+        Ok(())
     }
 
     fn read_i32_list(&mut self) -> Result<Vec<i32>, String> {
@@ -1838,6 +2447,151 @@ impl<'a> XnbPayloadReader<'a> {
     fn skip_nullable_i32(&mut self) -> Result<(), String> {
         if self.read_bool()? {
             let _ = self.read_i32()?;
+        }
+        Ok(())
+    }
+
+    fn read_nullable_i32(&mut self) -> Result<Option<i32>, String> {
+        if self.read_bool()? {
+            return Ok(Some(self.read_i32()?));
+        }
+        Ok(None)
+    }
+
+    fn skip_nullable_bool(&mut self) -> Result<(), String> {
+        if self.read_bool()? {
+            let _ = self.read_bool()?;
+        }
+        Ok(())
+    }
+
+    fn skip_point(&mut self) -> Result<(), String> {
+        let _x = self.read_i32()?;
+        let _y = self.read_i32()?;
+        Ok(())
+    }
+
+    fn skip_nullable_point(&mut self) -> Result<(), String> {
+        if self.read_bool()? {
+            self.skip_point()?;
+        }
+        Ok(())
+    }
+
+    fn skip_rectangle(&mut self) -> Result<(), String> {
+        let _x = self.read_i32()?;
+        let _y = self.read_i32()?;
+        let _width = self.read_i32()?;
+        let _height = self.read_i32()?;
+        Ok(())
+    }
+
+    fn skip_nullable_rectangle(&mut self) -> Result<(), String> {
+        if self.read_bool()? {
+            self.skip_rectangle()?;
+        }
+        Ok(())
+    }
+
+    fn skip_nullable_character_spouse_room_data(&mut self) -> Result<(), String> {
+        if self.read_7bit_usize()? == 0 {
+            return Ok(());
+        }
+        let _map_asset = self.read_object_string_any()?;
+        self.skip_rectangle()?;
+        Ok(())
+    }
+
+    fn skip_nullable_character_spouse_patio_data(&mut self) -> Result<(), String> {
+        if self.read_7bit_usize()? == 0 {
+            return Ok(());
+        }
+        let _map_asset = self.read_object_string_any()?;
+        self.skip_rectangle()?;
+        self.skip_nullable_i32_array_list()?;
+        self.skip_point()?;
+        Ok(())
+    }
+
+    fn skip_nullable_i32_array_list(&mut self) -> Result<(), String> {
+        if self.read_7bit_usize()? == 0 {
+            return Ok(());
+        }
+        let count = self.read_i32()?.max(0) as usize;
+        for _ in 0..count {
+            if self.read_7bit_usize()? == 0 {
+                continue;
+            }
+            let len = self.read_i32()?.max(0) as usize;
+            for _ in 0..len {
+                let _ = self.read_i32()?;
+            }
+        }
+        Ok(())
+    }
+
+    fn skip_nullable_character_home_data_list(&mut self) -> Result<(), String> {
+        if self.read_7bit_usize()? == 0 {
+            return Ok(());
+        }
+        let count = self.read_i32()?.max(0) as usize;
+        for _ in 0..count {
+            if self.read_7bit_usize()? == 0 {
+                continue;
+            }
+            let _id = self.read_object_string_any()?;
+            let _condition = self.read_object_string_any()?;
+            let _location = self.read_object_string_any()?;
+            self.skip_point()?;
+            let _direction = self.read_object_string_any()?;
+        }
+        Ok(())
+    }
+
+    fn skip_nullable_character_appearance_data_list(&mut self) -> Result<(), String> {
+        if self.read_7bit_usize()? == 0 {
+            return Ok(());
+        }
+        let count = self.read_i32()?.max(0) as usize;
+        for _ in 0..count {
+            if self.read_7bit_usize()? == 0 {
+                continue;
+            }
+            let _id = self.read_object_string_any()?;
+            let _condition = self.read_object_string_any()?;
+            self.skip_nullable_i32()?;
+            let _indoors = self.read_bool()?;
+            let _outdoors = self.read_bool()?;
+            let _portrait = self.read_object_string_any()?;
+            let _sprite = self.read_object_string_any()?;
+            let _is_island_attire = self.read_bool()?;
+            let _precedence = self.read_i32()?;
+            let _weight = self.read_i32()?;
+        }
+        Ok(())
+    }
+
+    fn skip_nullable_character_shadow_data(&mut self) -> Result<(), String> {
+        if self.read_7bit_usize()? == 0 {
+            return Ok(());
+        }
+        let _visible = self.read_bool()?;
+        self.skip_point()?;
+        let _scale = self.read_f32()?;
+        Ok(())
+    }
+
+    fn skip_nullable_generic_spawn_item_data_with_condition_list(&mut self) -> Result<(), String> {
+        if self.read_7bit_usize()? == 0 {
+            return Ok(());
+        }
+        let count = self.read_i32()?.max(0) as usize;
+        for _ in 0..count {
+            if self.read_7bit_usize()? == 0 {
+                continue;
+            }
+            self.skip_generic_spawn_item_data()?;
+            let _condition = self.read_object_string_any()?;
         }
         Ok(())
     }
@@ -2207,5 +2961,40 @@ mod tests {
         assert!(beach.height > 0);
         assert!(beach.fishable_tiles > 0);
         assert!(beach.max_depth > 0);
+    }
+
+    #[test]
+    fn reads_calendar_game_data_from_dev_source() {
+        let Some(content) = dev_content_dir() else {
+            return;
+        };
+        let localized_tables = load_localized_string_tables(
+            &content,
+            &["Characters", "NPCNames", "UI", "1_6_Strings"],
+        );
+        let festivals = load_calendar_festivals(&content, &localized_tables).unwrap();
+        let birthdays = load_calendar_birthdays(&content, &localized_tables).unwrap();
+
+        assert!(festivals.iter().any(|entry| entry.name.contains("复活节")));
+        assert!(festivals.iter().any(|entry| entry.name.contains("夜市")));
+        assert!(birthdays
+            .iter()
+            .any(|entry| entry.name.contains("阿比盖尔")));
+        assert!(birthdays.iter().any(|entry| entry.name.contains("刘易斯")));
+    }
+
+    #[test]
+    fn reads_npc_profiles_from_dev_source() {
+        let Some(content) = dev_content_dir() else {
+            return;
+        };
+        let localized_tables = load_localized_string_tables(
+            &content,
+            &["Characters", "NPCNames", "UI", "1_6_Strings"],
+        );
+        let npcs = load_npc_profiles(&content, &localized_tables).unwrap();
+
+        assert!(npcs.iter().any(|entry| entry.id == "Abigail"));
+        assert!(npcs.iter().any(|entry| entry.id == "Lewis"));
     }
 }

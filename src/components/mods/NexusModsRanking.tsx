@@ -258,7 +258,6 @@ export function NexusModsRanking({ onOpenDetail }: NexusModsRankingProps = {}) {
   ) => {
     // Prevent duplicate concurrent fetches (React StrictMode fires effects twice)
     if (rankingFetchInProgress) {
-      console.log("[Ranking] Fetch already in progress, skipping duplicate call.")
       return
     }
     rankingFetchInProgress = true
@@ -296,18 +295,6 @@ export function NexusModsRanking({ onOpenDetail }: NexusModsRankingProps = {}) {
           author_filter?: string
           uploader_filter?: string
         }>("respond-nexus-ranking-html", (event) => {
-          console.log("[Ranking] Event received:", JSON.stringify({
-            has_mods: !!event.payload.mods,
-            has_error: !!event.payload.error,
-            status: event.payload.status,
-            offset: event.payload.offset,
-            sort_field: event.payload.sort_field,
-            name_filter: event.payload.name_filter,
-            targetOffset, targetSortField, targetSearchQuery, targetAuthorQuery, targetUploaderQuery,
-            mods_keys: event.payload.mods ? Object.keys(event.payload.mods) : null,
-            totalCount: event.payload.mods?.data?.mods?.totalCount ?? event.payload.mods?.mods?.totalCount ?? null,
-            nodes_count: event.payload.mods?.data?.mods?.nodes?.length ?? event.payload.mods?.mods?.nodes?.length ?? null,
-          }))
           // Verify that this event corresponds to our active request to prevent race conditions
           if (event.payload.offset !== undefined && event.payload.offset !== targetOffset) return
           if (event.payload.sort_field !== undefined && event.payload.sort_field !== targetSortField) return
@@ -348,7 +335,6 @@ export function NexusModsRanking({ onOpenDetail }: NexusModsRankingProps = {}) {
             return
           }
 
-          console.log("[Ranking] Successfully intercepted GraphQL response!")
           const parsed = mapGraphQLToRanking(event.payload.mods, targetOffset)
           const total = event.payload.mods?.data?.mods?.totalCount ?? event.payload.mods?.mods?.totalCount ?? parsed.length
           
@@ -363,10 +349,8 @@ export function NexusModsRanking({ onOpenDetail }: NexusModsRankingProps = {}) {
               if (isSame) {
                 // Keep cache pages, just refresh page 1 timestamp
                 setCachedPage(qKey, 1, parsed, total)
-                console.log("[Ranking] Page 1 matches cache, subsequent cache pages kept.")
               } else {
                 // Invalidate subsequent pages, show fresh
-                console.log("[Ranking] Page 1 changed, invalidating subsequent pages.")
                 setCachedPage(qKey, 1, parsed, total)
                 invalidateSubsequentPages(qKey)
                 setRanking(parsed)

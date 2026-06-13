@@ -46,14 +46,11 @@ export function NexusProvider({ children }: { children: React.ReactNode }) {
     async function checkLogin() {
       const invoke = await getTauriInvoke()
       if (!invoke) {
-        console.log("[NexusProvider] Not running in Tauri environment, skipping checkLogin");
         return
       }
       setNexusChecking(true)
-      console.log("[NexusProvider] Starting silent login check...");
       try {
         const result = await invoke("check_nexus_login_status") as { loggedIn: boolean; username: string }
-        console.log("[NexusProvider] Silent login check result:", result);
         setNexusLoggedIn(result.loggedIn)
         setNexusUsername(result.username || localStorage.getItem("nexusUsername") || "")
         if (result.username) localStorage.setItem("nexusUsername", result.username)
@@ -61,9 +58,7 @@ export function NexusProvider({ children }: { children: React.ReactNode }) {
         // If logged in, also try to load cached/fresh API key
         if (result.loggedIn) {
           try {
-            console.log("[NexusProvider] User is logged in, fetching API key...");
             const keyResult = await invoke("fetch_nexus_api_key") as { apiKey: string; error?: string }
-            console.log("[NexusProvider] Fetch API key result:", keyResult);
             if (keyResult.apiKey) {
               setNexusApiKey(keyResult.apiKey)
               localStorage.setItem("nexusApiKey", keyResult.apiKey)
@@ -89,7 +84,6 @@ export function NexusProvider({ children }: { children: React.ReactNode }) {
       try {
         const { listen } = await import("@tauri-apps/api/event")
         const unsub = await listen<{ status: string; username?: string }>("nexus-login-result", async (event) => {
-          console.log("[NexusProvider] Received nexus-login-result event payload:", event.payload);
           if (event.payload.status === "success") {
             setNexusLoggedIn(true)
             const name = event.payload.username || ""
@@ -101,9 +95,7 @@ export function NexusProvider({ children }: { children: React.ReactNode }) {
               const invoke = await getTauriInvoke()
               if (invoke) {
                 setNexusApiKeyLoading(true)
-                console.log("[NexusProvider] Auto-fetching API key after login success...");
                 const keyResult = await invoke("fetch_nexus_api_key") as { apiKey: string; error?: string }
-                console.log("[NexusProvider] Auto-fetch API key result:", keyResult);
                 if (keyResult.apiKey) {
                   setNexusApiKey(keyResult.apiKey)
                   localStorage.setItem("nexusApiKey", keyResult.apiKey)

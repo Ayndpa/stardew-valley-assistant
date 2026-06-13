@@ -10,7 +10,10 @@ use std::{fs, sync::Mutex, thread, time::Duration};
 
 use crate::farmer_avatar::get_npc_portraits;
 use crate::game::{auto_detect_game_dir, get_game_version, launch_game};
-use crate::game_data::{get_crop_game_data, get_fishing_map_data, get_fishing_map_detail};
+use crate::game_data::{
+    get_calendar_game_data, get_crop_game_data, get_fishing_map_data, get_fishing_map_detail,
+    get_npc_game_data,
+};
 use crate::mods::{
     apply_profile, check_nexus_login_status, delete_mod, delete_profile, export_profile,
     export_profile_to_file, fetch_nexus_api_key, fetch_nexus_download_metadata,
@@ -240,6 +243,7 @@ pub fn run() {
                 show_main_window_in_front(&window);
             });
         }))
+        .plugin(tauri_plugin_log::Builder::default().build())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -256,9 +260,11 @@ pub fn run() {
             open_nexus_ranking_scraper,
             open_in_file_manager,
             get_game_version,
+            get_calendar_game_data,
             get_crop_game_data,
             get_fishing_map_data,
             get_fishing_map_detail,
+            get_npc_game_data,
             launch_game,
             install_smapi,
             uninstall_smapi,

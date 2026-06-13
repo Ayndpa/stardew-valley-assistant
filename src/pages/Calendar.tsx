@@ -30,15 +30,30 @@ interface SaveDetail {
   summary: SaveSummary
 }
 
-import {
-  FESTIVALS,
-  BIRTHDAYS,
-  SEASONS_LIST,
-  WEEKDAYS
-} from "@/data/calendar"
 import { getBooksellerDays } from "@/lib/dotnet-random"
 
+interface Festival {
+  name: string
+  date: string
+  day: number
+  season: string
+  description?: string | null
+}
 
+interface Birthday {
+  name: string
+  date: string
+  day: number
+  season: string
+}
+
+interface CalendarGameData {
+  festivals: Festival[]
+  birthdays: Birthday[]
+}
+
+const SEASONS_LIST = ["春季", "夏季", "秋季", "冬季"]
+const WEEKDAYS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
 
 interface CalendarProps {
   selectedSaveId: string
@@ -46,8 +61,43 @@ interface CalendarProps {
 
 export function Calendar({ selectedSaveId }: CalendarProps) {
   const [detail, setDetail] = useState<SaveDetail | null>(null)
+  const [festivals, setFestivals] = useState<Festival[]>([])
+  const [birthdays, setBirthdays] = useState<Birthday[]>([])
+  const [loadingCalendarData, setLoadingCalendarData] = useState(false)
+  const [calendarDataError, setCalendarDataError] = useState<string | null>(null)
   const [viewSeason, setViewSeason] = useState(0) // 0: Spring, 1: Summer, 2: Fall, 3: Winter
   const [selectedDay, setSelectedDay] = useState<number | null>(null)
+
+  useEffect(() => {
+    async function loadCalendarGameData() {
+      const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__
+      if (!isTauri) {
+        setCalendarDataError("当前环境不是 Tauri，无法直接读取游戏目录。")
+        return
+      }
+
+      setLoadingCalendarData(true)
+      setCalendarDataError(null)
+      try {
+        const { invoke } = await import("@tauri-apps/api/core")
+        const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+        const data = await invoke("get_calendar_game_data", {
+          gameDir: gameDir.trim() || undefined,
+        }) as CalendarGameData
+        setFestivals(data.festivals)
+        setBirthdays(data.birthdays)
+      } catch (err) {
+        console.error("Error loading calendar game data:", err)
+        setCalendarDataError(String(err))
+        setFestivals([])
+        setBirthdays([])
+      } finally {
+        setLoadingCalendarData(false)
+      }
+    }
+
+    loadCalendarGameData()
+  }, [])
 
   // Fetch save details
   useEffect(() => {
@@ -82,8 +132,8 @@ export function Calendar({ selectedSaveId }: CalendarProps) {
 
   // Get events on a specific day
   const getDayEvents = (day: number) => {
-    const dayBirthdays = BIRTHDAYS.filter(b => b.season === activeSeasonName && b.day === day)
-    const dayFestivals = FESTIVALS.filter(f => f.season === activeSeasonName && f.day === day)
+    const dayBirthdays = birthdays.filter(b => b.season === activeSeasonName && b.day === day)
+    const dayFestivals = festivals.filter(f => f.season === activeSeasonName && f.day === day)
     const isBookseller = booksellerDays.includes(day)
     return {
       birthdays: dayBirthdays,
@@ -116,6 +166,14 @@ export function Calendar({ selectedSaveId }: CalendarProps) {
             : "浏览星露谷全年的节日、生日和特殊事件"}
         </p>
       </div>
+
+      {(loadingCalendarData || calendarDataError) && (
+        <div className="text-xs text-muted-foreground">
+          {loadingCalendarData
+            ? "正在从游戏内容解析节日与生日数据..."
+            : `未能读取游戏目录中的日历数据：${calendarDataError}`}
+        </div>
+      )}
 
       <Tabs defaultValue="grid-view" className="space-y-6">
         <TabsList>
@@ -249,7 +307,9 @@ export function Calendar({ selectedSaveId }: CalendarProps) {
                         {currentDayEvents.festivals.map((f, idx) => (
                           <div key={idx} className="bg-rose-500/5 border border-rose-500/10 p-3 rounded-lg space-y-1">
                             <p className="font-bold text-sm text-rose-500">{f.name}</p>
-                            <p className="text-xs text-muted-foreground">{f.description}</p>
+                            {f.description ? (
+                              <p className="text-xs text-muted-foreground">{f.description}</p>
+                            ) : null}
                           </div>
                         ))}
                       </div>
@@ -318,13 +378,15 @@ export function Calendar({ selectedSaveId }: CalendarProps) {
                 <CardDescription>星露谷全年的节日与特殊天气</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3 max-h-[60vh] overflow-y-auto">
-                {FESTIVALS.map((f, i) => (
+                {festivals.map((f, i) => (
                   <div key={i} className="flex flex-col p-3 rounded-lg border bg-accent/20 space-y-1">
                     <div className="flex justify-between items-center">
                       <span className="font-bold text-sm">{f.name}</span>
                       <Badge variant="secondary">{f.date}</Badge>
                     </div>
-                    <p className="text-xs text-muted-foreground">{f.description}</p>
+                    {f.description ? (
+                      <p className="text-xs text-muted-foreground">{f.description}</p>
+                    ) : null}
                   </div>
                 ))}
               </CardContent>
@@ -337,7 +399,7 @@ export function Calendar({ selectedSaveId }: CalendarProps) {
                 <CardDescription>所有鹈鹕镇居民的生日汇总</CardDescription>
               </CardHeader>
               <CardContent className="grid grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto">
-                {BIRTHDAYS.map((b, i) => (
+                {birthdays.map((b, i) => (
                   <div key={i} className="flex justify-between items-center p-2.5 rounded-lg border bg-accent/20">
                     <span className="font-medium text-sm">{b.name.split(" ")[0]}</span>
                     <Badge variant="outline" className="text-xs">{b.date}</Badge>
