@@ -6,8 +6,8 @@ import {
   Search,
   Puzzle,
   FolderOpen,
+  FileUp,
   RefreshCw,
-  Plus,
   Trash2,
   Loader2,
   X,
@@ -57,7 +57,7 @@ interface ModListProps {
   onCheckUpdates: () => void
   isCheckingUpdates: boolean
   onOpenFolder: () => void
-  onOpenAddModal: () => void
+  onImportMod: () => void
   isLoading?: boolean
   onGoOnline?: () => void
 }
@@ -79,7 +79,7 @@ export function ModList({
   onCheckUpdates,
   isCheckingUpdates,
   onOpenFolder,
-  onOpenAddModal,
+  onImportMod,
   isLoading = false,
   onGoOnline,
 }: ModListProps) {
@@ -148,11 +148,12 @@ export function ModList({
             variant="default" 
             size="sm" 
             className="gap-2 h-10 bg-primary hover:bg-primary/95 text-primary-foreground text-sm font-semibold rounded-xl px-4 shadow-sm"
-            onClick={onOpenAddModal}
+            onClick={onImportMod}
           >
-            <Plus className="h-4 w-4" />
+            <FileUp className="h-4 w-4" />
             导入新模组
           </Button>
+
         </div>
       </div>
 
@@ -207,15 +208,6 @@ export function ModList({
                   前往 Nexus 下载模组
                 </Button>
               )}
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-2 rounded-xl"
-                onClick={onOpenAddModal}
-              >
-                <Plus className="h-4 w-4" />
-                手动导入模组
-              </Button>
             </div>
           </Card>
         ) : filteredMods.length === 0 ? (

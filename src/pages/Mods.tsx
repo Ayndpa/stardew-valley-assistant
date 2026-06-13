@@ -3,7 +3,7 @@ import { useCallback } from "react"
 import { Badge } from "@/components/ui/badge"
 import { useModManagement } from "@/hooks/useModManagement"
 import { Button } from "@/components/ui/button"
-import { Sliders, CheckCircle2, AlertTriangle, Info, X, FileUp } from "lucide-react"
+import { Sliders, CheckCircle2, AlertTriangle, Info, X } from "lucide-react"
 import type { Page } from "@/App"
 
 // Import subcomponents
@@ -11,7 +11,6 @@ import { SmapiInstaller } from "@/components/mods/SmapiInstaller"
 import { SmapiManager } from "@/components/mods/SmapiManager"
 import { ModList } from "@/components/mods/ModList"
 import { ModDetail } from "@/components/mods/ModDetail"
-import { AddModModal } from "@/components/mods/AddModModal"
 import { ModProfiles } from "@/components/mods/ModProfiles"
 
 // Category Translations
@@ -54,22 +53,6 @@ export function Mods({ onNavigate, refreshSignal }: ModsProps) {
     isCheckingUpdates,
     toast,
     setToast,
-    isAddModalOpen,
-    setIsAddModalOpen,
-
-    // New Mod form state
-    newModName,
-    setNewModName,
-    newModEngName,
-    setNewModEngName,
-    newModAuthor,
-    setNewModAuthor,
-    newModDesc,
-    setNewModDesc,
-    newModCategory,
-    setNewModCategory,
-    newModVersion,
-    setNewModVersion,
 
     // Computed values
     selectedMod,
@@ -87,7 +70,6 @@ export function Mods({ onNavigate, refreshSignal }: ModsProps) {
     handleSaveConfig,
     handleInstallSmapi,
     handleUninstallSmapi,
-    handleAddNewMod,
     handleDeleteMod,
     handleOpenOfficialSite,
     handleApplyProfile,
@@ -205,17 +187,6 @@ export function Mods({ onNavigate, refreshSignal }: ModsProps) {
                     管理 SMAPI
                   </Button>
                 )}
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="h-8 rounded-lg text-xs gap-1.5 hover:bg-accent border-border font-semibold"
-                  onClick={() => {
-                    void handlePickZipFile()
-                  }}
-                >
-                  <FileUp className="h-3.5 w-3.5 text-primary" />
-                  选择 zip 安装
-                </Button>
               </div>
               <p className="text-muted-foreground mt-2 text-sm max-w-xl">
                 对游戏扩展模组的加载进行集中控制。您可以在此处扫描本地模组、进行一键版本查重升级，或者直接对每个模组的本地 <code className="bg-accent/40 px-1 py-0.5 rounded text-xs">config.json</code> 参数进行模拟可视化编辑。
@@ -280,9 +251,11 @@ export function Mods({ onNavigate, refreshSignal }: ModsProps) {
                 onCheckUpdates={handleCheckUpdates}
                 isCheckingUpdates={isCheckingUpdates}
                 onOpenFolder={handleOpenFolder}
-                onOpenAddModal={() => setIsAddModalOpen(true)}
                 isLoading={isLoadingMods}
                 onGoOnline={() => onNavigate?.("onlineMods")}
+                onImportMod={() => {
+                  void handlePickZipFile()
+                }}
               />
             </div>
 
@@ -300,25 +273,6 @@ export function Mods({ onNavigate, refreshSignal }: ModsProps) {
             </div>
           </div>
 
-          {/* Add Mod Modal Dialog */}
-          <AddModModal
-            isOpen={isAddModalOpen}
-            onClose={() => setIsAddModalOpen(false)}
-            onSubmit={handleAddNewMod}
-            name={newModName}
-            setName={setNewModName}
-            engName={newModEngName}
-            setEngName={setNewModEngName}
-            author={newModAuthor}
-            setAuthor={setNewModAuthor}
-            desc={newModDesc}
-            setDesc={setNewModDesc}
-            category={newModCategory}
-            setCategory={setNewModCategory}
-            version={newModVersion}
-            setVersion={setNewModVersion}
-            categoryMap={CATEGORY_MAP}
-          />
         </>
       )}
     </div>

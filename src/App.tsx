@@ -331,7 +331,7 @@ function App() {
         showGlobalToast("只支持拖入 .zip 模组压缩包", "warning")
         return
       }
-      showGlobalToast("当前环境未返回文件绝对路径，请使用“选择 zip 安装”或手动放置可访问路径", "warning")
+      showGlobalToast("当前环境未返回文件绝对路径，请使用“导入新模组”或手动放置可访问路径", "warning")
       return
     }
 
