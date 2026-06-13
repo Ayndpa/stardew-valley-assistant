@@ -44,12 +44,64 @@ interface NpcGameData {
   npcs: NpcProfile[]
 }
 
+interface LocalCacheEntry<T> {
+  data: T
+  fetchedAt: number
+}
+
 const relationshipStatusMap: Record<string, string> = {
   Friendly: "友好",
   Dating: "恋爱中",
   Engaged: "已订婚",
   Married: "配偶",
   Divorced: "离异",
+}
+
+const NPC_PROFILES_CACHE_KEY = "stardew_npc_profiles_cache"
+const NPC_PORTRAITS_CACHE_KEY = "stardew_npc_portraits_cache"
+const NPC_FRIENDSHIPS_CACHE_KEY = "stardew_npc_friendships_cache"
+
+function normalizeGameDir(gameDir: string) {
+  return gameDir.trim().toLowerCase()
+}
+
+function readCache<T>(key: string): LocalCacheEntry<T> | null {
+  if (typeof window === "undefined") return null
+
+  try {
+    const raw = window.localStorage.getItem(key)
+    if (!raw) return null
+    return JSON.parse(raw) as LocalCacheEntry<T>
+  } catch (error) {
+    console.error(`Failed to read cache: ${key}`, error)
+    return null
+  }
+}
+
+function writeCache<T>(key: string, data: T) {
+  if (typeof window === "undefined") return
+
+  try {
+    const entry: LocalCacheEntry<T> = {
+      data,
+      fetchedAt: Date.now(),
+    }
+    window.localStorage.setItem(key, JSON.stringify(entry))
+  } catch (error) {
+    console.error(`Failed to write cache: ${key}`, error)
+  }
+}
+
+function getProfilesCacheKey(gameDir: string) {
+  return `${NPC_PROFILES_CACHE_KEY}:${normalizeGameDir(gameDir) || "default"}`
+}
+
+function getPortraitsCacheKey(gameDir: string, npcIds: string[]) {
+  return `${NPC_PORTRAITS_CACHE_KEY}:${normalizeGameDir(gameDir) || "default"}:${npcIds.join(",")}`
+}
+
+function getFriendshipsCacheKey(saveId: string) {
+  return `${NPC_FRIENDSHIPS_CACHE_KEY}:${saveId}`
 }
 
 function HeartBar({ hearts, maxHearts }: { hearts: number; maxHearts: number }) {
@@ -115,55 +167,102 @@ export function NPCs({ selectedSaveId }: NPCsProps) {
   const [loadingFriendships, setLoadingFriendships] = useState(true)
 
   useEffect(() => {
+    let canceled = false
+
     async function loadNpcProfiles() {
       const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__
-      if (!isTauri) {
+      const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+      const cacheKey = getProfilesCacheKey(gameDir)
+      const cached = readCache<NpcProfile[]>(cacheKey)
+
+      if (cached && !canceled) {
+        setNpcProfiles(cached.data)
         setLoadingProfiles(false)
+      }
+
+      if (!isTauri) {
+        if (!canceled) {
+          setLoadingProfiles(false)
+        }
         return
       }
 
-      setLoadingProfiles(true)
+      if (!cached && !canceled) {
+        setLoadingProfiles(true)
+      }
+
       try {
         const { invoke } = await import("@tauri-apps/api/core")
-        const gameDir = localStorage.getItem("stardewGameDirectory") || ""
         const data = await invoke("get_npc_game_data", {
           gameDir: gameDir.trim() || undefined,
         }) as NpcGameData
-        setNpcProfiles(data.npcs)
+        if (!canceled) {
+          setNpcProfiles(data.npcs)
+        }
+        writeCache(cacheKey, data.npcs)
       } catch (err) {
         console.error("Error loading NPC game data:", err)
-        setNpcProfiles([])
+        if (!cached && !canceled) {
+          setNpcProfiles([])
+        }
       } finally {
-        setLoadingProfiles(false)
+        if (!canceled) {
+          setLoadingProfiles(false)
+        }
       }
     }
 
     loadNpcProfiles()
+
+    return () => {
+      canceled = true
+    }
   }, [])
 
   useEffect(() => {
+    let canceled = false
+
     async function loadPortraits() {
       const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__
       if (!isTauri || npcProfiles.length === 0) return
 
+      const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+      const cacheKey = getPortraitsCacheKey(gameDir, npcProfiles.map((npc) => npc.id))
+      const cached = readCache<Record<string, string>>(cacheKey)
+
+      if (cached && !canceled) {
+        setNpcPortraits(cached.data)
+        return
+      }
+
       try {
         const { invoke } = await import("@tauri-apps/api/core")
-        const gameDir = localStorage.getItem("stardewGameDirectory") || ""
         const portraits = await invoke<Record<string, string>>("get_npc_portraits", {
           npcIds: npcProfiles.map((npc) => npc.id),
           gameDir: gameDir.trim() || undefined,
         })
-        setNpcPortraits(portraits)
+        if (!canceled) {
+          setNpcPortraits(portraits)
+        }
+        writeCache(cacheKey, portraits)
       } catch (err) {
         console.error("Error loading NPC portraits:", err)
-        setNpcPortraits({})
+        if (!canceled) {
+          setNpcPortraits({})
+        }
       }
     }
 
     loadPortraits()
+
+    return () => {
+      canceled = true
+    }
   }, [npcProfiles])
 
   useEffect(() => {
+    let canceled = false
+
     async function loadFriendships() {
       if (!selectedSaveId) {
         setFriendships({})
@@ -171,10 +270,21 @@ export function NPCs({ selectedSaveId }: NPCsProps) {
         return
       }
 
-      setLoadingFriendships(true)
+      const cacheKey = getFriendshipsCacheKey(selectedSaveId)
+      const cached = readCache<Record<string, FriendshipInfo>>(cacheKey)
+
+      if (cached && !canceled) {
+        setFriendships(cached.data)
+        setLoadingFriendships(false)
+      } else {
+        setLoadingFriendships(true)
+      }
+
       const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__
       if (!isTauri) {
-        setLoadingFriendships(false)
+        if (!canceled) {
+          setLoadingFriendships(false)
+        }
         return
       }
 
@@ -185,16 +295,27 @@ export function NPCs({ selectedSaveId }: NPCsProps) {
         detail.friendships.forEach((f) => {
           map[f.npcName] = f
         })
-        setFriendships(map)
+        if (!canceled) {
+          setFriendships(map)
+        }
+        writeCache(cacheKey, map)
       } catch (err) {
         console.error("Error loading friendships:", err)
-        setFriendships({})
+        if (!cached && !canceled) {
+          setFriendships({})
+        }
       } finally {
-        setLoadingFriendships(false)
+        if (!canceled) {
+          setLoadingFriendships(false)
+        }
       }
     }
 
     loadFriendships()
+
+    return () => {
+      canceled = true
+    }
   }, [selectedSaveId])
 
   const npcList = useMemo(() => {

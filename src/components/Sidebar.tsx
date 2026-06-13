@@ -4,13 +4,13 @@ import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import type { Page, SaveSummary } from "@/App"
+import appIcon from "@/assets/app-icon.png"
 import {
   LayoutDashboard,
   Sprout,
   Users,
   CalendarDays,
   Settings,
-  Leaf,
   Puzzle,
   ChevronDown,
   ChevronLeft,
@@ -35,6 +35,7 @@ interface SidebarProps {
   downloadStats: {
     running: number
     queued: number
+    paused: number
     failed: number
     finished: number
     total: number
@@ -116,7 +117,7 @@ export function Sidebar({
   }, [])
 
   const currentSave = saves.find((s) => s.id === selectedSaveId) || saves[0]
-  const activeDownloadCount = downloadStats.queued + downloadStats.running
+  const activeDownloadCount = downloadStats.queued + downloadStats.running + downloadStats.paused
 
   const handleSelectSave = (id: string) => {
     onSaveChange(id)
@@ -135,8 +136,13 @@ export function Sidebar({
     )}>
       {/* Logo */}
       <div className={cn("flex items-center gap-3 py-5 transition-all duration-300", collapsed ? "px-3 justify-center" : "px-6")}>
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary shrink-0">
-          <Leaf className="h-5 w-5 text-primary-foreground" />
+        <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg border border-sidebar-border/60 bg-card shadow-sm shrink-0">
+          <img
+            src={appIcon}
+            alt="星露谷助手图标"
+            className="h-full w-full object-cover"
+            draggable={false}
+          />
         </div>
         {!collapsed && (
           <div className="overflow-hidden">
@@ -198,7 +204,12 @@ export function Sidebar({
 
             {/* Custom Dropdown List */}
             {isOpen && (
-              <div className="absolute left-4 right-4 mt-2 bg-sidebar border border-sidebar-border/80 rounded-lg shadow-xl z-50 py-1 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150 max-h-64 flex flex-col">
+              <div
+                className={cn(
+                  "absolute mt-2 bg-sidebar border border-sidebar-border/80 rounded-lg shadow-xl z-50 py-1 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150 max-h-64 flex flex-col",
+                  collapsed ? "left-full top-0 ml-2 w-64" : "left-4 right-4"
+                )}
+              >
                 <ScrollArea className="flex-1">
                   <div className="max-h-60 overflow-y-auto py-1">
                     {saves.map((s) => {
@@ -233,17 +244,48 @@ export function Sidebar({
         </>
       )}
 
-      {/* Navigation */}
-      <ScrollArea className={cn("flex-1 py-4", collapsed ? "px-2" : "px-3")}>
-        <nav className="flex flex-col gap-1">
-          <div className="relative" ref={launchDropdownRef}>
+      <div className={cn("py-4", collapsed ? "px-2" : "px-3")}>
+        <div className="relative" ref={launchDropdownRef}>
+          {collapsed ? (
+            <div className="flex flex-col gap-1">
+              <Button
+                variant="ghost"
+                className="h-10 w-full justify-center border border-border/40 px-0 text-sidebar-foreground transition-all duration-200 hover:bg-sidebar-accent/50"
+                onClick={() => handleLaunch()}
+                disabled={isGameRunning}
+                title={isGameRunning ? "游戏运行中" : "一键启动游戏"}
+              >
+                <Play className="h-4 w-4 text-primary" />
+              </Button>
+              <Button
+                variant="ghost"
+                className="h-7 w-full justify-center border border-border/40 px-0 text-sidebar-foreground transition-all duration-200 hover:bg-sidebar-accent/50"
+                onClick={() => setIsLaunchMenuOpen((value) => !value)}
+                disabled={isGameRunning}
+                title={isGameRunning ? "游戏运行中" : "选择启动方式"}
+              >
+                {collapsed ? (
+                  <ChevronRight
+                    className={cn(
+                      "h-3.5 w-3.5 text-muted-foreground transition-transform duration-200",
+                      isLaunchMenuOpen && "text-sidebar-foreground"
+                    )}
+                  />
+                ) : (
+                  <ChevronDown
+                    className={cn(
+                      "h-3.5 w-3.5 text-muted-foreground transition-transform duration-200",
+                      isLaunchMenuOpen && "rotate-180 text-sidebar-foreground"
+                    )}
+                  />
+                )}
+              </Button>
+            </div>
+          ) : (
             <div className="flex w-full">
               <Button
                 variant="ghost"
-                className={cn(
-                  "gap-3 h-10 text-sm font-medium transition-all duration-200 border border-border/40 hover:bg-sidebar-accent/50 text-sidebar-foreground rounded-r-none",
-                  collapsed ? "flex-1 justify-center px-2" : "flex-1 justify-start px-3"
-                )}
+                className="flex-1 justify-start gap-3 rounded-r-none border border-border/40 px-3 text-sm font-medium text-sidebar-foreground transition-all duration-200 hover:bg-sidebar-accent/50"
                 onClick={() => handleLaunch()}
                 disabled={isGameRunning}
                 title={isGameRunning ? "游戏运行中" : "一键启动游戏"}
@@ -251,14 +293,11 @@ export function Sidebar({
                 <span className="shrink-0">
                   <Play className="h-4 w-4 text-primary" />
                 </span>
-                {!collapsed && (isGameRunning ? "游戏运行中" : "一键启动")}
+                {isGameRunning ? "游戏运行中" : "一键启动"}
               </Button>
               <Button
                 variant="ghost"
-                className={cn(
-                  "h-10 shrink-0 rounded-l-none border border-l-0 border-border/40 px-2 text-sidebar-foreground hover:bg-sidebar-accent/50",
-                  collapsed ? "w-5 px-0" : "w-8"
-                )}
+                className="h-10 w-8 shrink-0 rounded-l-none border border-l-0 border-border/40 px-2 text-sidebar-foreground hover:bg-sidebar-accent/50"
                 onClick={() => setIsLaunchMenuOpen((value) => !value)}
                 disabled={isGameRunning}
                 title={isGameRunning ? "游戏运行中" : "选择启动方式"}
@@ -271,24 +310,30 @@ export function Sidebar({
                 />
               </Button>
             </div>
-            {isLaunchMenuOpen && (
-              <div
-                className={cn(
-                  "absolute mt-2 rounded-lg border border-sidebar-border/80 bg-sidebar py-1 shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150",
-                  collapsed ? "left-0 w-48" : "left-0 right-0"
-                )}
+          )}
+          {isLaunchMenuOpen && (
+            <div
+              className={cn(
+                "absolute rounded-lg border border-sidebar-border/80 bg-sidebar py-1 shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150",
+                collapsed ? "left-full top-11 ml-2 w-48" : "left-0 right-0 mt-2"
+              )}
+            >
+              <button
+                type="button"
+                onClick={() => handleLaunch("vanilla")}
+                className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-xs font-medium text-sidebar-foreground hover:bg-sidebar-accent/80 transition-all duration-150 cursor-pointer"
               >
-                <button
-                  type="button"
-                  onClick={() => handleLaunch("vanilla")}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-xs font-medium text-sidebar-foreground hover:bg-sidebar-accent/80 transition-all duration-150 cursor-pointer"
-                >
-                  <Play className="h-3.5 w-3.5 text-primary shrink-0" />
-                  <span className="min-w-0 flex-1">启动原版游戏</span>
-                </button>
-              </div>
-            )}
-          </div>
+                <Play className="h-3.5 w-3.5 text-primary shrink-0" />
+                <span className="min-w-0 flex-1">启动原版游戏</span>
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Navigation */}
+      <ScrollArea className={cn("flex-1 pb-4", collapsed ? "px-2" : "px-3")}>
+        <nav className="flex flex-col gap-1">
           {navItems.map((item) => {
             const showDownloadCount = item.id === "downloads" && activeDownloadCount > 0
             return (
@@ -330,8 +375,8 @@ export function Sidebar({
         <button
           onClick={onToggleCollapse}
           className={cn(
-            "w-full flex items-center gap-2 px-3 py-2 rounded-lg text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/50 transition-all duration-200 cursor-pointer",
-            collapsed ? "justify-center" : "justify-start"
+            "w-full flex items-center py-2 rounded-lg text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/50 transition-all duration-200 cursor-pointer",
+            collapsed ? "justify-center px-0" : "justify-start gap-2 px-3"
           )}
           title={collapsed ? "展开侧边栏" : "收起侧边栏"}
         >

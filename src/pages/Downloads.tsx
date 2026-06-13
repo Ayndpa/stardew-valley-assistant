@@ -3,6 +3,8 @@ import {
   CheckCircle2,
   Download,
   Loader2,
+  Pause,
+  Play,
   RotateCcw,
   Trash2,
   XCircle,
@@ -17,6 +19,7 @@ interface DownloadsProps {
   stats: {
     running: number
     queued: number
+    paused: number
     failed: number
     finished: number
     total: number
@@ -24,6 +27,8 @@ interface DownloadsProps {
   }
   isGameRunning: boolean
   onRetry: (id: string) => void
+  onPause: (id: string) => void
+  onResume: (id: string) => void
   onRemove: (id: string) => void
   onClearCompleted: () => void
 }
@@ -35,6 +40,8 @@ function StatusBadge({ status }: { status: DownloadTaskStatus }) {
       return <Badge className={`bg-slate-500/10 text-slate-500 border-slate-500/20 ${base}`}>排队中</Badge>
     case "running":
       return <Badge className={`bg-blue-500/10 text-blue-500 border-blue-500/20 ${base}`}>下载中</Badge>
+    case "paused":
+      return <Badge className={`bg-amber-500/10 text-amber-500 border-amber-500/20 ${base}`}>已暂停</Badge>
     case "success":
       return <Badge className={`bg-green-500/10 text-green-500 border-green-500/20 ${base}`}>已完成</Badge>
     case "error":
@@ -44,6 +51,7 @@ function StatusBadge({ status }: { status: DownloadTaskStatus }) {
 
 function TaskIcon({ status }: { status: DownloadTaskStatus }) {
   if (status === "running") return <Loader2 className="h-4 w-4 animate-spin text-blue-500 shrink-0" />
+  if (status === "paused") return <Pause className="h-4 w-4 text-amber-500 shrink-0" />
   if (status === "success") return <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
   if (status === "error") return <XCircle className="h-4 w-4 text-red-500 shrink-0" />
   return <Download className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -59,6 +67,8 @@ export function Downloads({
   stats,
   isGameRunning,
   onRetry,
+  onPause,
+  onResume,
   onRemove,
   onClearCompleted,
 }: DownloadsProps) {
@@ -93,11 +103,12 @@ export function Downloads({
         </div>
       )}
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
         {[
           { label: "全部任务", value: stats.total },
           { label: "下载中", value: stats.running },
           { label: "排队中", value: stats.queued },
+          { label: "已暂停", value: stats.paused },
           { label: "已完成", value: stats.finished },
           { label: "失败", value: stats.failed },
         ].map(item => (
@@ -149,12 +160,56 @@ export function Downloads({
                     <p className="text-[11px] text-muted-foreground truncate">
                       {task.subtitle} · {task.error ? task.error : task.message}
                     </p>
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between gap-3 text-[10px] text-muted-foreground/80">
+                        <span>{task.phase === "extracting" ? "解压中" : task.phase === "installing" ? "安装中" : task.phase === "paused" ? "已暂停" : "下载进度"}</span>
+                        <span>{task.progress}%</span>
+                      </div>
+                      <div className="h-2 overflow-hidden rounded-full bg-muted/70">
+                        <div
+                          className={`h-full rounded-full transition-all ${
+                            task.status === "error"
+                              ? "bg-red-500"
+                              : task.status === "success"
+                                ? "bg-green-500"
+                                : task.status === "paused"
+                                  ? "bg-amber-500"
+                                  : "bg-blue-500"
+                          }`}
+                          style={{ width: `${task.progress === 0 ? 4 : task.progress}%` }}
+                        />
+                      </div>
+                    </div>
                     <p className="text-[10px] text-muted-foreground/80">
                       创建 {formatTime(task.createdAt)}
                       {task.completedAt ? ` · 完成 ${formatTime(task.completedAt)}` : ""}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
+                    {task.status === "running" && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onPause(task.id)}
+                        className="h-8 text-[11px] rounded-lg gap-1"
+                      >
+                        <Pause className="h-3.5 w-3.5" />
+                        暂停
+                      </Button>
+                    )}
+                    {task.status === "paused" && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onResume(task.id)}
+                        disabled={isGameRunning && !!task.startedAt}
+                        title={isGameRunning && !!task.startedAt ? "游戏运行中，不能继续下载" : undefined}
+                        className="h-8 text-[11px] rounded-lg gap-1"
+                      >
+                        <Play className="h-3.5 w-3.5" />
+                        继续
+                      </Button>
+                    )}
                     {task.status === "error" && (
                       <Button
                         variant="outline"

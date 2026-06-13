@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
-export type DownloadTaskStatus = "queued" | "running" | "success" | "error"
+export type DownloadTaskStatus = "queued" | "running" | "paused" | "success" | "error"
 export type DownloadTaskKind = "nexus-mod" | "smapi"
 
 export interface DownloadTask {
@@ -11,10 +11,23 @@ export interface DownloadTask {
   targetKey: string
   status: DownloadTaskStatus
   message: string
+  progress: number
+  downloadedBytes: number
+  totalBytes?: number
+  phase?: "queued" | "downloading" | "paused" | "extracting" | "installing" | "finished"
   error?: string
   createdAt: number
   startedAt?: number
   completedAt?: number
+}
+
+interface DownloadProgressPayload {
+  taskId: string
+  phase: "downloading" | "paused" | "extracting" | "installing" | "finished"
+  progress: number
+  downloadedBytes: number
+  totalBytes?: number | null
+  message: string
 }
 
 export interface QueueNexusDownloadRequest {
@@ -67,9 +80,10 @@ export function useDownloadManager({
   const stats = useMemo(() => {
     const running = tasks.filter(task => task.status === "running").length
     const queued = tasks.filter(task => task.status === "queued").length
+    const paused = tasks.filter(task => task.status === "paused").length
     const failed = tasks.filter(task => task.status === "error").length
     const finished = tasks.filter(task => task.status === "success").length
-    return { running, queued, failed, finished, total: tasks.length, maxConcurrent: MAX_CONCURRENT_DOWNLOADS }
+    return { running, queued, paused, failed, finished, total: tasks.length, maxConcurrent: MAX_CONCURRENT_DOWNLOADS }
   }, [tasks])
 
   const updateTask = useCallback((id: string, patch: Partial<DownloadTask>) => {
@@ -86,6 +100,7 @@ export function useDownloadManager({
     updateTask(task.id, {
       status: "running",
       message: task.kind === "smapi" ? "正在下载并安装 SMAPI..." : "正在下载并安装...",
+      phase: "downloading",
       error: undefined,
       startedAt: Date.now(),
     })
@@ -94,6 +109,8 @@ export function useDownloadManager({
       await runner()
       updateTask(task.id, {
         status: "success",
+        progress: 100,
+        phase: "finished",
         message: task.kind === "smapi" ? "SMAPI 安装完成" : "已安装到 Mods 目录",
         completedAt: Date.now(),
       })
@@ -115,7 +132,7 @@ export function useDownloadManager({
   useEffect(() => {
     if (isGameRunning) return
 
-    const runningCount = tasks.filter(task => task.status === "running").length
+    const runningCount = tasks.filter(task => task.status === "running" || (task.status === "paused" && task.startedAt != null)).length
     const availableSlots = Math.max(0, MAX_CONCURRENT_DOWNLOADS - runningCount)
     if (availableSlots === 0) return
 
@@ -124,6 +141,50 @@ export function useDownloadManager({
       .slice(0, availableSlots)
       .forEach(runTask)
   }, [tasks, isGameRunning, runTask])
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !(window as any).__TAURI_INTERNALS__) {
+      return
+    }
+
+    let unlisten: (() => void) | null = null
+
+    const setupProgressListener = async () => {
+      try {
+        const eventModule = await import("@tauri-apps/api/event")
+        unlisten = await eventModule.listen<DownloadProgressPayload>("download-progress", (event) => {
+          const payload = event.payload
+          setTasks(prev => prev.map(task => {
+            if (task.id !== payload.taskId) return task
+
+            const status: DownloadTaskStatus =
+              payload.phase === "paused"
+                ? "paused"
+                : payload.phase === "finished"
+                  ? "success"
+                  : "running"
+
+            return {
+              ...task,
+              status,
+              phase: payload.phase,
+              progress: Math.max(task.progress, Math.round(payload.progress)),
+              downloadedBytes: payload.downloadedBytes,
+              totalBytes: payload.totalBytes ?? undefined,
+              message: payload.message || task.message,
+            }
+          }))
+        })
+      } catch (err) {
+        console.debug("Unable to setup download progress listener:", err)
+      }
+    }
+
+    setupProgressListener()
+    return () => {
+      unlisten?.()
+    }
+  }, [])
 
   const enqueueTask = useCallback((task: DownloadTask, runner: DownloadRunner) => {
     const existing = tasks.find(item =>
@@ -159,6 +220,9 @@ export function useDownloadManager({
       targetKey: `nexus:${normalizedUrl.toLowerCase()}`,
       status: "queued",
       message: "等待下载",
+      progress: 0,
+      downloadedBytes: 0,
+      phase: "queued",
       createdAt: Date.now(),
     }
 
@@ -173,7 +237,7 @@ export function useDownloadManager({
         throw new Error("当前环境不支持直接安装，请在桌面应用中使用下载管理")
       }
 
-      await invoke("install_nexus_mod", { gameDir, downloadUrl: normalizedUrl })
+      await invoke("install_nexus_mod", { gameDir, downloadUrl: normalizedUrl, taskId: id })
       onModInstalled?.()
     })
   }, [enqueueTask, isGameRunning, onModInstalled])
@@ -203,6 +267,9 @@ export function useDownloadManager({
       targetKey: "smapi:install",
       status: "queued",
       message: "等待下载",
+      progress: 0,
+      downloadedBytes: 0,
+      phase: "queued",
       createdAt: Date.now(),
     }
 
@@ -213,7 +280,7 @@ export function useDownloadManager({
       }
 
       try {
-        await invoke("install_smapi", { gameDir, downloadUrl: normalizedUrl })
+        await invoke("install_smapi", { gameDir, downloadUrl: normalizedUrl, taskId: id })
         await onSuccess?.()
       } catch (err: any) {
         const error = String(err?.message || err)
@@ -230,6 +297,10 @@ export function useDownloadManager({
     updateTask(id, {
       status: "queued",
       message: "等待重试",
+      progress: 0,
+      downloadedBytes: 0,
+      totalBytes: undefined,
+      phase: "queued",
       error: undefined,
       startedAt: undefined,
       completedAt: undefined,
@@ -241,6 +312,56 @@ export function useDownloadManager({
     startedTaskIdsRef.current.delete(id)
     runnersRef.current.delete(id)
   }, [])
+
+  const pauseTask = useCallback(async (id: string) => {
+    const task = tasks.find(item => item.id === id)
+    if (!task) return
+
+    if (task.status === "queued") {
+      updateTask(id, {
+        status: "paused",
+        phase: "paused",
+        message: "队列已暂停",
+      })
+      return
+    }
+
+    if (task.status !== "running") return
+
+    const invoke = await getTauriInvoke()
+    if (!invoke) return
+    await invoke("pause_download_task", { taskId: id })
+    updateTask(id, {
+      status: "paused",
+      phase: "paused",
+      message: "正在暂停...",
+    })
+  }, [tasks, updateTask])
+
+  const resumeTask = useCallback(async (id: string) => {
+    const task = tasks.find(item => item.id === id)
+    if (!task) return
+
+    if (task.status === "paused" && task.startedAt == null) {
+      updateTask(id, {
+        status: "queued",
+        phase: "queued",
+        message: "等待下载",
+      })
+      return
+    }
+
+    if (task.status !== "paused") return
+
+    const invoke = await getTauriInvoke()
+    if (!invoke) return
+    await invoke("resume_download_task", { taskId: id })
+    updateTask(id, {
+      status: "running",
+      phase: "downloading",
+      message: "继续下载中...",
+    })
+  }, [tasks, updateTask])
 
   const clearCompletedTasks = useCallback(() => {
     const removable = new Set(
@@ -261,6 +382,8 @@ export function useDownloadManager({
     queueNexusDownload,
     queueSmapiDownload,
     retryTask,
+    pauseTask,
+    resumeTask,
     removeTask,
     clearCompletedTasks,
   }

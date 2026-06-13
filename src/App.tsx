@@ -50,6 +50,7 @@ function App() {
   const [showOnboarding, setShowOnboarding] = useState(() => {
     return !localStorage.getItem("stardewGameDirectory")
   })
+  const [onboardingReason, setOnboardingReason] = useState<string | null>(null)
   const [modListRefreshSignal, setModListRefreshSignal] = useState(0)
   const [globalToast, setGlobalToast] = useState<{ message: string; type: "success" | "info" | "warning" } | null>(null)
   const [isGlobalDragOver, setIsGlobalDragOver] = useState(false)
@@ -151,6 +152,7 @@ function App() {
 
   const handleOnboardingComplete = (dir: string) => {
     localStorage.setItem("stardewGameDirectory", dir)
+    setOnboardingReason(null)
     setShowOnboarding(false)
   }
 
@@ -158,12 +160,54 @@ function App() {
     setGlobalToast({ message, type })
   }, [])
 
+  const promptGameDirectoryOnboarding = useCallback((reason: string) => {
+    localStorage.removeItem("stardewGameDirectory")
+    setOnboardingReason(reason)
+    setShowOnboarding(true)
+    showGlobalToast(reason, "warning")
+  }, [showGlobalToast])
+
+  const ensureGameDirectoryReady = useCallback(async () => {
+    const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+    if (!gameDir) {
+      const reason = "请先配置游戏安装目录。"
+      setOnboardingReason(reason)
+      setShowOnboarding(true)
+      return null
+    }
+
+    if (typeof window === "undefined" || !(window as any).__TAURI_INTERNALS__) {
+      return gameDir
+    }
+
+    try {
+      const invokeModule = await import("@tauri-apps/api/core")
+      const exists = await invokeModule.invoke<boolean>("path_exists", { path: gameDir })
+      if (exists) {
+        return gameDir
+      }
+
+      promptGameDirectoryOnboarding(`之前配置的游戏目录不存在：${gameDir}。请重新选择游戏目录。`)
+      return null
+    } catch (err) {
+      console.error("Failed to verify game directory:", err)
+      showGlobalToast("检查游戏目录是否存在时发生错误。", "warning")
+      return null
+    }
+  }, [promptGameDirectoryOnboarding, showGlobalToast])
+
+  useEffect(() => {
+    ensureGameDirectoryReady()
+  }, [ensureGameDirectoryReady])
+
   const {
     tasks: downloadTasks,
     stats: downloadStats,
     queueNexusDownload,
     queueSmapiDownload,
     retryTask,
+    pauseTask,
+    resumeTask,
     removeTask,
     clearCompletedTasks,
   } = useDownloadManager({
@@ -178,9 +222,8 @@ function App() {
       return
     }
 
-    const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+    const gameDir = await ensureGameDirectoryReady()
     if (!gameDir) {
-      showGlobalToast("请先配置游戏安装目录。", "warning")
       return
     }
 
@@ -201,7 +244,7 @@ function App() {
       console.error("launch_game failed:", err)
       showGlobalToast("启动游戏失败: " + err, "warning")
     }
-  }, [isGameRunning, showGlobalToast])
+  }, [ensureGameDirectoryReady, isGameRunning, showGlobalToast])
 
   useEffect(() => {
     if (typeof window === "undefined" || !(window as any).__TAURI_INTERNALS__) {
@@ -273,9 +316,8 @@ function App() {
     isHandlingGlobalDropRef.current = true
     lastHandledDropRef.current = { sig: normalizedZipPath, at: now }
 
-    const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+    const gameDir = await ensureGameDirectoryReady()
     if (!gameDir) {
-      showGlobalToast("未配置游戏安装目录，请先在设置中配置", "warning")
       isHandlingGlobalDropRef.current = false
       return
     }
@@ -299,7 +341,7 @@ function App() {
     } finally {
       isHandlingGlobalDropRef.current = false
     }
-  }, [getZipPathFromPayload, isGameRunning, showGlobalToast])
+  }, [ensureGameDirectoryReady, getZipPathFromPayload, isGameRunning, showGlobalToast])
 
   const handleNxmUrl = useCallback(async (downloadUrl: string, source: string) => {
     if (isGameRunning) {
@@ -325,10 +367,8 @@ function App() {
       return
     }
 
-    const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+    const gameDir = await ensureGameDirectoryReady()
     if (!gameDir) {
-      showGlobalToast("收到 NexusMods 下载链接，但未配置游戏安装目录", "warning")
-      setShowOnboarding(true)
       return
     }
 
@@ -363,7 +403,7 @@ function App() {
     } finally {
       isHandlingNxmRef.current = false
     }
-  }, [isGameRunning, queueNexusDownload, showGlobalToast])
+  }, [ensureGameDirectoryReady, isGameRunning, queueNexusDownload, showGlobalToast])
 
   const handleNxmUrls = useCallback(async (urls: string[], source: string) => {
     for (const url of urls) {
@@ -567,6 +607,8 @@ function App() {
             stats={downloadStats}
             isGameRunning={isGameRunning}
             onRetry={retryTask}
+            onPause={pauseTask}
+            onResume={resumeTask}
             onRemove={removeTask}
             onClearCompleted={clearCompletedTasks}
           />
@@ -643,7 +685,7 @@ function App() {
 
         {renderPage()}
       </main>
-      {showOnboarding && <Onboarding onComplete={handleOnboardingComplete} />}
+      {showOnboarding && <Onboarding onComplete={handleOnboardingComplete} initialReason={onboardingReason} />}
     </div>
   )
 }

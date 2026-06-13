@@ -52,8 +52,55 @@ interface CalendarGameData {
   birthdays: Birthday[]
 }
 
+interface LocalCacheEntry<T> {
+  data: T
+  fetchedAt: number
+}
+
 const SEASONS_LIST = ["春季", "夏季", "秋季", "冬季"]
 const WEEKDAYS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+
+const CALENDAR_GAME_DATA_CACHE_KEY = "stardew_calendar_game_data_cache"
+const CALENDAR_SAVE_DETAIL_CACHE_KEY = "stardew_calendar_save_detail_cache"
+
+function normalizeGameDir(gameDir: string) {
+  return gameDir.trim().toLowerCase()
+}
+
+function readCache<T>(key: string): LocalCacheEntry<T> | null {
+  if (typeof window === "undefined") return null
+
+  try {
+    const raw = window.localStorage.getItem(key)
+    if (!raw) return null
+    return JSON.parse(raw) as LocalCacheEntry<T>
+  } catch (error) {
+    console.error(`Failed to read cache: ${key}`, error)
+    return null
+  }
+}
+
+function writeCache<T>(key: string, data: T) {
+  if (typeof window === "undefined") return
+
+  try {
+    const entry: LocalCacheEntry<T> = {
+      data,
+      fetchedAt: Date.now(),
+    }
+    window.localStorage.setItem(key, JSON.stringify(entry))
+  } catch (error) {
+    console.error(`Failed to write cache: ${key}`, error)
+  }
+}
+
+function getCalendarGameDataCacheKey(gameDir: string) {
+  return `${CALENDAR_GAME_DATA_CACHE_KEY}:${normalizeGameDir(gameDir) || "default"}`
+}
+
+function getCalendarSaveDetailCacheKey(saveId: string) {
+  return `${CALENDAR_SAVE_DETAIL_CACHE_KEY}:${saveId}`
+}
 
 interface CalendarProps {
   selectedSaveId: string
@@ -69,55 +116,110 @@ export function Calendar({ selectedSaveId }: CalendarProps) {
   const [selectedDay, setSelectedDay] = useState<number | null>(null)
 
   useEffect(() => {
+    let canceled = false
+
     async function loadCalendarGameData() {
       const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__
+      const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+      const cacheKey = getCalendarGameDataCacheKey(gameDir)
+      const cached = readCache<CalendarGameData>(cacheKey)
+
+      if (cached && !canceled) {
+        setFestivals(cached.data.festivals)
+        setBirthdays(cached.data.birthdays)
+        setLoadingCalendarData(false)
+        setCalendarDataError(null)
+      }
+
       if (!isTauri) {
-        setCalendarDataError("当前环境不是 Tauri，无法直接读取游戏目录。")
+        if (!canceled) {
+          setCalendarDataError("当前环境不是 Tauri，无法直接读取游戏目录。")
+        }
         return
       }
 
-      setLoadingCalendarData(true)
-      setCalendarDataError(null)
+      if (!cached && !canceled) {
+        setLoadingCalendarData(true)
+        setCalendarDataError(null)
+      }
+
       try {
         const { invoke } = await import("@tauri-apps/api/core")
-        const gameDir = localStorage.getItem("stardewGameDirectory") || ""
         const data = await invoke("get_calendar_game_data", {
           gameDir: gameDir.trim() || undefined,
         }) as CalendarGameData
-        setFestivals(data.festivals)
-        setBirthdays(data.birthdays)
+        if (!canceled) {
+          setFestivals(data.festivals)
+          setBirthdays(data.birthdays)
+          setCalendarDataError(null)
+        }
+        writeCache(cacheKey, data)
       } catch (err) {
         console.error("Error loading calendar game data:", err)
-        setCalendarDataError(String(err))
-        setFestivals([])
-        setBirthdays([])
+        if (!canceled) {
+          setCalendarDataError(String(err))
+          if (!cached) {
+            setFestivals([])
+            setBirthdays([])
+          }
+        }
       } finally {
-        setLoadingCalendarData(false)
+        if (!canceled) {
+          setLoadingCalendarData(false)
+        }
       }
     }
 
     loadCalendarGameData()
+
+    return () => {
+      canceled = true
+    }
   }, [])
 
   // Fetch save details
   useEffect(() => {
-    async function loadDetail() {
-      if (!selectedSaveId) return
+    let canceled = false
 
-      const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__;
+    async function loadDetail() {
+      if (!selectedSaveId) {
+        if (!canceled) {
+          setDetail(null)
+        }
+        return
+      }
+
+      const cacheKey = getCalendarSaveDetailCacheKey(selectedSaveId)
+      const cached = readCache<SaveDetail>(cacheKey)
+
+      if (cached && !canceled) {
+        setDetail(cached.data)
+        setViewSeason(cached.data.summary.season)
+      }
+
+      const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__
       if (isTauri) {
         try {
-          const { invoke } = await import("@tauri-apps/api/core");
+          const { invoke } = await import("@tauri-apps/api/core")
           const d: SaveDetail = await invoke("get_save_detail", { id: selectedSaveId })
-          setDetail(d)
-          setViewSeason(d.summary.season)
+          if (!canceled) {
+            setDetail(d)
+            setViewSeason(d.summary.season)
+          }
+          writeCache(cacheKey, d)
         } catch (err) {
           console.error("Error loading save detail:", err)
-          setDetail(null)
+          if (!cached && !canceled) {
+            setDetail(null)
+          }
         }
       }
     }
     loadDetail()
+
+    return () => {
+      canceled = true
+    }
   }, [selectedSaveId])
 
 

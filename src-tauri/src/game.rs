@@ -4,13 +4,20 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use tauri::{AppHandle, Emitter};
 
+use crate::utils::run_without_window;
+
 #[cfg(target_os = "windows")]
 fn get_steam_path_from_registry() -> Option<String> {
     use std::process::Command;
-    let output = Command::new("reg")
-        .args(&["query", "HKCU\\Software\\Valve\\Steam", "/v", "SteamPath"])
-        .output()
-        .ok()?;
+    let mut command = Command::new("reg");
+    let output = run_without_window(command.args(&[
+        "query",
+        "HKCU\\Software\\Valve\\Steam",
+        "/v",
+        "SteamPath",
+    ]))
+    .output()
+    .ok()?;
     if !output.status.success() {
         return None;
     }

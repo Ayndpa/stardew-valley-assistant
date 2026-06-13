@@ -34,10 +34,11 @@ async function getTauriInvoke() {
 
 interface OnboardingProps {
   onComplete: (gameDirectory: string) => void
+  initialReason?: string | null
 }
 
-export function Onboarding({ onComplete }: OnboardingProps) {
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1)
+export function Onboarding({ onComplete, initialReason }: OnboardingProps) {
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(() => (initialReason ? 3 : 1))
   const { themeMode, themeSeason, setThemeMode, setThemeSeason } = useTheme()
   const [directory, setDirectory] = useState(() => {
     return localStorage.getItem("stardewGameDirectory") || ""
@@ -45,6 +46,12 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   const [isValidPath, setIsValidPath] = useState<boolean | null>(null)
   const [showNotification, setShowNotification] = useState<string | null>(null)
   const [showPresets, setShowPresets] = useState(false)
+
+  useEffect(() => {
+    if (!initialReason) return
+    setStep(3)
+    triggerNotification(initialReason)
+  }, [initialReason])
 
   // Basic path format validation
   useEffect(() => {
@@ -174,6 +181,12 @@ export function Onboarding({ onComplete }: OnboardingProps) {
               <span className="text-xs font-medium">开启旅程</span>
             </div>
           </div>
+
+          {initialReason && (
+            <div className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
+              {initialReason}
+            </div>
+          )}
 
           {/* Render Active Step */}
           {step === 1 && <OnboardingStep1 onNext={() => setStep(2)} />}

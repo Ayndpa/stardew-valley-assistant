@@ -67,6 +67,11 @@ interface CropGameData {
   seasons: string[]
 }
 
+interface LocalCacheEntry<T> {
+  data: T
+  fetchedAt: number
+}
+
 type ProfitSortField = "dailyProfit" | "sellPrice" | "growDays" | "name"
 type ProfitSortDirection = "asc" | "desc"
 
@@ -76,6 +81,70 @@ const locationMap: Record<string, string> = {
   IslandWest: "姜岛农场 (西)",
   IslandNorth: "姜岛农场 (北)",
   Forest: "煤矿森林",
+}
+
+const CROP_GAME_DATA_CACHE_KEY = "stardew_crop_game_data_cache"
+const PLANTED_CROPS_CACHE_KEY = "stardew_planted_crops_cache"
+
+function normalizeGameDir(gameDir: string) {
+  return gameDir.trim().toLowerCase()
+}
+
+function readCache<T>(key: string): LocalCacheEntry<T> | null {
+  if (typeof window === "undefined") return null
+
+  try {
+    const raw = window.localStorage.getItem(key)
+    if (!raw) return null
+    return JSON.parse(raw) as LocalCacheEntry<T>
+  } catch (error) {
+    console.error(`Failed to read cache: ${key}`, error)
+    return null
+  }
+}
+
+function writeCache<T>(key: string, data: T) {
+  if (typeof window === "undefined") return
+
+  try {
+    const entry: LocalCacheEntry<T> = {
+      data,
+      fetchedAt: Date.now(),
+    }
+    window.localStorage.setItem(key, JSON.stringify(entry))
+  } catch (error) {
+    console.error(`Failed to write cache: ${key}`, error)
+  }
+}
+
+function getCropGameDataCacheKey(gameDir: string) {
+  return `${CROP_GAME_DATA_CACHE_KEY}:${normalizeGameDir(gameDir) || "default"}`
+}
+
+function getPlantedCropsCacheKey(saveId: string) {
+  return `${PLANTED_CROPS_CACHE_KEY}:${saveId}`
+}
+
+function applyCropGameData(
+  data: CropGameData,
+  setEncyclopediaCrops: (value: Crop[]) => void,
+  setCropLookup: (value: Record<string, CropLookup>) => void,
+  setSeasonFilters: (value: string[]) => void,
+  setActiveSeason: (value: string | ((current: string) => string)) => void,
+) {
+  setEncyclopediaCrops(data.encyclopedia)
+  setCropLookup(data.lookup)
+
+  const filterSet = new Set<string>(["全部"])
+  const sourceFilters = data.seasons.length > 0 ? data.seasons : ["全部"]
+  sourceFilters.forEach((season) => filterSet.add(season))
+  data.encyclopedia.forEach((crop) => {
+    filterSet.add(crop.season)
+    crop.seasons?.forEach((season) => filterSet.add(season))
+  })
+  const nextFilters = Array.from(filterSet)
+  setSeasonFilters(nextFilters)
+  setActiveSeason((current) => nextFilters.includes(current) ? current : "全部")
 }
 
 export function Crops({ selectedSaveId }: CropsProps) {
@@ -92,76 +161,133 @@ export function Crops({ selectedSaveId }: CropsProps) {
   const [profitSortDirection, setProfitSortDirection] = useState<ProfitSortDirection>("desc")
 
   useEffect(() => {
+    let canceled = false
+
     async function loadCropGameData() {
       const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__
+      const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+      const cacheKey = getCropGameDataCacheKey(gameDir)
+      const cached = readCache<CropGameData>(cacheKey)
+
+      if (cached && !canceled) {
+        applyCropGameData(
+          cached.data,
+          setEncyclopediaCrops,
+          setCropLookup,
+          setSeasonFilters,
+          setActiveSeason,
+        )
+        setLoadingGameData(false)
+        setGameDataError(null)
+      }
+
       if (!isTauri) {
-        setGameDataError("当前环境不是 Tauri，无法直接读取游戏目录。")
+        if (!canceled) {
+          setGameDataError("当前环境不是 Tauri，无法直接读取游戏目录。")
+        }
         return
       }
 
-      setLoadingGameData(true)
-      setGameDataError(null)
+      if (!cached && !canceled) {
+        setLoadingGameData(true)
+        setGameDataError(null)
+      }
+
       try {
         const { invoke } = await import("@tauri-apps/api/core")
-        const gameDir = localStorage.getItem("stardewGameDirectory") || ""
         const data = await invoke("get_crop_game_data", {
           gameDir: gameDir.trim() || undefined,
         }) as CropGameData
 
-        setEncyclopediaCrops(data.encyclopedia)
-        setCropLookup(data.lookup)
-
-        const filterSet = new Set<string>(["全部"])
-        const sourceFilters = data.seasons.length > 0 ? data.seasons : ["全部"]
-        sourceFilters.forEach((season) => filterSet.add(season))
-        data.encyclopedia.forEach((crop) => {
-          filterSet.add(crop.season)
-          crop.seasons?.forEach((season) => filterSet.add(season))
-        })
-        const nextFilters = Array.from(filterSet)
-        setSeasonFilters(nextFilters)
-        setActiveSeason((current) => nextFilters.includes(current) ? current : "全部")
+        if (!canceled) {
+          applyCropGameData(
+            data,
+            setEncyclopediaCrops,
+            setCropLookup,
+            setSeasonFilters,
+            setActiveSeason,
+          )
+          setGameDataError(null)
+        }
+        writeCache(cacheKey, data)
       } catch (err) {
         console.error("Error loading crop game data:", err)
-        setGameDataError(String(err))
-        setEncyclopediaCrops([])
-        setCropLookup({})
-        setSeasonFilters(["全部"])
-        setActiveSeason("全部")
+        if (!canceled) {
+          setGameDataError(String(err))
+          if (!cached) {
+            setEncyclopediaCrops([])
+            setCropLookup({})
+            setSeasonFilters(["全部"])
+            setActiveSeason("全部")
+          }
+        }
       } finally {
-        setLoadingGameData(false)
+        if (!canceled) {
+          setLoadingGameData(false)
+        }
       }
     }
 
     loadCropGameData()
+
+    return () => {
+      canceled = true
+    }
   }, [])
 
   // Fetch real crops
   useEffect(() => {
+    let canceled = false
+
     async function loadCrops() {
       if (!selectedSaveId) {
-        setLoadingCrops(false)
+        if (!canceled) {
+          setPlantedCrops([])
+          setLoadingCrops(false)
+        }
         return
       }
-      setLoadingCrops(true)
+
+      const cacheKey = getPlantedCropsCacheKey(selectedSaveId)
+      const cached = readCache<PlantedCrop[]>(cacheKey)
+
+      if (cached && !canceled) {
+        setPlantedCrops(cached.data)
+        setLoadingCrops(false)
+      } else if (!canceled) {
+        setLoadingCrops(true)
+      }
       
       const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__
       if (isTauri) {
         try {
           const { invoke } = await import("@tauri-apps/api/core")
           const crops: PlantedCrop[] = await invoke("get_planted_crops", { id: selectedSaveId })
-          setPlantedCrops(crops)
+          if (!canceled) {
+            setPlantedCrops(crops)
+          }
+          writeCache(cacheKey, crops)
         } catch (err) {
           console.error("Error loading planted crops:", err)
-          setPlantedCrops([])
+          if (!cached && !canceled) {
+            setPlantedCrops([])
+          }
         } finally {
-          setLoadingCrops(false)
+          if (!canceled) {
+            setLoadingCrops(false)
+          }
         }
       } else {
-        setLoadingCrops(false)
+        if (!canceled) {
+          setLoadingCrops(false)
+        }
       }
     }
     loadCrops()
+
+    return () => {
+      canceled = true
+    }
   }, [selectedSaveId])
 
   const filteredEncyclopedia = encyclopediaCrops.filter((crop) => {

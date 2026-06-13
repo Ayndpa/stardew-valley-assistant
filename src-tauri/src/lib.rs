@@ -1,3 +1,4 @@
+mod download_control;
 mod farmer_avatar;
 mod game;
 mod game_data;
@@ -9,6 +10,7 @@ mod utils;
 use std::{fs, sync::Mutex, thread, time::Duration};
 
 use crate::farmer_avatar::get_npc_portraits;
+use crate::download_control::{pause_download_task, resume_download_task, DownloadControlState};
 use crate::game::{auto_detect_game_dir, get_game_version, launch_game};
 use crate::game_data::{
     get_calendar_game_data, get_crop_game_data, get_fishing_map_data, get_fishing_map_detail,
@@ -23,7 +25,7 @@ use crate::mods::{
 };
 use crate::saves::{get_planted_crops, get_save_detail, list_save_files};
 use crate::smapi::{check_smapi_status, install_smapi, uninstall_smapi};
-use crate::utils::open_in_file_manager;
+use crate::utils::{open_in_file_manager, path_exists};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, Monitor, PhysicalPosition, PhysicalSize, Size, State};
 use tauri_plugin_deep_link::DeepLinkExt;
@@ -237,6 +239,7 @@ fn greet(name: &str) -> String {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(DownloadControlState::default())
         .manage(PendingNxmUrls::default())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             let _ = app.get_webview_window("main").map(|window| {
@@ -259,6 +262,7 @@ pub fn run() {
             open_scraper_window,
             open_nexus_ranking_scraper,
             open_in_file_manager,
+            path_exists,
             get_game_version,
             get_calendar_game_data,
             get_crop_game_data,
@@ -286,6 +290,8 @@ pub fn run() {
             fetch_nexus_api_key,
             fetch_nexus_download_metadata,
             install_nexus_mod,
+            pause_download_task,
+            resume_download_task,
             install_mod_from_zip,
             get_npc_portraits
         ])

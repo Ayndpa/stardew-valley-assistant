@@ -1,3 +1,4 @@
+use crate::download_control::emit_download_progress;
 use log::{debug, error, info, warn};
 use serde_json::Value;
 use std::fs;
@@ -33,6 +34,7 @@ fn create_nexus_webview(
     title: &str,
     url: tauri::Url,
     always_visible: bool,
+    allow_dev_visible: bool,
 ) -> Result<tauri::WebviewWindow, String> {
     use tauri::Manager;
 
@@ -57,7 +59,7 @@ fn create_nexus_webview(
         let _ = fs::create_dir_all(dir);
     }
 
-    let is_dev = cfg!(debug_assertions);
+    let is_dev = cfg!(debug_assertions) && allow_dev_visible;
     let initially_visible = is_dev || always_visible;
 
     let mut builder =
@@ -166,6 +168,7 @@ fn update_window_visibility_for_cf(
     is_cf: bool,
     cf_shown: &mut bool,
     always_visible: bool,
+    show_on_cf: bool,
     title_on_cf: &str,
     title_on_clear: &str,
 ) {
@@ -176,26 +179,29 @@ fn update_window_visibility_for_cf(
             *cf_shown = true;
             let _ = win.set_title(title_on_cf);
 
-            let center_over_main = |w: &tauri::WebviewWindow, app_handle: &tauri::AppHandle| {
-                if let Some(main_window) = app_handle.get_webview_window("main") {
-                    if let (Ok(main_pos), Ok(main_size), Ok(win_size)) = (
-                        main_window.outer_position(),
-                        main_window.inner_size(),
-                        w.inner_size(),
-                    ) {
-                        let x = main_pos.x + ((main_size.width as i32 - win_size.width as i32) / 2);
-                        let y =
-                            main_pos.y + ((main_size.height as i32 - win_size.height as i32) / 2);
-                        let _ = w.set_position(tauri::PhysicalPosition::new(x, y));
-                        return;
+            if show_on_cf {
+                let center_over_main = |w: &tauri::WebviewWindow, app_handle: &tauri::AppHandle| {
+                    if let Some(main_window) = app_handle.get_webview_window("main") {
+                        if let (Ok(main_pos), Ok(main_size), Ok(win_size)) = (
+                            main_window.outer_position(),
+                            main_window.inner_size(),
+                            w.inner_size(),
+                        ) {
+                            let x =
+                                main_pos.x + ((main_size.width as i32 - win_size.width as i32) / 2);
+                            let y = main_pos.y
+                                + ((main_size.height as i32 - win_size.height as i32) / 2);
+                            let _ = w.set_position(tauri::PhysicalPosition::new(x, y));
+                            return;
+                        }
                     }
-                }
-                let _ = w.center();
-            };
-            center_over_main(win, app);
-            let _ = win.show();
-            let _ = win.unminimize();
-            let _ = win.set_focus();
+                    let _ = w.center();
+                };
+                center_over_main(win, app);
+                let _ = win.show();
+                let _ = win.unminimize();
+                let _ = win.set_focus();
+            }
         }
     } else {
         if *cf_shown {
@@ -234,7 +240,14 @@ pub async fn open_nexus_ranking_scraper(
         use tauri::Emitter;
 
         let window =
-            match create_nexus_webview(&handle, &window_label, "Nexus 模组加载中...", url, false)
+            match create_nexus_webview(
+                &handle,
+                &window_label,
+                "Nexus 模组加载中...",
+                url,
+                false,
+                true,
+            )
             {
                 Ok(w) => w,
                 Err(e) => {
@@ -492,6 +505,7 @@ pub async fn open_nexus_ranking_scraper(
                     is_cf,
                     &mut cf_shown,
                     false,
+                    true,
                     "Nexus 需要验证",
                     "Nexus 排行榜加载中...",
                 );
@@ -613,7 +627,14 @@ pub async fn open_nexus_login_window(app: tauri::AppHandle) -> Result<(), String
     tauri::async_runtime::spawn(async move {
         use tauri::Emitter;
 
-        let window = match create_nexus_webview(&handle, "nexus-login", "NexusMods 登录", url, true)
+        let window = match create_nexus_webview(
+            &handle,
+            "nexus-login",
+            "NexusMods 登录",
+            url,
+            true,
+            true,
+        )
         {
             Ok(w) => w,
             Err(e) => {
@@ -658,6 +679,7 @@ pub async fn open_nexus_login_window(app: tauri::AppHandle) -> Result<(), String
                     &poll_handle,
                     is_cf,
                     &mut cf_shown,
+                    true,
                     true,
                     "Nexus 需要验证",
                     "NexusMods 登录",
@@ -891,6 +913,7 @@ pub async fn check_nexus_login_status(app: tauri::AppHandle) -> Result<serde_jso
         "Checking NexusMods login...",
         url,
         false,
+        false,
     )?;
 
     let poll_window = window.clone();
@@ -917,6 +940,7 @@ pub async fn check_nexus_login_status(app: tauri::AppHandle) -> Result<serde_jso
                 is_cf,
                 &mut cf_shown,
                 false,
+                true,
                 "Nexus 需要验证",
                 "Checking NexusMods login...",
             );
@@ -1127,6 +1151,7 @@ pub async fn fetch_nexus_api_key(
         "获取 API Key中...",
         url,
         false,
+        true,
     )?;
 
     let poll_window = window.clone();
@@ -1244,6 +1269,7 @@ pub async fn fetch_nexus_api_key(
                 is_cf,
                 &mut cf_shown,
                 false,
+                true,
                 "Nexus 需要验证",
                 "获取 API Key中...",
             );
@@ -1316,7 +1342,14 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
         use tauri::Emitter;
 
         let window =
-            match create_nexus_webview(&handle, "nexus-scraper", "Nexus 验证中...", url, false) {
+            match create_nexus_webview(
+                &handle,
+                "nexus-scraper",
+                "Nexus 验证中...",
+                url,
+                false,
+                true,
+            ) {
                 Ok(w) => w,
                 Err(e) => {
                     error!(
@@ -1394,6 +1427,7 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
                     is_challenge,
                     &mut cf_shown,
                     false,
+                    true,
                     "Nexus 需要验证",
                     "Nexus 页面加载中...",
                 );
@@ -1652,6 +1686,7 @@ async fn fetch_nexus_download_metadata_via_browser(
         "Nexus 模组信息获取中...",
         parse_url,
         false,
+        true,
     )
     .map_err(|e| format!("创建元数据窗口失败: {}", e))?;
 
@@ -1673,6 +1708,7 @@ async fn fetch_nexus_download_metadata_via_browser(
                 is_cf,
                 &mut cf_shown,
                 false,
+                true,
                 "Nexus 需要验证",
                 "Nexus 模组信息获取中...",
             );
@@ -1968,6 +2004,7 @@ async fn resolve_nexus_download_params_from_files_tab_widget(
         "Nexus 文件列表获取中...",
         parse_url,
         false,
+        true,
     )
     .map_err(|e| format!("创建文件列表窗口失败: {}", e))?;
 
@@ -2176,6 +2213,7 @@ async fn resolve_nexus_download_params_from_files_tab_widget(
                 is_cf,
                 &mut cf_shown,
                 false,
+                true,
                 "Nexus 需要验证",
                 "Nexus 文件列表获取中...",
             );
@@ -2276,6 +2314,7 @@ async fn resolve_nexus_download_params_from_files_tab_widget(
 
 async fn download_nexus_file_to_path(
     app: tauri::AppHandle,
+    task_id: &str,
     game_id: &str,
     file_id: &str,
     referer_url: &str,
@@ -2306,7 +2345,7 @@ async fn download_nexus_file_to_path(
         );
     }
 
-    crate::utils::download_file(&target_url, zip_path)
+    crate::utils::download_file_with_headers_and_progress(&app, task_id, &target_url, zip_path, &[])
 }
 
 async fn fetch_nexus_download_url_via_browser(
@@ -2341,6 +2380,7 @@ async fn fetch_nexus_download_url_via_browser(
         "Nexus 下载链接获取中...",
         parse_url,
         false,
+        true,
     )
     .map_err(|e| format!("创建下载器窗口失败: {}", e))?;
 
@@ -2419,6 +2459,7 @@ async fn fetch_nexus_download_url_via_browser(
                 is_cf,
                 &mut cf_shown,
                 false,
+                true,
                 "Nexus 需要验证",
                 "Nexus 下载链接获取中...",
             );
@@ -2515,7 +2556,9 @@ pub async fn install_nexus_mod(
     app: tauri::AppHandle,
     game_dir: String,
     download_url: String,
+    task_id: Option<String>,
 ) -> Result<serde_json::Value, String> {
+    let task_id = task_id.unwrap_or_else(|| "nexus-install".to_string());
     info!(
         "[NexusInstall] Starting install_nexus_mod: game_dir={}, input_url={}",
         game_dir, download_url
@@ -2575,7 +2618,7 @@ pub async fn install_nexus_mod(
             "[NexusInstall] Parsed download params: game_id={}, file_id={}, referer={}",
             game_id, file_id, referer_url
         );
-        download_nexus_file_to_path(app.clone(), &game_id, &file_id, &referer_url, &zip_path).await
+        download_nexus_file_to_path(app.clone(), &task_id, &game_id, &file_id, &referer_url, &zip_path).await
     } else if is_http_url && looks_like_nexus_files_page(&url) {
         let (game_id, file_id, _game_domain, referer_url) =
             resolve_nexus_download_params_from_files_tab_widget(app.clone(), &url)
@@ -2585,13 +2628,13 @@ pub async fn install_nexus_mod(
             "[NexusInstall] Resolved missing file_id from files tab widget: game_id={}, file_id={}, referer={}",
             game_id, file_id, referer_url
         );
-        download_nexus_file_to_path(app.clone(), &game_id, &file_id, &referer_url, &zip_path).await
+        download_nexus_file_to_path(app.clone(), &task_id, &game_id, &file_id, &referer_url, &zip_path).await
     } else if is_http_url && looks_like_direct_download_url(&url) {
         info!(
             "[NexusInstall] Using direct HTTP download URL without browser resolution: {}",
             url
         );
-        crate::utils::download_file(&url, &zip_path)
+        crate::utils::download_file_with_headers_and_progress(&app, &task_id, &url, &zip_path, &[])
     } else {
         warn!(
             "[NexusInstall] Could not parse Nexus download params and URL is not a direct download: {}",
@@ -2625,6 +2668,7 @@ pub async fn install_nexus_mod(
         cleanup();
         format!("创建解压目录失败: {}", e)
     })?;
+    emit_download_progress(&app, &task_id, "extracting", 100.0, 0, None, "正在解压模组压缩包...");
     if let Err(err) = crate::utils::extract_zip(&zip_path, &extract_dir) {
         error!("[NexusInstall] Extract zip failed: {}", err);
         cleanup();
@@ -2632,6 +2676,7 @@ pub async fn install_nexus_mod(
     }
 
     let mut installed_any = false;
+    emit_download_progress(&app, &task_id, "installing", 100.0, 0, None, "正在安装到 Mods 目录...");
     let entries = fs::read_dir(&extract_dir).map_err(|e| format!("读取解压目录失败: {}", e))?;
     for entry in entries {
         let entry = entry.map_err(|e| format!("读取解压项失败: {}", e))?;
@@ -2671,6 +2716,7 @@ pub async fn install_nexus_mod(
         mods_path.display()
     );
     cleanup();
+    emit_download_progress(&app, &task_id, "finished", 100.0, 0, None, "模组安装完成");
     Ok(serde_json::json!({
         "success": true,
         "message": "mod installed"

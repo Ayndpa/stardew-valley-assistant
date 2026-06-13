@@ -1,4 +1,5 @@
-use crate::utils::{copy_dir_all, download_file, extract_zip};
+use crate::download_control::emit_download_progress;
+use crate::utils::{copy_dir_all, download_file_with_headers_and_progress, extract_zip};
 use serde::Serialize;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
@@ -329,7 +330,13 @@ fn restore_unix_launcher_layout(game_path: &Path) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn install_smapi(game_dir: String, download_url: String) -> Result<(), String> {
+pub async fn install_smapi(
+    app: tauri::AppHandle,
+    game_dir: String,
+    download_url: String,
+    task_id: Option<String>,
+) -> Result<(), String> {
+    let task_id = task_id.unwrap_or_else(|| "smapi-install".to_string());
     let game_path = Path::new(&game_dir);
     if !game_path.exists() {
         return Err("游戏安装目录不存在。".to_string());
@@ -344,12 +351,18 @@ pub async fn install_smapi(game_dir: String, download_url: String) -> Result<(),
     let zip_path = temp_dir.join("smapi_installer.zip");
 
     // Download
-    download_file(&download_url, &zip_path)?;
+    download_file_with_headers_and_progress(&app, &task_id, &download_url, &zip_path, &[])?;
 
-    // Extract (handle double-zipped installers)
+    // Extract the downloaded installer by file content, not extension.
+    emit_download_progress(&app, &task_id, "extracting", 100.0, 0, None, "正在解压 SMAPI 安装包...");
     let extract_dir = temp_dir.join("extracted");
     fs::create_dir_all(&extract_dir).map_err(|e| format!("无法创建解压文件夹: {}", e))?;
-    extract_zip(&zip_path, &extract_dir)?;
+    extract_zip(&zip_path, &extract_dir).map_err(|e| {
+        format!(
+            "无法解压下载的 SMAPI 安装包。下载链接可能返回了错误页，或代理镜像返回了非 ZIP 内容。{}",
+            e
+        )
+    })?;
 
     // Check for inner zip files (double-zipped format)
     fn find_zip(dir: &Path) -> Option<PathBuf> {
@@ -375,7 +388,13 @@ pub async fn install_smapi(game_dir: String, download_url: String) -> Result<(),
         let inner_extract_dir = temp_dir.join("extracted_inner");
         fs::create_dir_all(&inner_extract_dir)
             .map_err(|e| format!("无法创建内层解压文件夹: {}", e))?;
-        extract_zip(&inner_zip, &inner_extract_dir)?;
+        extract_zip(&inner_zip, &inner_extract_dir).map_err(|e| {
+            format!(
+                "无法解压 SMAPI 双层安装包中的内层 ZIP: {}。{}",
+                inner_zip.display(),
+                e
+            )
+        })?;
         // Replace extract_dir contents by removing old and renaming
         let _ = fs::remove_dir_all(&extract_dir);
         fs::rename(&inner_extract_dir, &extract_dir)
@@ -435,13 +454,19 @@ pub async fn install_smapi(game_dir: String, download_url: String) -> Result<(),
         ));
     }
 
-    // Extract install.dat (it's a zip) to get the actual SMAPI files
+    // install.dat is also a ZIP container. Handle it by content instead of extension.
     let install_extract_dir = temp_dir.join("install_files");
     fs::create_dir_all(&install_extract_dir)
         .map_err(|e| format!("无法创建 install.dat 解压文件夹: {}", e))?;
-    extract_zip(&install_dat, &install_extract_dir)?;
+    extract_zip(&install_dat, &install_extract_dir).map_err(|e| {
+        format!(
+            "无法解压 SMAPI 的 install.dat。该文件虽然扩展名是 .dat，但内容应该是 ZIP 容器。{}",
+            e
+        )
+    })?;
 
     // Copy the extracted SMAPI files to game folder
+    emit_download_progress(&app, &task_id, "installing", 100.0, 0, None, "正在写入游戏目录...");
     copy_dir_all(&install_extract_dir, game_path)
         .map_err(|e| format!("拷贝文件到游戏目录失败: {}", e))?;
 
@@ -453,6 +478,8 @@ pub async fn install_smapi(game_dir: String, download_url: String) -> Result<(),
 
     // Cleanup
     let _ = fs::remove_dir_all(&temp_dir);
+
+    emit_download_progress(&app, &task_id, "finished", 100.0, 0, None, "SMAPI 安装完成");
 
     Ok(())
 }
