@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Sun,
   CloudRain,
@@ -42,6 +42,10 @@ interface SaveSummary {
 interface FriendshipInfo {
   npcName: string
   points: number
+  giftsThisWeek: number
+  giftsToday: number
+  talkedToToday: boolean
+  status: string
 }
 
 interface SaveDetail {
@@ -50,6 +54,38 @@ interface SaveDetail {
   weatherTomorrow: string
   museumPiecesCount: number
   friendships: FriendshipInfo[]
+}
+
+interface TaskItem {
+  id: string
+  task: string
+  done: boolean
+}
+
+const makeTodayTaskKey = (selectedSaveId: string, summary: SaveSummary) =>
+  `dashboard-tasks:${selectedSaveId}:${summary.year}-${summary.season}-${summary.dayOfMonth}`
+
+const loadTodayTasks = (storageKey: string) => {
+  try {
+    const raw = window.localStorage.getItem(storageKey)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== "object") return {}
+    const entries = Object.entries(parsed).filter(
+      ([, v]) => typeof v === "boolean",
+    )
+    return Object.fromEntries(entries) as Record<string, boolean>
+  } catch {
+    return {}
+  }
+}
+
+const saveTodayTasks = (storageKey: string, tasks: Record<string, boolean>) => {
+  try {
+    window.localStorage.setItem(storageKey, JSON.stringify(tasks))
+  } catch {
+    // ignore
+  }
 }
 
 const SEASONS = ["春季", "夏季", "秋季", "冬季"]
@@ -61,6 +97,13 @@ const BIRTHDAYS: Record<string, Record<number, string>> = {
   "秋季": { 2: "潘妮 (Penny)", 5: "艾略特 (Elliott)", 11: "乔迪 (Jodi)", 13: "阿比盖尔 (Abigail)", 15: "桑迪 (Sandy)", 18: "玛妮 (Marnie)", 21: "罗宾 (Robin)", 24: "乔治 (George)" },
   "冬季": { 3: "科罗布斯 (Krobus)", 7: "莱纳斯 (Linus)", 10: "塞巴斯蒂安 (Sebastian)", 14: "哈维 (Harvey)", 17: "法师 (Wizard)", 20: "艾芙琳 (Evelyn)", 23: "莉亚 (Leah)", 26: "克林特 (Clint)" }
 }
+
+const VILLAGERS = new Set([
+  "Abigail", "Alex", "Caroline", "Clint", "Demetrius", "Elliott", "Emily", "Evelyn", 
+  "George", "Gus", "Haley", "Harvey", "Jas", "Jodi", "Kent", "Krobus", "Leah", "Leo", 
+  "Lewis", "Linus", "Marnie", "Maru", "Pam", "Penny", "Pierre", "Robin", "Sam", "Sandy", 
+  "Sebastian", "Shane", "Vincent", "Willy", "Wizard", "Dwarf"
+])
 
 const getWeatherConfig = (weather: string) => {
   switch (weather) {
@@ -130,6 +173,14 @@ interface DashboardProps {
 export function Dashboard({ selectedSaveId }: DashboardProps) {
   const [detail, setDetail] = useState<SaveDetail | null>(null)
   const [loading, setLoading] = useState(true)
+  const [manualDone, setManualDone] = useState<Record<string, boolean>>({})
+  const [showAllForecast, setShowAllForecast] = useState(false)
+  const [selectedForecastIndex, setSelectedForecastIndex] = useState(0)
+
+  const taskStorageKey = useMemo(() => {
+    if (!selectedSaveId || !detail) return ""
+    return makeTodayTaskKey(selectedSaveId, detail.summary)
+  }, [selectedSaveId, detail])
 
   // Fetch details for the selected save
   useEffect(() => {
@@ -159,6 +210,97 @@ export function Dashboard({ selectedSaveId }: DashboardProps) {
     }
     fetchDetail()
   }, [selectedSaveId])
+
+  useEffect(() => {
+    if (!taskStorageKey) {
+      setManualDone({})
+      return
+    }
+    setManualDone(loadTodayTasks(taskStorageKey))
+  }, [taskStorageKey])
+
+  const forecastResetKey = detail
+    ? `${detail.summary.id}-${detail.summary.season}-${detail.summary.year}-${detail.summary.dayOfMonth}`
+    : ""
+  useEffect(() => {
+    if (forecastResetKey) {
+      setSelectedForecastIndex(0)
+    }
+  }, [forecastResetKey])
+
+  const tasksList = useMemo(() => {
+    if (!detail) return []
+    const summary = detail.summary
+    const seasonName = SEASONS[summary.season] || "春季"
+    const dayOfMonth = summary.dayOfMonth
+
+    const tasks: TaskItem[] = []
+    const weekdayIdx = (dayOfMonth - 1) % 7
+    if (weekdayIdx === 4 || weekdayIdx === 6) {
+      tasks.push({ id: "merchant", task: "查看旅行货车（商人到访）", done: false })
+    }
+
+    const birthdayNPC = BIRTHDAYS[seasonName]?.[dayOfMonth]
+    if (birthdayNPC) {
+      tasks.push({ id: "birthday", task: `🎉 给 ${birthdayNPC} 送生日礼物`, done: false })
+    }
+
+    const rainTaskDone =
+      detail.weatherToday === "Rain" ||
+      detail.weatherToday === "Storm" ||
+      detail.weatherToday === "GreenRain"
+    tasks.push({
+      id: "watering",
+      task: rainTaskDone ? "今天下雨，农作物可免浇水" : "给全部农作物浇水",
+      done: rainTaskDone,
+    })
+
+    const trackedVillagers = detail.friendships.filter((f) => VILLAGERS.has(f.npcName))
+    const talkedCount = trackedVillagers.filter((f) => f.talkedToToday).length
+    const giftedCount = trackedVillagers.filter((f) => f.giftsToday > 0).length
+    const trackedTotal = Math.max(trackedVillagers.length, 1)
+    tasks.push({
+      id: "talk",
+      task: `与村民交谈（今日已完成 ${talkedCount}/${trackedTotal} 位）`,
+      done: talkedCount > 0,
+    })
+    tasks.push({
+      id: "gift",
+      task: `给村民送礼（今日已完成 ${giftedCount}/${trackedTotal} 位）`,
+      done: giftedCount > 0,
+    })
+
+    tasks.push({
+      id: "mine",
+      task: summary.miningLevel > 0
+        ? `探索矿洞（当前最深层: ${summary.deepestMineLevel}）`
+        : "先去矿洞练级，解锁更多内容",
+      done: false,
+    })
+    tasks.push({
+      id: "fish",
+      task: summary.fishingLevel > 0
+        ? "前往湖边/海边垂钓"
+        : "练习垂钓，提升钓鱼等级",
+      done: false,
+    })
+
+    if (taskStorageKey) {
+      const normalizedTaskState = loadTodayTasks(taskStorageKey)
+      return tasks.map((task) => ({
+        ...task,
+        done: normalizedTaskState[task.id] ?? task.done,
+      }))
+    }
+    return tasks
+  }, [detail, taskStorageKey])
+
+  const tasksWithManualState = tasksList.map((task) => ({
+    ...task,
+    done: manualDone[task.id] ?? task.done,
+  }))
+
+  const completedTasks = tasksWithManualState.filter((t) => t.done).length
 
 
   if (loading) {
@@ -199,14 +341,7 @@ export function Dashboard({ selectedSaveId }: DashboardProps) {
   const weatherConfig = getWeatherConfig(detail.weatherToday)
   const WeatherIcon = weatherConfig.icon
 
-  const VILLAGERS = new Set([
-    "Abigail", "Alex", "Caroline", "Clint", "Demetrius", "Elliott", "Emily", "Evelyn", 
-    "George", "Gus", "Haley", "Harvey", "Jas", "Jodi", "Kent", "Krobus", "Leah", "Leo", 
-    "Lewis", "Linus", "Marnie", "Maru", "Pam", "Penny", "Pierre", "Robin", "Sam", "Sandy", 
-    "Sebastian", "Shane", "Vincent", "Willy", "Wizard", "Dwarf"
-  ])
-
-  // Calculate relationships
+    // Calculate relationships
   let maxHeartsCount = 0
   let totalTracked = 0
   detail.friendships.forEach((f) => {
@@ -252,32 +387,14 @@ export function Dashboard({ selectedSaveId }: DashboardProps) {
     },
   ]
 
-  // Dynamic tasks generation
-  const tasksList: { task: string; done: boolean }[] = []
-  const weekdayIdx = (dayOfMonth - 1) % 7
-  if (weekdayIdx === 4 || weekdayIdx === 6) {
-    tasksList.push({ task: "查看旅行货车 (商车已刷出)", done: false })
+  const toggleTask = (taskId: string, done: boolean) => {
+    if (!taskStorageKey) return
+    setManualDone((prev) => {
+      const next = { ...prev, [taskId]: done }
+      saveTodayTasks(taskStorageKey, next)
+      return next
+    })
   }
-  const birthdayNPC = BIRTHDAYS[seasonName]?.[dayOfMonth]
-  if (birthdayNPC) {
-    tasksList.push({ task: `🎉 送生日礼物给 ${birthdayNPC}!`, done: false })
-  }
-  if (detail.weatherToday === "Rain" || detail.weatherToday === "Storm" || detail.weatherToday === "GreenRain") {
-    tasksList.push({ task: "今天下雨，不用给作物浇水 🌧️", done: true })
-  } else {
-    tasksList.push({ task: "给全部农作物浇水 💦", done: false })
-  }
-  if (summary.miningLevel > 0) {
-    tasksList.push({ task: `矿洞探索 (当前层数: ${summary.deepestMineLevel}层)`, done: false })
-  } else {
-    tasksList.push({ task: "前往探索矿洞并收集矿石", done: false })
-  }
-  if (summary.fishingLevel > 0) {
-    tasksList.push({ task: "前往湖边/海边垂钓季节性鱼类", done: false })
-  } else {
-    tasksList.push({ task: "练习垂钓以提升钓鱼等级", done: false })
-  }
-  tasksList.push({ task: "清理农场野草并收集纤维", done: true })
 
   // Dynamic recent activities
   const recentActivitiesList = []
@@ -365,9 +482,18 @@ export function Dashboard({ selectedSaveId }: DashboardProps) {
       day: getForecastDayLabel(item.dayOffset, dayOfMonth),
       weather: config.label,
       icon: <DayIcon className={`h-6 w-6 ${config.color}`} />,
-      temp: getSeasonalTemp(item.weather, summary.season)
+      temp: getSeasonalTemp(item.weather, summary.season),
     }
   })
+
+  const safeForecastIndex = Math.min(
+    Math.max(selectedForecastIndex, 0),
+    forecastData.length > 0 ? forecastData.length - 1 : 0,
+  )
+  const currentForecast = forecastData[safeForecastIndex] || forecastData[0]
+  const timelineIndices = showAllForecast ? forecastData.map((_, index) => index) : [0, 1]
+  const visibleTimeline = timelineIndices
+    .filter((index) => index < forecastData.length)
 
   return (
     <div className="p-8 space-y-8">
@@ -418,28 +544,20 @@ export function Dashboard({ selectedSaveId }: DashboardProps) {
           <CardHeader>
             <CardTitle className="text-lg">今日待办</CardTitle>
             <CardDescription>
-              已完成 {tasksList.filter((t) => t.done).length}/{tasksList.length} 项任务
+              已完成 {completedTasks}/{tasksList.length} 项任务
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {tasksList.map((item, i) => (
-              <div
-                key={i}
+            {tasksWithManualState.map((item, i) => (
+                <div
+                  key={i}
                 className="flex items-center gap-3 p-2 rounded-md hover:bg-accent/50 transition-colors"
               >
-                <div
-                  className={`h-5 w-5 rounded-full border-2 flex items-center justify-center ${
-                    item.done
-                      ? "bg-primary border-primary"
-                      : "border-muted-foreground/30"
-                  }`}
-                >
-                  {item.done && (
-                    <svg className="h-3 w-3 text-primary-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                    </svg>
-                  )}
-                </div>
+                <Checkbox
+                  checked={item.done}
+                  onCheckedChange={(checked) => toggleTask(item.id, checked === true)}
+                  aria-label={item.task}
+                />
                 <span
                   className={`text-sm ${
                     item.done ? "text-muted-foreground line-through" : ""
@@ -469,9 +587,6 @@ export function Dashboard({ selectedSaveId }: DashboardProps) {
                     <p className="text-sm">{activity.text}</p>
                     <p className="text-xs text-muted-foreground">{activity.time}</p>
                   </div>
-                  {i < recentActivitiesList.length - 1 && (
-                    <Separator className="absolute bottom-0 left-11 right-0" />
-                  )}
                 </div>
               ))}
             </div>
@@ -481,20 +596,89 @@ export function Dashboard({ selectedSaveId }: DashboardProps) {
 
       {/* Weather Forecast */}
       <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">天气预报</CardTitle>
-          <CardDescription>未来几天的鹈鹕镇天气</CardDescription>
+        <CardHeader className="space-y-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <CardTitle className="text-lg">天气预报</CardTitle>
+              <CardDescription>先看今天，再左右滑看看后面的天</CardDescription>
+            </div>
+            {forecastData.length > 2 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAllForecast((s) => !s)
+                  setSelectedForecastIndex(0)
+                }}
+                className="text-xs font-medium px-3 py-1.5 rounded-full bg-accent hover:bg-accent/80 text-accent-foreground transition-colors"
+              >
+                {showAllForecast ? "仅看近两天" : "展开 7 天"}
+              </button>
+            )}
+          </div>
         </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-7 gap-3">
-            {forecastData.map((d) => (
-              <div key={d.day} className="flex flex-col items-center gap-2 p-3 rounded-lg bg-accent/50">
-                <span className="text-xs font-medium text-muted-foreground">{d.day}</span>
-                {d.icon}
-                <span className="text-sm font-medium">{d.weather}</span>
-                <span className="text-xs text-muted-foreground">{d.temp}</span>
+        <CardContent className="space-y-4">
+          {currentForecast && (
+            <div className="rounded-2xl border border-primary/30 bg-gradient-to-br from-sky-500/15 via-cyan-500/10 to-indigo-500/10 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs text-muted-foreground">当前查看</p>
+                  <p className="text-xl font-black mt-1">{currentForecast.day}</p>
+                  <p className="text-sm text-muted-foreground mt-1">{currentForecast.weather}</p>
+                  <p className="text-3xl font-black mt-2 leading-none">
+                    {currentForecast.temp}
+                  </p>
+                </div>
+                <div className="rounded-xl bg-white/10 dark:bg-black/20 p-2">
+                  {currentForecast.icon}
+                </div>
               </div>
-            ))}
+              <p className="mt-3 text-xs text-muted-foreground">
+                游戏内天气通常以当日与次日行为主，建议优先关注今日的状态提示
+              </p>
+            </div>
+          )}
+          <div className="flex items-center gap-2 overflow-x-auto pb-2 snap-x snap-mandatory">
+            {visibleTimeline.map((globalIndex) => {
+              const forecast = forecastData[globalIndex]
+              if (!forecast) return null
+              const isActive = globalIndex === selectedForecastIndex
+              return (
+                <button
+                  type="button"
+                  key={`${forecast.day}-${globalIndex}`}
+                  onClick={() => setSelectedForecastIndex(globalIndex)}
+                  className={`snap-start min-w-[132px] shrink-0 rounded-2xl border px-3 py-3 text-left transition-all ${
+                    isActive || safeForecastIndex === globalIndex
+                      ? "border-primary/50 bg-primary/8 shadow-sm shadow-primary/20"
+                      : "border-border/70 bg-card"
+                  }`}
+                >
+                  <p className="text-xs text-muted-foreground">{forecast.day}</p>
+                  <div className="mt-2 flex items-center justify-between">
+                    <span className="text-xs font-medium">{forecast.weather}</span>
+                    {forecast.icon}
+                  </div>
+                  <p className="text-sm font-bold mt-2">{forecast.temp}</p>
+                </button>
+              )
+            })}
+          </div>
+          {showAllForecast && (
+            <div className="text-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAllForecast(false)
+                  setSelectedForecastIndex(0)
+                }}
+                className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-3"
+              >
+                收起并返回今日/明天
+              </button>
+            </div>
+          )}
+          <div className="text-center text-[11px] text-muted-foreground">
+            共 {forecastData.length} 天预报 · 上滑动卡片可快速切换查看
           </div>
         </CardContent>
       </Card>
