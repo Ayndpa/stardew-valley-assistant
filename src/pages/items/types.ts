@@ -12,6 +12,7 @@ export interface ItemEntry {
   edibility?: number | null
   canBeGivenAsGift: boolean
   canBeTrashed: boolean
+  recipeSources: string[]
 }
 
 export interface ItemGameData {

@@ -234,4 +234,61 @@ mod tests {
             .iter()
             .all(|item| !item.contains("[LocalizedText")));
     }
+
+    #[test]
+    fn reads_cooking_recipe_sources_from_dev_source() {
+        let Some(content) = dev_content_dir() else {
+            return;
+        };
+        let localized_tables = xnb::load_localized_string_tables(
+            &content,
+            &["Objects", "1_6_Strings", "StringsFromCSFiles", "NPCNames"],
+        );
+        let recipe_sources = items::load_cooking_recipe_sources(&content, &localized_tables);
+
+        // Should have recipe sources for some items
+        assert!(!recipe_sources.is_empty());
+
+        // Check that TV recipes are identified with detailed schedule
+        let has_tv_recipe = recipe_sources
+            .values()
+            .any(|sources| sources.iter().any(|s| s.contains("酱料女皇电视节目（第")));
+        assert!(has_tv_recipe, "Should have at least one TV recipe source with schedule");
+
+        // Check that skill-based recipes are identified
+        let has_skill_recipe = recipe_sources
+            .values()
+            .any(|sources| sources.iter().any(|s| s.contains("等级")));
+        assert!(
+            has_skill_recipe,
+            "Should have at least one skill-based recipe source"
+        );
+
+        // Check that friendship-based recipes are identified
+        let has_friendship_recipe = recipe_sources
+            .values()
+            .any(|sources| sources.iter().any(|s| s.contains("好感")));
+        assert!(
+            has_friendship_recipe,
+            "Should have at least one friendship-based recipe source"
+        );
+
+        // Print some sample sources for debugging
+        let mut samples: Vec<_> = recipe_sources.iter().take(10).collect();
+        samples.sort_by_key(|(id, _)| id.clone());
+        for (item_id, sources) in &samples {
+            eprintln!("Item {}: {:?}", item_id, sources);
+        }
+
+        // Check for recipes with multiple sources
+        let multi_source_count = recipe_sources
+            .values()
+            .filter(|sources| sources.len() > 1)
+            .count();
+        eprintln!(
+            "\nRecipes with multiple sources: {}",
+            multi_source_count
+        );
+    }
+
 }

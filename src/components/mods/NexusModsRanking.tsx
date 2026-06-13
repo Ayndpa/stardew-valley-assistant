@@ -26,6 +26,30 @@ import { syncNexusModNameTranslations } from "@/lib/mod-translation-library"
 
 export type { NexusRankedMod }
 
+/**
+ * Extract a Nexus Mods ID from user input.
+ * Accepts: bare number ("1915"), full URL ("https://www.nexusmods.com/stardewvalley/mods/1915"),
+ * partial path ("/stardewvalley/mods/1915"), or "nexusmods.com/.../mods/1915".
+ * Returns the numeric ID string, or null if not a valid Nexus ID input.
+ */
+function extractNexusIdFromInput(input: string): string | null {
+  const trimmed = input.trim()
+  if (!trimmed) return null
+
+  // Bare number (e.g. "1915", "  3753  ")
+  if (/^\d+$/.test(trimmed)) return trimmed
+
+  // Full or partial Nexus Mods URL
+  const urlMatch = trimmed.match(/nexusmods\.com\/(?:[^/]+\/)?mods\/(\d+)/i)
+  if (urlMatch) return urlMatch[1]
+
+  // Path like "/stardewvalley/mods/1915" or "stardewvalley/mods/1915"
+  const pathMatch = trimmed.match(/\/mods\/(\d+)$/)
+  if (pathMatch) return pathMatch[1]
+
+  return null
+}
+
 export interface NexusModsRankingProps {
   onOpenDetail?: (mod: NexusRankedMod) => void
 }
@@ -36,10 +60,6 @@ export function NexusModsRanking({ onOpenDetail }: NexusModsRankingProps = {}) {
     setSortField,
     searchInputValue,
     setSearchInputValue,
-    authorInputValue,
-    setAuthorInputValue,
-    uploaderInputValue,
-    setUploaderInputValue,
     currentPage,
     setCurrentPage,
     jumpPage,
@@ -139,30 +159,32 @@ export function NexusModsRanking({ onOpenDetail }: NexusModsRankingProps = {}) {
       {/* Control Panel: Search & Sorting */}
       <div className="flex flex-col md:flex-row gap-4 justify-between items-center bg-card border border-border p-4 rounded-xl shadow-sm">
         {/* Search Filters */}
-        <form onSubmit={handleSearchSubmit} className="flex flex-col md:flex-row gap-2 w-full">
+        <form onSubmit={(e) => {
+          // Check if the name input is a Nexus ID or URL
+          const nexusId = extractNexusIdFromInput(searchInputValue)
+          if (nexusId && onOpenDetail) {
+            e.preventDefault()
+            onOpenDetail({
+              nexusId,
+              nexusUrl: `https://www.nexusmods.com/stardewvalley/mods/${nexusId}`,
+              name: `模组 #${nexusId}`,
+              author: "",
+              imageUrl: "",
+              downloads: "",
+              endorsements: "",
+              rank: 0,
+            })
+            return
+          }
+          handleSearchSubmit(e)
+        }} className="flex gap-2 w-full md:max-w-sm">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="模组名称..."
+              placeholder="模组名称 / Nexus ID / Nexus URL..."
               value={searchInputValue}
               onChange={(e) => setSearchInputValue(e.target.value)}
               className="pl-9 bg-accent/10 border-border text-xs rounded-lg h-9"
-            />
-          </div>
-          <div className="relative flex-1">
-            <Input
-              placeholder="作者..."
-              value={authorInputValue}
-              onChange={(e) => setAuthorInputValue(e.target.value)}
-              className="bg-accent/10 border-border text-xs rounded-lg h-9 px-3"
-            />
-          </div>
-          <div className="relative flex-1">
-            <Input
-              placeholder="上传者..."
-              value={uploaderInputValue}
-              onChange={(e) => setUploaderInputValue(e.target.value)}
-              className="bg-accent/10 border-border text-xs rounded-lg h-9 px-3"
             />
           </div>
           <Button type="submit" size="sm" className="h-9 px-4 rounded-lg text-xs font-semibold cursor-pointer shrink-0">

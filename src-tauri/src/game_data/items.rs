@@ -8,7 +8,10 @@ use serde::{Deserialize, Serialize};
 
 use super::calendar::resolve_localized_text;
 use super::image_utils::render_object_icon;
-use super::xnb::{load_localized_string_tables, load_objects_xnb, RawObjectData};
+use super::xnb::{
+    load_localized_string_tables, load_objects_xnb, load_string_dictionary_best_effort,
+    load_string_dictionary_xnb, RawObjectData,
+};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -26,6 +29,7 @@ pub struct ItemEncyclopediaEntry {
     pub edibility: Option<i32>,
     pub can_be_given_as_gift: bool,
     pub can_be_trashed: bool,
+    pub recipe_sources: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -67,6 +71,7 @@ struct IndexedItemEntry {
     edibility: Option<i32>,
     can_be_given_as_gift: bool,
     can_be_trashed: bool,
+    recipe_sources: Vec<String>,
     raw_object: RawObjectData,
 }
 
@@ -193,8 +198,9 @@ fn build_item_snapshot(content_dir: PathBuf) -> Result<ItemSnapshot, String> {
     let objects = load_objects_xnb(&content_dir.join("Data").join("Objects.xnb"))?;
     let localized_tables = load_localized_string_tables(
         &content_dir,
-        &["Objects", "1_6_Strings", "StringsFromCSFiles"],
+        &["Objects", "1_6_Strings", "StringsFromCSFiles", "NPCNames"],
     );
+    let recipe_sources = load_cooking_recipe_sources(&content_dir, &localized_tables);
 
     let mut encyclopedia = Vec::with_capacity(objects.len());
 
@@ -204,6 +210,7 @@ fn build_item_snapshot(content_dir: PathBuf) -> Result<ItemSnapshot, String> {
         let (item_type_key, item_type) = classify_item_type(&object.object_type, object.category);
         let (category_key, category) = classify_category(object.category, &object.object_type);
         let edibility = (object.edibility > -300).then_some(object.edibility);
+        let item_recipe_sources = recipe_sources.get(&id).cloned().unwrap_or_default();
 
         encyclopedia.push(IndexedItemEntry {
             id,
@@ -226,6 +233,7 @@ fn build_item_snapshot(content_dir: PathBuf) -> Result<ItemSnapshot, String> {
             edibility,
             can_be_given_as_gift: object.can_be_given_as_gift,
             can_be_trashed: object.can_be_trashed,
+            recipe_sources: item_recipe_sources,
             raw_object: object,
         });
     }
@@ -261,7 +269,11 @@ fn matches_item(item: &IndexedItemEntry, keyword: &str, category: &str, item_typ
         || item.name.to_lowercase().contains(keyword)
         || item.internal_name.to_lowercase().contains(keyword)
         || item.id.to_lowercase().contains(keyword)
-        || item.description.to_lowercase().contains(keyword);
+        || item.description.to_lowercase().contains(keyword)
+        || item
+            .recipe_sources
+            .iter()
+            .any(|source| source.to_lowercase().contains(keyword));
     let matches_category = category == "全部" || item.category == category;
     let matches_type = item_type == "全部" || item.item_type == item_type;
     matches_keyword && matches_category && matches_type
@@ -286,6 +298,184 @@ fn build_item_entry(
         edibility: item.edibility,
         can_be_given_as_gift: item.can_be_given_as_gift,
         can_be_trashed: item.can_be_trashed,
+        recipe_sources: item.recipe_sources.clone(),
+    }
+}
+
+pub fn load_cooking_recipe_sources(
+    content_dir: &std::path::Path,
+    localized_tables: &HashMap<String, HashMap<String, String>>,
+) -> HashMap<String, Vec<String>> {
+    let recipes = load_string_dictionary_xnb(&content_dir.join("Data").join("CookingRecipes.xnb"))
+        .unwrap_or_default();
+    let tv_recipe_weeks = load_tv_recipe_weeks(content_dir);
+    let mut sources_by_item_id: HashMap<String, Vec<String>> = HashMap::new();
+
+    for (_recipe_name, raw_recipe) in &recipes {
+        let fields = raw_recipe.split('/').collect::<Vec<_>>();
+        let Some(raw_outputs) = fields.get(2).map(|value| value.trim()) else {
+            continue;
+        };
+        let raw_condition = fields.get(3).map(|value| value.trim()).unwrap_or_default();
+        let recipe_display_name = fields.get(4).map(|value| value.trim()).unwrap_or_default();
+        let sources = describe_cooking_recipe_sources(
+            raw_condition,
+            _recipe_name,
+            recipe_display_name,
+            localized_tables,
+            &tv_recipe_weeks,
+        );
+        for item_id in parse_recipe_output_item_ids(raw_outputs) {
+            sources_by_item_id
+                .entry(item_id)
+                .or_default()
+                .extend(sources.clone());
+        }
+    }
+
+    for sources in sources_by_item_id.values_mut() {
+        sources.sort();
+        sources.dedup();
+    }
+
+    sources_by_item_id
+}
+
+/// Load TV CookingChannel data and build a reverse lookup: recipe_name -> week_number.
+/// The TV data format is: week_number -> recipe_name/description_text
+fn load_tv_recipe_weeks(content_dir: &std::path::Path) -> HashMap<String, i32> {
+    let tv_dir = content_dir.join("Data").join("TV");
+    let tv_data = load_string_dictionary_best_effort(&[
+        tv_dir.join("CookingChannel.zh-CN.xnb"),
+        tv_dir.join("CookingChannel.xnb"),
+    ]);
+
+    let mut recipe_to_week: HashMap<String, i32> = HashMap::new();
+    for (week_str, value) in tv_data {
+        let Some(recipe_name) = value.split('/').next() else {
+            continue;
+        };
+        let recipe_name = recipe_name.trim().to_string();
+        if recipe_name.is_empty() {
+            continue;
+        }
+        if let Ok(week) = week_str.parse::<i32>() {
+            recipe_to_week.insert(recipe_name, week);
+        }
+    }
+    recipe_to_week
+}
+
+fn parse_recipe_output_item_ids(raw_outputs: &str) -> Vec<String> {
+    raw_outputs
+        .split_whitespace()
+        .step_by(2)
+        .filter(|item_id| !item_id.trim().is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+/// Describe all possible sources for a cooking recipe.
+/// Returns a Vec<String> because some recipes can be obtained through multiple channels.
+fn describe_cooking_recipe_sources(
+    raw_condition: &str,
+    recipe_name: &str,
+    recipe_display_name: &str,
+    localized_tables: &HashMap<String, HashMap<String, String>>,
+    tv_recipe_weeks: &HashMap<String, i32>,
+) -> Vec<String> {
+    let mut sources = Vec::new();
+
+    // Check TV source (Queen of Sauce)
+    if let Some(&week) = tv_recipe_weeks.get(recipe_name) {
+        sources.push(tv_week_to_schedule(week));
+    }
+
+    // Check condition-based source
+    let parts = raw_condition.split_whitespace().collect::<Vec<_>>();
+    let condition_source = match parts.as_slice() {
+        [] => Some("未提供获取条件".to_string()),
+        ["default"] => Some("初始已掌握".to_string()),
+        ["f", npc, hearts, ..] => {
+            let npc_name = localized_tables
+                .get("NPCNames")
+                .and_then(|table| table.get(*npc))
+                .cloned()
+                .unwrap_or_else(|| (*npc).to_string());
+            Some(format!("{} 好感达到 {} 心后寄信获得", npc_name, hearts))
+        }
+        ["s", skill, level, ..] => {
+            Some(format!("{}等级达到 {} 级解锁", translate_skill_name(skill), level))
+        }
+        ["l", ..] => describe_learned_source(recipe_name, recipe_display_name),
+        _ => Some(format!("特殊条件：{}", raw_condition)),
+    };
+
+    if let Some(source) = condition_source {
+        // Only add if not duplicate of TV source
+        if !sources.contains(&source) {
+            sources.push(source);
+        }
+    }
+
+    sources
+}
+
+/// Describe the source for recipes with `l` (learned) conditions.
+/// Returns the non-TV source if known, or None if already covered by TV.
+fn describe_learned_source(recipe_name: &str, _recipe_display_name: &str) -> Option<String> {
+    // Known recipe -> source mappings for non-TV l-condition recipes
+    let known_source = match recipe_name {
+        // Island Resort (Ginger Island)
+        "Banana Pudding" => Some("姜岛度假村获得"),
+        "Ginger Ale" => Some("姜岛度假村购买"),
+        "Tropical Curry" => Some("姜岛度假村获得"),
+        // Saloon purchases (non-TV recipes)
+        "Triple Shot Espresso" => Some("星之果实餐吧购买"),
+        _ => None,
+    };
+
+    if let Some(source) = known_source {
+        return Some(source.to_string());
+    }
+
+    // For l conditions without known non-TV source, don't add anything
+    // (the TV source was already added if applicable)
+    None
+}
+
+/// Convert TV week number to a human-readable schedule string.
+/// The Queen of Sauce airs every Sunday. Week 1 starts on Spring 7, Year 1.
+fn tv_week_to_schedule(week: i32) -> String {
+    let day_in_cycle = week * 7;
+    let year = (day_in_cycle - 1) / 112 + 1;
+    let day_in_year = (day_in_cycle - 1) % 112 + 1;
+    let season_index = (day_in_year - 1) / 28;
+    let day_in_season = (day_in_year - 1) % 28 + 1;
+
+    let season_name = match season_index {
+        0 => "春季",
+        1 => "夏季",
+        2 => "秋季",
+        3 => "冬季",
+        _ => "未知",
+    };
+
+    format!(
+        "酱料女皇电视节目（第{}年 {} 第{}天）",
+        year, season_name, day_in_season
+    )
+}
+
+fn translate_skill_name(skill: &str) -> String {
+    match skill {
+        "Farming" => "耕种".to_string(),
+        "Fishing" => "钓鱼".to_string(),
+        "Foraging" => "采集".to_string(),
+        "Mining" => "采矿".to_string(),
+        "Combat" => "战斗".to_string(),
+        "Luck" => "运气".to_string(),
+        _ => skill.to_string(),
     }
 }
 

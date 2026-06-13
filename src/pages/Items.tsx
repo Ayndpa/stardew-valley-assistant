@@ -3,7 +3,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { ChevronLeft, ChevronRight, Coins, Gift, Package, Search, Soup, Tag, Trash2 } from "lucide-react"
+import { BookOpen, ChevronLeft, ChevronRight, Coins, Gift, Package, Search, Soup, Tag, Trash2 } from "lucide-react"
 import {
   ItemEntry,
   ItemGameDataOverview,
@@ -334,6 +334,22 @@ export function Items({ navigationTarget, onNavigationHandled }: ItemsProps) {
                 <p className="line-clamp-3 min-h-[3.75rem] text-sm leading-6 text-muted-foreground">
                   {item.description}
                 </p>
+
+                {item.recipeSources.length > 0 && (
+                  <div className="space-y-2 rounded-md border border-border/70 bg-accent/20 px-3 py-2">
+                    <div className="flex items-center gap-2 text-xs font-medium text-foreground">
+                      <BookOpen className="h-3.5 w-3.5" />
+                      <span>配方获取</span>
+                    </div>
+                    <div className="space-y-1">
+                      {item.recipeSources.map((source) => (
+                        <p key={source} className="text-xs leading-5 text-muted-foreground">
+                          {source}
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   <div className="flex items-center gap-2 text-muted-foreground">

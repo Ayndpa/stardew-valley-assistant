@@ -290,15 +290,22 @@ export function OnlineMods({ onNavigate, isGameRunning = false, onQueueDownload 
   // Filter and search computation
   const filteredMods = useMemo(() => {
     return onlineMods.filter((mod) => {
-      const nameMatch = mod.Name.toLowerCase().includes(search.toLowerCase()) ||
-                        (mod.AlternateNames && mod.AlternateNames.toLowerCase().includes(search.toLowerCase())) ||
-                        mod.Author.toLowerCase().includes(search.toLowerCase()) ||
-                        (mod.Id && mod.Id.some(id => id.toLowerCase().includes(search.toLowerCase())))
-      
+      const searchLower = search.toLowerCase()
+      // Match by name, alternate names, author, unique ID
+      const nameMatch = mod.Name.toLowerCase().includes(searchLower) ||
+                        (mod.AlternateNames && mod.AlternateNames.toLowerCase().includes(searchLower)) ||
+                        mod.Author.toLowerCase().includes(searchLower) ||
+                        (mod.Id && mod.Id.some(id => id.toLowerCase().includes(searchLower)))
+      // Also match by Nexus mod ID (from ModPages URL)
+      const nexusIdMatch = /^\d+$/.test(search.trim()) && mod.ModPages.some(p => {
+        const parts = p.Url.split("/")
+        return parts[parts.length - 1] === search.trim()
+      })
+
       const status = mod.Compatibility?.Status || "ok"
       const statusMatch = selectedStatus === "all" || status === selectedStatus
-      
-      return nameMatch && statusMatch
+
+      return (nameMatch || nexusIdMatch) && statusMatch
     })
   }, [onlineMods, search, selectedStatus])
 
@@ -421,7 +428,7 @@ export function OnlineMods({ onNavigate, isGameRunning = false, onQueueDownload 
             <div className="relative w-full md:max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="搜索模组名称、唯一ID、作者..."
+                placeholder="搜索模组名称、唯一ID、作者、Nexus ID..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-9 bg-accent/10 border-border text-xs rounded-lg"
