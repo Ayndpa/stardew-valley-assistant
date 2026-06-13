@@ -2,7 +2,10 @@ use std::fs::{self, File};
 use std::io::{BufReader, Write};
 use std::path::Path;
 use serde::Deserialize;
+use serde_json::Value;
 use super::{Mod, ModConfigField};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::io::ErrorKind;
 
 #[derive(Deserialize, Debug)]
 struct Manifest {
@@ -193,6 +196,34 @@ pub fn toggle_mod(game_dir: String, folder_name: String, enable: bool) -> Result
 }
 
 #[tauri::command]
+pub fn delete_mod(game_dir: String, folder_name: String) -> Result<(), String> {
+    let game_path = Path::new(&game_dir);
+    if !game_path.exists() {
+        return Err("游戏安装目录不存在".to_string());
+    }
+
+    let mods_path = game_path.join("Mods");
+    if !mods_path.exists() {
+        return Err("Mods 文件夹不存在".to_string());
+    }
+
+    if folder_name.contains("..") || folder_name.contains(std::path::MAIN_SEPARATOR) {
+        return Err("非法的模组文件夹名".to_string());
+    }
+
+    let target = mods_path.join(&folder_name);
+    if !target.exists() {
+        return Err(format!("模组 {} 不存在", folder_name));
+    }
+
+    if target.is_dir() {
+        fs::remove_dir_all(&target).map_err(|e| format!("删除模组目录失败: {}", e))
+    } else {
+        fs::remove_file(&target).map_err(|e| format!("删除模组文件失败: {}", e))
+    }
+}
+
+#[tauri::command]
 pub fn save_mod_config(game_dir: String, folder_name: String, config: serde_json::Value) -> Result<(), String> {
     let mods_dir = Path::new(&game_dir).join("Mods");
     let mod_dir = mods_dir.join(&folder_name);
@@ -211,4 +242,131 @@ pub fn save_mod_config(game_dir: String, folder_name: String, config: serde_json
         .map_err(|e| format!("Failed to write to config.json: {}", e))?;
 
     Ok(())
+}
+
+fn copy_with_retry(source: &Path, target: &Path) -> Result<u64, String> {
+    let mut last_error: Option<String> = None;
+
+    for attempt in 1..=3 {
+        match fs::copy(source, target) {
+            Ok(size) => return Ok(size),
+            Err(err) => {
+                last_error = Some(format!("复制压缩包失败: {}", err));
+                if err.kind() != ErrorKind::PermissionDenied || attempt >= 3 {
+                    return Err(format!("复制压缩包失败: {}", err));
+                }
+                std::thread::sleep(Duration::from_millis(250 * attempt as u64));
+            }
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| "复制压缩包失败: 未知错误".to_string()))
+}
+
+#[tauri::command]
+pub fn install_mod_from_zip_sync(game_dir: String, zip_path: String) -> Result<Value, String> {
+    let game_path = Path::new(&game_dir);
+    if !game_path.exists() {
+        return Err("游戏安装目录不存在".to_string());
+    }
+
+    let source_zip = Path::new(&zip_path);
+    if !source_zip.exists() {
+        return Err("模组压缩包不存在".to_string());
+    }
+
+    let zip_ext = source_zip
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if zip_ext != "zip" {
+        return Err("请拖入 .zip 文件".to_string());
+    }
+
+    let mods_path = game_path.join("Mods");
+    fs::create_dir_all(&mods_path).map_err(|e| format!("创建 Mods 目录失败: {}", e))?;
+
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_else(|_| std::time::Duration::from_secs(0))
+        .as_millis();
+    let working_dir = std::env::temp_dir().join(format!("sv_mod_install_{}", timestamp));
+    let zip_target = working_dir.join("mod.zip");
+    let extract_dir = working_dir.join("extract");
+
+    let cleanup = || {
+        let _ = fs::remove_dir_all(&working_dir);
+    };
+
+    if working_dir.exists() {
+        let _ = fs::remove_dir_all(&working_dir);
+    }
+    fs::create_dir_all(&working_dir)
+        .map_err(|e| format!("创建临时目录失败: {}", e))?;
+    copy_with_retry(&source_zip, &zip_target)?;
+    fs::create_dir_all(&extract_dir).map_err(|e| format!("创建解压目录失败: {}", e))?;
+
+    if let Err(err) = crate::utils::extract_zip(&zip_target, &extract_dir) {
+        cleanup();
+        return Err(format!("解压失败: {}", err));
+    }
+
+    let mut installed_any = false;
+    let entries = match fs::read_dir(&extract_dir) {
+        Ok(e) => e,
+        Err(e) => {
+            cleanup();
+            return Err(format!("读取解压目录失败: {}", e));
+        }
+    };
+
+    for entry in entries {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(err) => {
+                cleanup();
+                return Err(format!("读取解压项失败: {}", err));
+            }
+        };
+        let source = entry.path();
+        let target = mods_path.join(entry.file_name());
+
+        if target.exists() {
+            if target.is_dir() {
+                fs::remove_dir_all(&target).map_err(|e| format!("清理旧目录失败: {}", e))?;
+            } else {
+                fs::remove_file(&target).map_err(|e| format!("清理旧文件失败: {}", e))?;
+            }
+        }
+
+        if source.is_dir() {
+            if let Err(err) = crate::utils::copy_dir_all(&source, &target) {
+                cleanup();
+                return Err(format!("复制目录失败: {}", err));
+            }
+        } else {
+            fs::copy(&source, &target)
+                .map_err(|e| format!("复制文件失败: {}", e))?;
+        }
+        installed_any = true;
+    }
+
+    if !installed_any {
+        cleanup();
+        return Err("安装内容为空，未写入任何文件".to_string());
+    }
+
+    cleanup();
+    Ok(serde_json::json!({
+        "success": true,
+        "message": "mod installed"
+    }))
+}
+
+#[tauri::command]
+pub async fn install_mod_from_zip(game_dir: String, zip_path: String) -> Result<Value, String> {
+    tokio::task::spawn_blocking(move || install_mod_from_zip_sync(game_dir, zip_path))
+        .await
+        .map_err(|err| format!("安装任务执行失败: {}", err))?
 }

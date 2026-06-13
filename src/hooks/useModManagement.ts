@@ -27,7 +27,11 @@ async function getTauriOpen() {
   return null;
 }
 
-export function useModManagement() {
+type UseModManagementOptions = {
+  refreshSignal?: number
+}
+
+export function useModManagement(options?: UseModManagementOptions) {
   const [mods, setMods] = useState<Mod[]>([])
   const [isLoadingMods, setIsLoadingMods] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
@@ -181,6 +185,36 @@ export function useModManagement() {
     }
     initMods()
   }, [showToast])
+
+  useEffect(() => {
+    async function refreshMods() {
+      const refreshToken = options?.refreshSignal
+      if (typeof refreshToken !== "number") {
+        return
+      }
+
+      const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+      const invoke = await getTauriInvoke()
+      if (!gameDir || !invoke) {
+        return
+      }
+
+      setIsScanning(true)
+      try {
+        const loadedMods = await invoke("list_installed_mods", { gameDir }) as any[]
+        setMods(loadedMods)
+        setSelectedModId((prevId) => {
+          if (!loadedMods.length) return ""
+          return loadedMods.some((mod: any) => mod.id === prevId) ? prevId : loadedMods[0].id
+        })
+      } catch (err: any) {
+        console.error("Failed to refresh installed mods:", err)
+      } finally {
+        setIsScanning(false)
+      }
+    }
+    refreshMods()
+  }, [options?.refreshSignal, showToast])
 
   // Handlers
   const handleToggleMod = useCallback(async (modId: string) => {
@@ -558,21 +592,84 @@ export function useModManagement() {
     setNewModVersion("1.0.0")
   }, [newModName, newModAuthor, newModEngName, newModVersion, newModDesc, newModCategory, showToast])
 
-  const handleDeleteMod = useCallback((modId: string) => {
+  const handleInstallModFromZip = useCallback(async (zipPath: string) => {
+    const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+    if (!gameDir) {
+      showToast("未配置游戏安装目录，请先在设置中配置", "warning")
+      return
+    }
+
+    if (!zipPath.toLowerCase().endsWith(".zip")) {
+      showToast("仅支持 .zip 模组压缩包", "warning")
+      return
+    }
+
+    const invoke = await getTauriInvoke()
+    if (!invoke) {
+      showToast("当前运行环境不支持本地路径安装，请在桌面应用中运行", "warning")
+      return
+    }
+
+    setIsScanning(true)
+    try {
+      await invoke("install_mod_from_zip", { gameDir, zipPath })
+      const loadedMods = await invoke("list_installed_mods", { gameDir }) as any[]
+      setMods(loadedMods)
+      if (loadedMods.length > 0) {
+        if (!loadedMods.some((m: any) => m.id === selectedModId)) {
+          setSelectedModId(loadedMods[0].id)
+        }
+      } else {
+        setSelectedModId("")
+      }
+      const fileName = zipPath.split("\\").pop()?.split("/").pop() || "模组"
+      showToast(`已安装模组包：${fileName}`, "success")
+    } catch (err: any) {
+      console.error("Install mod from zip failed:", err)
+      showToast("安装模组失败: " + err, "warning")
+    } finally {
+      setIsScanning(false)
+    }
+  }, [selectedModId, showToast])
+
+  const handleDeleteMod = useCallback(async (modId: string) => {
     const modToDelete = mods.find((m) => m.id === modId)
     if (!modToDelete) return
-
-    setMods((prev) => prev.filter((m) => m.id !== modId))
-    showToast(`已成功移除模组：${modToDelete.name}`, "info")
-    
-    // Select the first remaining mod
-    const remaining = mods.filter((m) => m.id !== modId)
-    if (remaining.length > 0) {
-      setSelectedModId(remaining[0].id)
-    } else {
-      setSelectedModId("")
+    const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+    if (!gameDir) {
+      showToast("未配置游戏安装目录", "warning")
+      return
     }
-  }, [mods, showToast])
+
+    const invoke = await getTauriInvoke()
+    if (!invoke) {
+      const remaining = mods.filter((m) => m.id !== modId)
+      setMods(remaining)
+      setSelectedModId(remaining.length > 0 ? remaining[0].id : "")
+      showToast(`已成功移除模组：${modToDelete.name}`, "info")
+      return
+    }
+
+    setIsScanning(true)
+    try {
+      await invoke("delete_mod", { gameDir, folderName: modToDelete.folderName })
+      const loadedMods = await invoke("list_installed_mods", { gameDir }) as any[]
+      setMods(loadedMods)
+      if (loadedMods.length > 0) {
+        if (!loadedMods.some((m: any) => m.id === selectedModId)) {
+          setSelectedModId(loadedMods[0].id)
+        }
+      } else {
+        setSelectedModId("")
+      }
+      showToast(`已成功移除模组：${modToDelete.name}`, "success")
+    } catch (err: any) {
+      console.error("Delete mod failed:", err)
+      showToast("移除模组失败: " + err, "warning")
+    } finally {
+      setIsScanning(false)
+    }
+  }, [mods, selectedModId, showToast])
 
   const handleOpenOfficialSite = useCallback(async () => {
     const openUrl = await getTauriOpen()
@@ -705,6 +802,7 @@ export function useModManagement() {
     handleDeleteMod,
     handleOpenOfficialSite,
     handleApplyProfile,
+    handleInstallModFromZip,
     showToast
   }
 }

@@ -1,7 +1,9 @@
+import { useCallback } from "react"
+
 import { Badge } from "@/components/ui/badge"
 import { useModManagement } from "@/hooks/useModManagement"
 import { Button } from "@/components/ui/button"
-import { Sliders, CheckCircle2, AlertTriangle, Info, X } from "lucide-react"
+import { Sliders, CheckCircle2, AlertTriangle, Info, X, FileUp } from "lucide-react"
 import type { Page } from "@/App"
 
 // Import subcomponents
@@ -21,7 +23,12 @@ const CATEGORY_MAP = {
   expansion: "大型拓展"
 }
 
-export function Mods({ onNavigate }: { onNavigate?: (page: Page) => void }) {
+type ModsProps = {
+  onNavigate?: (page: Page) => void
+  refreshSignal?: number
+}
+
+export function Mods({ onNavigate, refreshSignal }: ModsProps) {
   const {
     mods,
     isLoadingMods,
@@ -84,11 +91,47 @@ export function Mods({ onNavigate }: { onNavigate?: (page: Page) => void }) {
     handleDeleteMod,
     handleOpenOfficialSite,
     handleApplyProfile,
+    handleInstallModFromZip,
     showToast
-  } = useModManagement()
+  } = useModManagement({ refreshSignal })
+
+  const handlePickZipFile = async () => {
+    if (typeof window === "undefined" || !(window as any).__TAURI_INTERNALS__) {
+      showToast("当前运行环境不支持本地文件选择，请在桌面应用中运行", "warning")
+      return
+    }
+
+    try {
+      const dialogModule = await import("@tauri-apps/plugin-dialog")
+      const selectedPath = await dialogModule.open({
+        multiple: false,
+        filters: [{ name: "Stardew 模组包", extensions: ["zip"] }]
+      })
+
+      const zipPath = Array.isArray(selectedPath)
+        ? selectedPath.find((path) => typeof path === "string" && path.toLowerCase().endsWith(".zip"))
+        : selectedPath
+
+      if (typeof zipPath !== "string") {
+        return
+      }
+
+      if (!zipPath.toLowerCase().endsWith(".zip")) {
+        showToast("仅支持 .zip 模组压缩包", "warning")
+        return
+      }
+
+      handleInstallModFromZip(zipPath)
+    } catch (err) {
+      console.error("open dialog failed:", err)
+      showToast("选择模组文件失败", "warning")
+    }
+  }
 
   return (
-    <div className="p-8 space-y-6 relative">
+    <div
+      className="min-h-screen p-8 space-y-6 relative"
+    >
       {/* Toast Notification */}
       {toast && (
         <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 px-5 py-4 rounded-xl border shadow-xl animate-in slide-in-from-bottom-5 fade-in duration-300 ${
@@ -162,6 +205,17 @@ export function Mods({ onNavigate }: { onNavigate?: (page: Page) => void }) {
                     管理 SMAPI
                   </Button>
                 )}
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="h-8 rounded-lg text-xs gap-1.5 hover:bg-accent border-border font-semibold"
+                  onClick={() => {
+                    void handlePickZipFile()
+                  }}
+                >
+                  <FileUp className="h-3.5 w-3.5 text-primary" />
+                  选择 zip 安装
+                </Button>
               </div>
               <p className="text-muted-foreground mt-2 text-sm max-w-xl">
                 对游戏扩展模组的加载进行集中控制。您可以在此处扫描本地模组、进行一键版本查重升级，或者直接对每个模组的本地 <code className="bg-accent/40 px-1 py-0.5 rounded text-xs">config.json</code> 参数进行模拟可视化编辑。

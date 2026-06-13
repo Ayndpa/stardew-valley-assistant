@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef, useCallback, type DragEvent } from "react"
 import { Sidebar } from "@/components/Sidebar"
 import { Dashboard } from "@/pages/Dashboard"
 import { Crops } from "@/pages/Crops"
@@ -36,6 +36,12 @@ function App() {
   const [showOnboarding, setShowOnboarding] = useState(() => {
     return !localStorage.getItem("stardewGameDirectory")
   })
+  const [modListRefreshSignal, setModListRefreshSignal] = useState(0)
+  const [globalToast, setGlobalToast] = useState<{ message: string; type: "success" | "info" | "warning" } | null>(null)
+  const [isGlobalDragOver, setIsGlobalDragOver] = useState(false)
+  const globalDragCounterRef = useRef(0)
+  const isHandlingGlobalDropRef = useRef(false)
+  const lastHandledDropRef = useRef<{ sig: string; at: number } | null>(null)
   
   const [saves, setSaves] = useState<SaveSummary[]>([])
   const [selectedSaveId, setSelectedSaveId] = useState<string>(() => {
@@ -128,6 +134,188 @@ function App() {
     setShowOnboarding(false)
   }
 
+  const showGlobalToast = useCallback((message: string, type: "success" | "info" | "warning") => {
+    setGlobalToast({ message, type })
+  }, [])
+
+  useEffect(() => {
+    if (globalToast) {
+      const timer = setTimeout(() => {
+        setGlobalToast(null)
+      }, 4000)
+      return () => clearTimeout(timer)
+    }
+  }, [globalToast])
+
+  const getZipPathFromPayload = useCallback((paths: string[]) => {
+    return paths.find((path) => path.toLowerCase().endsWith(".zip")) || null
+  }, [])
+
+  const handleGlobalZipDrop = useCallback(async (paths: string[], source: string) => {
+    const zipPath = getZipPathFromPayload(paths)
+
+    if (!zipPath) {
+      if (paths.length > 0) {
+        showGlobalToast(`【${source}】未检测到 .zip 文件`, "warning")
+      } else {
+        showGlobalToast(`【${source}】未检测到拖入文件`, "warning")
+      }
+      return
+    }
+
+    const normalizedZipPath = zipPath.toLowerCase()
+    const now = Date.now()
+    const lastDrop = lastHandledDropRef.current
+    if (isHandlingGlobalDropRef.current) {
+      if (!lastDrop || (lastDrop.sig !== normalizedZipPath || now - lastDrop.at > 1200)) {
+        // allow a new install if it's clearly a different file
+      } else {
+        return
+      }
+    } else if (lastDrop && lastDrop.sig === normalizedZipPath && now - lastDrop.at < 1200) {
+      return
+    }
+
+    isHandlingGlobalDropRef.current = true
+    lastHandledDropRef.current = { sig: normalizedZipPath, at: now }
+
+    const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+    if (!gameDir) {
+      showGlobalToast("未配置游戏安装目录，请先在设置中配置", "warning")
+      isHandlingGlobalDropRef.current = false
+      return
+    }
+
+    if (!window || !(window as any).__TAURI_INTERNALS__) {
+      showGlobalToast("当前运行环境不支持拖拽安装，请在桌面应用中运行", "warning")
+      isHandlingGlobalDropRef.current = false
+      return
+    }
+
+    try {
+      const invokeModule = await import("@tauri-apps/api/core")
+      await invokeModule.invoke("install_mod_from_zip", { gameDir, zipPath })
+      const fileName = zipPath.split("\\").pop()?.split("/").pop() || "模组"
+      setCurrentPage("mods")
+      setModListRefreshSignal((value) => value + 1)
+      showGlobalToast(`已安装模组包：${fileName}`, "success")
+    } catch (err) {
+      console.error(`install_mod_from_zip failed from ${source}:`, err)
+      showGlobalToast("安装模组失败: " + err, "warning")
+    } finally {
+      isHandlingGlobalDropRef.current = false
+    }
+  }, [getZipPathFromPayload, showGlobalToast])
+
+  const extractZipPathFromDataTransfer = useCallback((dataTransfer: DataTransfer | null): string | null => {
+    if (!dataTransfer) return null
+    const files = Array.from(dataTransfer.files || [])
+    const zipFile = files.find((file) => file.name.toLowerCase().endsWith(".zip"))
+    if (!zipFile) return null
+    return (zipFile as File & { path?: string }).path || null
+  }, [])
+
+  useEffect(() => {
+    const unlistenFns: Array<() => void> = []
+
+    const setupGlobalDrop = async () => {
+      if (typeof window === "undefined" || !(window as any).__TAURI_INTERNALS__) {
+        return
+      }
+
+      try {
+        const webviewModule = await import("@tauri-apps/api/webview")
+        const webview = webviewModule.getCurrentWebview()
+
+        unlistenFns.push(
+          await webview.onDragDropEvent((event) => {
+            const payload = event.payload
+            if (payload.type === "enter" || payload.type === "over") {
+              setIsGlobalDragOver(true)
+              return
+            }
+
+            if (payload.type === "leave") {
+              setIsGlobalDragOver(false)
+              globalDragCounterRef.current = 0
+              return
+            }
+
+            if (payload.type === "drop") {
+              setIsGlobalDragOver(false)
+              globalDragCounterRef.current = 0
+              handleGlobalZipDrop(payload.paths, "window.webview")
+            }
+          })
+        )
+      } catch (err) {
+        console.debug("Unable to setup global file drop listener:", err)
+      }
+    }
+
+    setupGlobalDrop()
+
+    return () => {
+      unlistenFns.forEach((unlisten) => unlisten())
+    }
+  }, [handleGlobalZipDrop])
+
+  const handleGlobalDragEnter = (e: DragEvent<HTMLDivElement>) => {
+    if (typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__) {
+      return
+    }
+    e.preventDefault()
+    globalDragCounterRef.current += 1
+    setIsGlobalDragOver(true)
+  }
+
+  const handleGlobalDragOver = (e: DragEvent<HTMLDivElement>) => {
+    if (typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__) {
+      return
+    }
+    e.preventDefault()
+    e.dataTransfer.dropEffect = "copy"
+  }
+
+  const handleGlobalDragLeave = (e: DragEvent<HTMLDivElement>) => {
+    if (typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__) {
+      return
+    }
+    e.preventDefault()
+    globalDragCounterRef.current = Math.max(0, globalDragCounterRef.current - 1)
+    if (globalDragCounterRef.current === 0) {
+      setIsGlobalDragOver(false)
+    }
+  }
+
+  const handleGlobalDrop = (e: DragEvent<HTMLDivElement>) => {
+    if (typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__) {
+      return
+    }
+    e.preventDefault()
+    e.stopPropagation()
+    globalDragCounterRef.current = 0
+    setIsGlobalDragOver(false)
+
+    const zipPath = extractZipPathFromDataTransfer(e.dataTransfer)
+    if (!zipPath) {
+      const files = Array.from(e.dataTransfer.files || [])
+      const zipFile = files.find((file) => file.name.toLowerCase().endsWith(".zip"))
+      if (!files.length) {
+        showGlobalToast("未检测到拖入文件", "warning")
+        return
+      }
+      if (!zipFile) {
+        showGlobalToast("只支持拖入 .zip 模组压缩包", "warning")
+        return
+      }
+      showGlobalToast("当前环境未返回文件绝对路径，请使用“选择 zip 安装”或手动放置可访问路径", "warning")
+      return
+    }
+
+    handleGlobalZipDrop([zipPath], "页面拖放")
+  }
+
   const renderPage = () => {
     switch (currentPage) {
       case "dashboard":
@@ -146,7 +334,7 @@ function App() {
           />
         )
       case "mods":
-        return <Mods onNavigate={setCurrentPage} />
+        return <Mods onNavigate={setCurrentPage} refreshSignal={modListRefreshSignal} />
       case "onlineMods":
         return (
           <div className="p-8 space-y-6">
@@ -175,7 +363,41 @@ function App() {
         collapsed={sidebarCollapsed}
         onToggleCollapse={toggleSidebarCollapsed}
       />
-      <main className="flex-1 overflow-auto">
+      <main
+        className="flex-1 overflow-auto relative"
+        onDragEnter={handleGlobalDragEnter}
+        onDragOver={handleGlobalDragOver}
+        onDragLeave={handleGlobalDragLeave}
+        onDrop={handleGlobalDrop}
+      >
+        {isGlobalDragOver && (
+          <div className="fixed inset-0 z-40 bg-primary/10 backdrop-blur-sm border-4 border-dashed border-primary pointer-events-none">
+            <div className="h-full w-full flex items-center justify-center">
+              <div className="bg-card/95 border border-primary rounded-2xl px-6 py-4 shadow-2xl">
+                <p className="text-sm font-semibold text-primary">松开鼠标，安装该 .zip 模组</p>
+                <p className="text-xs text-muted-foreground mt-1">全局支持 .zip 拖拽安装，安装后将刷新模组列表</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {globalToast && (
+          <div
+            className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 px-5 py-4 rounded-xl border shadow-xl ${
+              globalToast.type === "success"
+                ? "bg-green-50/90 dark:bg-green-950/80 border-green-200 dark:border-green-800 text-green-800 dark:text-green-200"
+                : globalToast.type === "warning"
+                  ? "bg-amber-50/90 dark:bg-amber-950/80 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200"
+                  : "bg-blue-50/90 dark:bg-blue-950/80 border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-200"
+            }`}
+          >
+            <div className="text-sm font-medium pr-4">{globalToast.message}</div>
+            <button onClick={() => setGlobalToast(null)} className="p-1 rounded-lg hover:bg-black/10 dark:hover:bg-white/10 transition-colors ml-auto">
+              ×
+            </button>
+          </div>
+        )}
+
         {renderPage()}
       </main>
       {showOnboarding && <Onboarding onComplete={handleOnboardingComplete} />}
