@@ -6,6 +6,7 @@ use image::codecs::png::PngEncoder;
 use image::{ColorType, ImageEncoder};
 use lzxd::{Lzxd, WindowSize};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 use crate::game::find_stardew_valley;
 
@@ -190,6 +191,24 @@ impl Texture {
     fn get_index(&self, index: usize) -> Option<Pixel> {
         self.pixels.get(index).copied()
     }
+
+    fn crop_to_png_data_url(&self, source: Rect) -> Result<String, String> {
+        let width = source.width.min(self.width.saturating_sub(source.x));
+        let height = source.height.min(self.height.saturating_sub(source.y));
+        if width == 0 || height == 0 {
+            return Err("Texture crop is empty".to_string());
+        }
+
+        let mut raw = Vec::with_capacity(width * height * 4);
+        for y in 0..height {
+            for x in 0..width {
+                let pixel = self.get(source.x + x, source.y + y);
+                raw.extend_from_slice(&[pixel.r, pixel.g, pixel.b, pixel.a]);
+            }
+        }
+
+        encode_png_data_url(&raw, width, height)
+    }
 }
 
 struct Canvas {
@@ -227,22 +246,21 @@ impl Canvas {
             raw.extend_from_slice(&[pixel.r, pixel.g, pixel.b, pixel.a]);
         }
 
-        let mut png = Vec::new();
-        let encoder = PngEncoder::new(&mut png);
-        encoder
-            .write_image(
-                &raw,
-                self.width as u32,
-                self.height as u32,
-                ColorType::Rgba8.into(),
-            )
-            .map_err(|e| format!("Failed to encode farmer avatar PNG: {}", e))?;
-
-        Ok(format!(
-            "data:image/png;base64,{}",
-            BASE64_STANDARD.encode(png)
-        ))
+        encode_png_data_url(&raw, self.width, self.height)
     }
+}
+
+fn encode_png_data_url(raw: &[u8], width: usize, height: usize) -> Result<String, String> {
+    let mut png = Vec::new();
+    let encoder = PngEncoder::new(&mut png);
+    encoder
+        .write_image(raw, width as u32, height as u32, ColorType::Rgba8.into())
+        .map_err(|e| format!("Failed to encode PNG: {}", e))?;
+
+    Ok(format!(
+        "data:image/png;base64,{}",
+        BASE64_STANDARD.encode(png)
+    ))
 }
 
 #[derive(Clone, Copy)]
@@ -304,6 +322,38 @@ pub fn render_farmer_avatar(
     canvas.to_png_data_url()
 }
 
+pub fn render_npc_portrait(npc_id: &str, game_dir: Option<&str>) -> Result<String, String> {
+    let portraits = locate_portrait_asset_dir(game_dir)?;
+    let file_stem = npc_portrait_file_stem(npc_id);
+    let texture = load_xnb_texture(&portraits.join(format!("{}.xnb", file_stem)))?;
+    texture.crop_to_png_data_url(Rect {
+        x: 0,
+        y: 0,
+        width: 64,
+        height: 64,
+    })
+}
+
+#[tauri::command]
+pub fn get_npc_portraits(
+    npc_ids: Vec<String>,
+    game_dir: Option<String>,
+) -> Result<HashMap<String, String>, String> {
+    let mut portraits = HashMap::new();
+
+    for npc_id in npc_ids {
+        if !is_safe_asset_name(&npc_id) {
+            continue;
+        }
+
+        if let Ok(data_url) = render_npc_portrait(&npc_id, game_dir.as_deref()) {
+            portraits.insert(npc_id, data_url);
+        }
+    }
+
+    Ok(portraits)
+}
+
 fn locate_farmer_asset_dir(game_dir: Option<&str>) -> Result<PathBuf, String> {
     let mut candidates = Vec::new();
 
@@ -337,6 +387,39 @@ fn locate_farmer_asset_dir(game_dir: Option<&str>) -> Result<PathBuf, String> {
         })
 }
 
+fn locate_portrait_asset_dir(game_dir: Option<&str>) -> Result<PathBuf, String> {
+    let mut candidates = Vec::new();
+
+    if let Some(game_dir) = game_dir.map(str::trim).filter(|value| !value.is_empty()) {
+        push_portrait_asset_candidates(Path::new(game_dir), &mut candidates);
+    }
+
+    if let Some(game_dir) = find_stardew_valley() {
+        push_portrait_asset_candidates(Path::new(&game_dir), &mut candidates);
+    }
+
+    if let Ok(current_dir) = std::env::current_dir() {
+        for ancestor in current_dir.ancestors() {
+            push_portrait_asset_candidates(ancestor, &mut candidates);
+            if let Some(parent) = ancestor.parent() {
+                push_portrait_asset_candidates(
+                    &parent
+                        .join("stardew-valley-source")
+                        .join("StardewValleyGame"),
+                    &mut candidates,
+                );
+            }
+        }
+    }
+
+    candidates
+        .into_iter()
+        .find(|path| path.join("Abigail.xnb").exists() && path.join("Wizard.xnb").exists())
+        .ok_or_else(|| {
+            "Could not locate Stardew Valley Content/Portraits assets. Set the game directory first.".to_string()
+        })
+}
+
 fn push_asset_candidates(root: &Path, candidates: &mut Vec<PathBuf>) {
     candidates.push(root.join("Content").join("Characters").join("Farmer"));
     candidates.push(
@@ -346,6 +429,30 @@ fn push_asset_candidates(root: &Path, candidates: &mut Vec<PathBuf>) {
             .join("Farmer"),
     );
     candidates.push(root.join("Characters").join("Farmer"));
+}
+
+fn push_portrait_asset_candidates(root: &Path, candidates: &mut Vec<PathBuf>) {
+    candidates.push(root.join("Content").join("Portraits"));
+    candidates.push(
+        root.join("StardewValleyGame")
+            .join("Content")
+            .join("Portraits"),
+    );
+    candidates.push(root.join("Portraits"));
+}
+
+fn npc_portrait_file_stem(npc_id: &str) -> &str {
+    match npc_id {
+        "Leo" => "ParrotBoy",
+        _ => npc_id,
+    }
+}
+
+fn is_safe_asset_name(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == ' ')
 }
 
 fn load_farmer_texture(assets: &Path, name: &str) -> Result<Texture, String> {
@@ -1135,5 +1242,21 @@ mod tests {
         let avatar = render_farmer_avatar(&appearance, source_root.to_str()).unwrap();
         assert!(avatar.starts_with("data:image/png;base64,"));
         assert!(avatar.len() > 1000);
+    }
+
+    #[test]
+    fn renders_npc_portrait_from_dev_source() {
+        let source_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(|path| path.parent())
+            .map(|path| path.join("stardew-valley-source"));
+
+        let Some(source_root) = source_root.filter(|path| path.exists()) else {
+            return;
+        };
+
+        let portrait = render_npc_portrait("Abigail", source_root.to_str()).unwrap();
+        assert!(portrait.starts_with("data:image/png;base64,"));
+        assert!(portrait.len() > 1000);
     }
 }

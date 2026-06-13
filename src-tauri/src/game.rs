@@ -156,17 +156,12 @@ pub fn get_game_version(game_dir: String) -> Result<String, String> {
         .ok_or_else(|| "无法检测游戏版本，请确认游戏安装目录是否正确。".to_string())
 }
 
-fn pick_executable(game_dir: &Path) -> Option<PathBuf> {
+fn pick_smapi_executable(game_dir: &Path) -> Option<PathBuf> {
     #[cfg(target_os = "windows")]
     {
         let smapi_launcher = game_dir.join("StardewModdingAPI.exe");
         if smapi_launcher.exists() {
             return Some(smapi_launcher);
-        }
-
-        let game_exe = game_dir.join("Stardew Valley.exe");
-        if game_exe.exists() {
-            return Some(game_exe);
         }
     }
 
@@ -175,6 +170,32 @@ fn pick_executable(game_dir: &Path) -> Option<PathBuf> {
         let smapi_launcher = game_dir.join("StardewModdingAPI");
         if smapi_launcher.exists() {
             return Some(smapi_launcher);
+        }
+
+        let renamed_launcher = game_dir.join("StardewValley");
+        let original_exe = game_dir.join("StardewValley-original");
+        if renamed_launcher.exists() && original_exe.exists() {
+            return Some(renamed_launcher);
+        }
+    }
+
+    None
+}
+
+fn pick_vanilla_executable(game_dir: &Path) -> Option<PathBuf> {
+    #[cfg(target_os = "windows")]
+    {
+        let game_exe = game_dir.join("Stardew Valley.exe");
+        if game_exe.exists() {
+            return Some(game_exe);
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let original_exe = game_dir.join("StardewValley-original");
+        if original_exe.exists() {
+            return Some(original_exe);
         }
 
         let game_exe = game_dir.join("StardewValley");
@@ -186,14 +207,25 @@ fn pick_executable(game_dir: &Path) -> Option<PathBuf> {
     None
 }
 
+fn pick_executable(game_dir: &Path, launch_mode: Option<&str>) -> Option<PathBuf> {
+    match launch_mode.unwrap_or("default") {
+        "vanilla" => pick_vanilla_executable(game_dir),
+        _ => pick_smapi_executable(game_dir).or_else(|| pick_vanilla_executable(game_dir)),
+    }
+}
+
 #[tauri::command]
-pub fn launch_game(app: AppHandle, game_dir: String) -> Result<u32, String> {
+pub fn launch_game(
+    app: AppHandle,
+    game_dir: String,
+    launch_mode: Option<String>,
+) -> Result<u32, String> {
     let game_path = Path::new(&game_dir);
     if !game_path.exists() {
         return Err("游戏目录不存在，请先设置正确的目录。".to_string());
     }
 
-    let exe_path = pick_executable(game_path).ok_or_else(|| {
+    let exe_path = pick_executable(game_path, launch_mode.as_deref()).ok_or_else(|| {
         "未找到可执行文件（StardewModdingAPI.exe / Stardew Valley.exe）。".to_string()
     })?;
 

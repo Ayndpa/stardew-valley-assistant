@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+use tokio::task;
 
 use crate::farmer_avatar::{render_farmer_avatar, FarmerAppearance};
 
@@ -280,7 +281,13 @@ fn get_saves_dir() -> Option<PathBuf> {
 }
 
 #[tauri::command]
-pub fn list_save_files(game_dir: Option<String>) -> Result<Vec<SaveSummary>, String> {
+pub async fn list_save_files(game_dir: Option<String>) -> Result<Vec<SaveSummary>, String> {
+    task::spawn_blocking(move || list_save_files_sync(game_dir))
+        .await
+        .map_err(|e| format!("读取存档列表任务失败: {}", e))?
+}
+
+fn list_save_files_sync(game_dir: Option<String>) -> Result<Vec<SaveSummary>, String> {
     let saves_dir =
         get_saves_dir().ok_or_else(|| "Could not locate APPDATA or HOME directory".to_string())?;
 
@@ -368,7 +375,17 @@ pub fn list_save_files(game_dir: Option<String>) -> Result<Vec<SaveSummary>, Str
 }
 
 #[tauri::command]
-pub fn get_save_detail(
+pub async fn get_save_detail(
+    id: String,
+    game_dir: Option<String>,
+    include_avatar: Option<bool>,
+) -> Result<SaveDetail, String> {
+    task::spawn_blocking(move || get_save_detail_sync(id, game_dir, include_avatar))
+        .await
+        .map_err(|e| format!("读取存档详情任务失败: {}", e))?
+}
+
+fn get_save_detail_sync(
     id: String,
     game_dir: Option<String>,
     include_avatar: Option<bool>,
@@ -465,7 +482,13 @@ pub fn get_save_detail(
 }
 
 #[tauri::command]
-pub fn get_planted_crops(id: String) -> Result<Vec<PlantedCrop>, String> {
+pub async fn get_planted_crops(id: String) -> Result<Vec<PlantedCrop>, String> {
+    task::spawn_blocking(move || get_planted_crops_sync(id))
+        .await
+        .map_err(|e| format!("读取种植作物任务失败: {}", e))?
+}
+
+fn get_planted_crops_sync(id: String) -> Result<Vec<PlantedCrop>, String> {
     let saves_dir =
         get_saves_dir().ok_or_else(|| "Could not locate APPDATA or HOME directory".to_string())?;
 
@@ -639,7 +662,7 @@ mod tests {
 
     #[test]
     fn test_list() {
-        match list_save_files(None) {
+        match list_save_files_sync(None) {
             Ok(list) => {
                 println!("SUCCESS: Listed {} saves", list.len());
                 for s in list {

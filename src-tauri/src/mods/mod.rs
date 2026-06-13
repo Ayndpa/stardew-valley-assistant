@@ -1,8 +1,8 @@
 pub mod local;
-pub mod profiles;
 pub mod nexus;
+pub mod profiles;
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -51,6 +51,15 @@ pub struct Mod {
 }
 
 // Re-export commands for lib.rs
-pub use local::{delete_mod, list_installed_mods, install_mod_from_zip, save_mod_config, toggle_mod};
-pub use profiles::{list_profiles, save_profile, delete_profile, apply_profile, export_profile, import_profile, export_profile_to_file, import_profile_from_file};
-pub use nexus::{fetch_smapi_compatibility_mods, open_scraper_window, open_nexus_ranking_scraper, open_nexus_login_window, check_nexus_login_status, logout_nexus, fetch_nexus_api_key, install_nexus_mod};
+pub use local::{
+    delete_mod, install_mod_from_zip, list_installed_mods, save_mod_config, toggle_mod,
+};
+pub use nexus::{
+    check_nexus_login_status, fetch_nexus_api_key, fetch_smapi_compatibility_mods,
+    install_nexus_mod, logout_nexus, open_nexus_login_window, open_nexus_ranking_scraper,
+    open_scraper_window,
+};
+pub use profiles::{
+    apply_profile, delete_profile, export_profile, export_profile_to_file, import_profile,
+    import_profile_from_file, list_profiles, save_profile,
+};

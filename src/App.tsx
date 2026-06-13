@@ -4,6 +4,7 @@ import { Dashboard } from "@/pages/Dashboard"
 import { Crops } from "@/pages/Crops"
 import { NPCs } from "@/pages/NPCs"
 import { Calendar } from "@/pages/Calendar"
+import { FishingMap } from "@/pages/FishingMap"
 import { Settings } from "@/pages/Settings"
 import { Mods } from "@/pages/Mods"
 import { Downloads } from "@/pages/Downloads"
@@ -12,7 +13,7 @@ import { Onboarding } from "@/components/Onboarding"
 import { useDownloadManager } from "@/hooks/useDownloadManager"
 import "./index.css"
 
-export type Page = "dashboard" | "crops" | "npcs" | "calendar" | "settings" | "mods" | "onlineMods" | "downloads"
+export type Page = "dashboard" | "crops" | "npcs" | "calendar" | "fishingMap" | "settings" | "mods" | "onlineMods" | "downloads"
 
 export interface SaveSummary {
   id: string
@@ -162,7 +163,7 @@ function App() {
     onShowToast: showGlobalToast,
   })
 
-  const handleLaunchGame = useCallback(async () => {
+  const handleLaunchGame = useCallback(async (launchMode?: "default" | "vanilla") => {
     if (isGameRunning) {
       showGlobalToast("游戏正在运行中，暂时不能重复启动。", "info")
       return
@@ -181,9 +182,12 @@ function App() {
 
     try {
       const invokeModule = await import("@tauri-apps/api/core")
-      await invokeModule.invoke("launch_game", { gameDir })
+      await invokeModule.invoke("launch_game", {
+        gameDir,
+        launchMode: launchMode === "vanilla" ? "vanilla" : undefined,
+      })
       setIsGameRunning(true)
-      showGlobalToast("游戏启动中…", "success")
+      showGlobalToast(launchMode === "vanilla" ? "原版游戏启动中…" : "游戏启动中…", "success")
     } catch (err) {
       console.error("launch_game failed:", err)
       showGlobalToast("启动游戏失败: " + err, "warning")
@@ -503,6 +507,8 @@ function App() {
         return <NPCs selectedSaveId={selectedSaveId} />
       case "calendar":
         return <Calendar selectedSaveId={selectedSaveId} />
+      case "fishingMap":
+        return <FishingMap />
       case "settings":
         return (
         <Settings

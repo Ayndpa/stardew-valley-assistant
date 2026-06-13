@@ -61,11 +61,68 @@ interface NPCsProps {
   selectedSaveId: string
 }
 
+function NPCPortrait({
+  name,
+  portrait,
+  size,
+  selected = false,
+}: {
+  name: string
+  portrait?: string
+  size: "sm" | "lg"
+  selected?: boolean
+}) {
+  const sizeClass = size === "lg" ? "h-16 w-16" : "h-9 w-9"
+  const textClass = size === "lg" ? "text-2xl" : "text-sm"
+
+  if (portrait) {
+    return (
+      <div className={`${sizeClass} shrink-0 overflow-hidden rounded-md border bg-background ${selected ? "border-primary-foreground/40" : "border-primary/20"}`}>
+        <img
+          src={portrait}
+          alt={`${name}头像`}
+          className="h-full w-full object-cover"
+          style={{ imageRendering: "pixelated" }}
+        />
+      </div>
+    )
+  }
+
+  return (
+    <div className={`${sizeClass} shrink-0 rounded-md flex items-center justify-center font-bold ${textClass} ${selected ? "bg-primary-foreground/20 text-primary-foreground" : "bg-primary/10 text-primary"}`}>
+      {name.charAt(0)}
+    </div>
+  )
+}
+
 export function NPCs({ selectedSaveId }: NPCsProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedNPC, setSelectedNPC] = useState<NPC | null>(null)
   const [friendships, setFriendships] = useState<Record<string, FriendshipInfo>>({})
+  const [npcPortraits, setNpcPortraits] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function loadPortraits() {
+      const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__;
+      if (!isTauri) return
+
+      try {
+        const { invoke } = await import("@tauri-apps/api/core");
+        const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+        const portraits = await invoke<Record<string, string>>("get_npc_portraits", {
+          npcIds: ALL_NPCS.map((npc) => npc.id),
+          gameDir: gameDir.trim() || undefined,
+        })
+        setNpcPortraits(portraits)
+      } catch (err) {
+        console.error("Error loading NPC portraits:", err)
+        setNpcPortraits({})
+      }
+    }
+
+    loadPortraits()
+  }, [])
 
   // Fetch real relationships
   useEffect(() => {
@@ -116,6 +173,7 @@ export function NPCs({ selectedSaveId }: NPCsProps) {
       talkedToToday: friendData?.talkedToToday || false,
       status: friendData?.status || "Friendly",
       isMet: !!friendData,
+      portrait: npcPortraits[npc.id],
     }
   })
 
@@ -188,9 +246,12 @@ export function NPCs({ selectedSaveId }: NPCsProps) {
                 }`}
                 onClick={() => setSelectedNPC(ALL_NPCS.find(n => n.id === npc.id) || null)}
               >
-                <div className={`h-9 w-9 rounded-full flex items-center justify-center text-sm font-bold ${selectedNPC?.id === npc.id ? "bg-primary-foreground/20 text-primary-foreground" : "bg-primary/10 text-primary"}`}>
-                  {npc.name.charAt(0)}
-                </div>
+                <NPCPortrait
+                  name={npc.name}
+                  portrait={npc.portrait}
+                  size="sm"
+                  selected={selectedNPC?.id === npc.id}
+                />
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-center">
                     <p className="text-sm font-semibold truncate">{npc.name}</p>
@@ -214,11 +275,11 @@ export function NPCs({ selectedSaveId }: NPCsProps) {
               <CardHeader className="pb-4 border-b bg-accent/5">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div className="flex items-center gap-4">
-                    <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center border-2 border-primary/20">
-                      <span className="text-2xl font-bold text-primary">
-                        {activeNPC.name.charAt(0)}
-                      </span>
-                    </div>
+                    <NPCPortrait
+                      name={activeNPC.name}
+                      portrait={activeNPC.portrait}
+                      size="lg"
+                    />
                     <div>
                       <div className="flex items-center gap-2">
                         <CardTitle className="text-2xl font-bold">{activeNPC.name}</CardTitle>

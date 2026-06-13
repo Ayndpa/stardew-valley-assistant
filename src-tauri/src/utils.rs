@@ -36,7 +36,11 @@ pub fn open_in_file_manager(path: String) -> Result<(), String> {
     Ok(())
 }
 
-pub fn download_file_with_headers(url: &str, dest: &Path, headers: &[(&str, &str)]) -> Result<(), String> {
+pub fn download_file_with_headers(
+    url: &str,
+    dest: &Path,
+    headers: &[(&str, &str)],
+) -> Result<(), String> {
     let agent = ureq::AgentBuilder::new()
         .timeout_connect(std::time::Duration::from_secs(15))
         .timeout_read(std::time::Duration::from_secs(60))
@@ -69,7 +73,10 @@ pub fn download_file_with_headers(url: &str, dest: &Path, headers: &[(&str, &str
                 return Ok(());
             }
             Err(e) => {
-                last_err = format!("HTTP request failed (attempt {}/{}): {}", attempt, max_retries, e);
+                last_err = format!(
+                    "HTTP request failed (attempt {}/{}): {}",
+                    attempt, max_retries, e
+                );
                 if attempt < max_retries {
                     std::thread::sleep(std::time::Duration::from_secs(2));
                 }
@@ -95,11 +102,11 @@ pub fn extract_zip(zip_path: &Path, dest_dir: &Path) -> Result<(), String> {
                     "Expand-Archive -Path '{}' -DestinationPath '{}' -Force",
                     zip_path.to_string_lossy(),
                     dest_dir.to_string_lossy()
-                )
+                ),
             ])
             .output()
             .map_err(|e| format!("Failed to run PowerShell Expand-Archive: {}", e))?;
-        
+
         if output.status.success() {
             Ok(())
         } else {
@@ -114,11 +121,11 @@ pub fn extract_zip(zip_path: &Path, dest_dir: &Path) -> Result<(), String> {
                 "-o",
                 &zip_path.to_string_lossy(),
                 "-d",
-                &dest_dir.to_string_lossy()
+                &dest_dir.to_string_lossy(),
             ])
             .output()
             .map_err(|e| format!("Failed to run unzip: {}", e))?;
-        
+
         if output.status.success() {
             Ok(())
         } else {

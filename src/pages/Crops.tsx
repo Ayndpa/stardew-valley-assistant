@@ -13,6 +13,9 @@ import {
   Filter,
   MapPin,
   Flame,
+  ArrowUpDown,
+  ArrowDownAZ,
+  ArrowUpAZ,
 } from "lucide-react"
 
 // Dynamic imports will be done inline inside useEffect/handlers for reliability
@@ -20,21 +23,87 @@ import {
 
 import {
   cropDb,
-  PlantedCrop,
   ENCYCLOPEDIA_CROPS,
   SEASONS,
-  locationMap
+  locationMap,
+  type Crop,
+  type CropLookup,
+  type PlantedCrop,
 } from "@/data/crops"
 
 interface CropsProps {
   selectedSaveId: string
 }
 
+interface CropGameData {
+  encyclopedia: Crop[]
+  lookup: Record<string, CropLookup>
+  seasons: string[]
+}
+
+type ProfitSortField = "dailyProfit" | "sellPrice" | "growDays" | "name"
+type ProfitSortDirection = "asc" | "desc"
+
 export function Crops({ selectedSaveId }: CropsProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [activeSeason, setActiveSeason] = useState("全部")
   const [plantedCrops, setPlantedCrops] = useState<PlantedCrop[]>([])
   const [loadingCrops, setLoadingCrops] = useState(true)
+  const [cropLookup, setCropLookup] = useState<Record<string, CropLookup>>(cropDb)
+  const [encyclopediaCrops, setEncyclopediaCrops] = useState<Crop[]>(ENCYCLOPEDIA_CROPS)
+  const [seasonFilters, setSeasonFilters] = useState<string[]>(SEASONS)
+  const [loadingGameData, setLoadingGameData] = useState(false)
+  const [gameDataError, setGameDataError] = useState<string | null>(null)
+  const [profitSortField, setProfitSortField] = useState<ProfitSortField>("dailyProfit")
+  const [profitSortDirection, setProfitSortDirection] = useState<ProfitSortDirection>("desc")
+
+  useEffect(() => {
+    async function loadCropGameData() {
+      const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__;
+      if (!isTauri) {
+        return
+      }
+
+      setLoadingGameData(true)
+      setGameDataError(null)
+      try {
+        const { invoke } = await import("@tauri-apps/api/core");
+        const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+        const data = await invoke("get_crop_game_data", {
+          gameDir: gameDir.trim() || undefined,
+        }) as CropGameData
+
+        if (data.encyclopedia.length > 0) {
+          setEncyclopediaCrops(data.encyclopedia)
+        }
+        if (Object.keys(data.lookup).length > 0) {
+          setCropLookup(data.lookup)
+        }
+
+        const filterSet = new Set<string>(["全部"])
+        const sourceFilters = data.seasons.length > 0 ? data.seasons : SEASONS
+        sourceFilters.forEach((season) => filterSet.add(season))
+        data.encyclopedia.forEach((crop) => {
+          filterSet.add(crop.season)
+          crop.seasons?.forEach((season) => filterSet.add(season))
+        })
+        const nextFilters = Array.from(filterSet)
+        setSeasonFilters(nextFilters)
+        setActiveSeason((current) => nextFilters.includes(current) ? current : "全部")
+      } catch (err) {
+        console.error("Error loading crop game data:", err)
+        setGameDataError(String(err))
+        setEncyclopediaCrops(ENCYCLOPEDIA_CROPS)
+        setCropLookup(cropDb)
+        setSeasonFilters(SEASONS)
+        setActiveSeason("全部")
+      } finally {
+        setLoadingGameData(false)
+      }
+    }
+
+    loadCropGameData()
+  }, [])
 
   // Fetch real crops
   useEffect(() => {
@@ -64,10 +133,30 @@ export function Crops({ selectedSaveId }: CropsProps) {
     loadCrops()
   }, [selectedSaveId])
 
-  const filteredEncyclopedia = ENCYCLOPEDIA_CROPS.filter((crop) => {
+  const filteredEncyclopedia = encyclopediaCrops.filter((crop) => {
     const matchesSearch = crop.name.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesSeason = activeSeason === "全部" || crop.season === activeSeason
+    const matchesSeason = activeSeason === "全部" || crop.season === activeSeason || crop.seasons?.includes(activeSeason)
     return matchesSearch && matchesSeason
+  })
+
+  const profitSortedCrops = [...encyclopediaCrops].sort((a, b) => {
+    const getDailyProfit = (crop: Crop) => crop.growDays > 0 ? Math.round((crop.sellPrice / crop.growDays) * 10) / 10 : 0
+
+    const compareValue = (() => {
+      switch (profitSortField) {
+        case "sellPrice":
+          return a.sellPrice - b.sellPrice
+        case "growDays":
+          return a.growDays - b.growDays
+        case "name":
+          return a.name.localeCompare(b.name, "zh-CN")
+        case "dailyProfit":
+        default:
+          return getDailyProfit(a) - getDailyProfit(b)
+      }
+    })()
+
+    return profitSortDirection === "asc" ? compareValue : -compareValue
   })
 
   // Group planted crops by location
@@ -82,16 +171,17 @@ export function Crops({ selectedSaveId }: CropsProps) {
 
   // Helper to get crop progress details
   const getCropStatus = (crop: PlantedCrop) => {
-    const lookup = cropDb[crop.seedId] || cropDb[crop.harvestId]
+    const lookup = cropLookup[crop.seedId] || cropLookup[crop.harvestId]
     const name = lookup?.name || `未知作物 (${crop.seedId || crop.harvestId})`
     const sellPrice = lookup?.sellPrice || 0
     const regrows = lookup?.regrows || false
+    const icon = lookup?.icon || null
 
     if (crop.dead) {
-      return { name, progress: 0, daysRemaining: 0, totalDays: 0, statusText: "已枯萎 🍂", sellPrice, regrows }
+      return { name, icon, progress: 0, daysRemaining: 0, totalDays: 0, statusText: "已枯萎 🍂", sellPrice, regrows }
     }
     if (crop.fullyGrown) {
-      return { name, progress: 100, daysRemaining: 0, totalDays: 0, statusText: "已成熟 🧺", sellPrice, regrows }
+      return { name, icon, progress: 100, daysRemaining: 0, totalDays: 0, statusText: "已成熟 🧺", sellPrice, regrows }
     }
 
     if (crop.phaseDays && crop.phaseDays.length > 1) {
@@ -118,11 +208,12 @@ export function Crops({ selectedSaveId }: CropsProps) {
         totalDays,
         statusText: `成长中 (第 ${daysGrown}/${totalDays} 天, 剩 ${daysRemaining} 天)`,
         sellPrice,
-        regrows
+        regrows,
+        icon,
       }
     }
 
-    return { name, progress: 50, daysRemaining: 1, totalDays: 2, statusText: "成长中", sellPrice, regrows }
+    return { name, icon, progress: 50, daysRemaining: 1, totalDays: 2, statusText: "成长中", sellPrice, regrows }
   }
 
   return (
@@ -216,7 +307,16 @@ export function Crops({ selectedSaveId }: CropsProps) {
                               <div className="flex items-start justify-between">
                                 <div>
                                   <CardTitle className="text-base flex items-center gap-1.5 font-bold">
-                                    <Sprout className={`h-4 w-4 ${crop.dead ? "text-red-400" : crop.fullyGrown ? "text-green-500 animate-bounce" : "text-emerald-500"}`} />
+                                    {info.icon ? (
+                                      <img
+                                        src={info.icon}
+                                        alt=""
+                                        className="h-5 w-5 shrink-0 object-contain"
+                                        style={{ imageRendering: "pixelated" }}
+                                      />
+                                    ) : (
+                                      <Sprout className={`h-4 w-4 ${crop.dead ? "text-red-400" : crop.fullyGrown ? "text-green-500 animate-bounce" : "text-emerald-500"}`} />
+                                    )}
                                     {info.name}
                                   </CardTitle>
                                   <CardDescription className="text-xs mt-0.5">
@@ -287,7 +387,7 @@ export function Crops({ selectedSaveId }: CropsProps) {
         <TabsContent value="all" className="space-y-4">
           {/* Season Filter */}
           <div className="flex gap-2 flex-wrap">
-            {SEASONS.map((season) => (
+            {seasonFilters.map((season) => (
               <Button
                 key={season}
                 variant={activeSeason === season ? "default" : "outline"}
@@ -316,16 +416,37 @@ export function Crops({ selectedSaveId }: CropsProps) {
             </Button>
           </div>
 
+          {(loadingGameData || gameDataError) && (
+            <div className="text-xs text-muted-foreground">
+              {loadingGameData
+                ? "正在从游戏内容解析作物图标..."
+                : `未能读取游戏作物图标，已使用内置图鉴数据：${gameDataError}`}
+            </div>
+          )}
+
           {/* Crop Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredEncyclopedia.map((crop) => (
-              <Card key={crop.name} className="hover:shadow-md transition-shadow">
+              <Card key={crop.harvestId || crop.seedId || crop.name} className="hover:shadow-md transition-shadow">
                 <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <Sprout className="h-4 w-4 text-green-500" />
-                      {crop.name}
-                    </CardTitle>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border bg-accent/40">
+                        {crop.icon ? (
+                          <img
+                            src={crop.icon}
+                            alt=""
+                            className="h-8 w-8 object-contain"
+                            style={{ imageRendering: "pixelated" }}
+                          />
+                        ) : (
+                          <Sprout className="h-5 w-5 text-green-500" />
+                        )}
+                      </div>
+                      <CardTitle className="truncate text-base">
+                        {crop.name}
+                      </CardTitle>
+                    </div>
                     <Badge variant="secondary">{crop.season}</Badge>
                   </div>
                 </CardHeader>
@@ -362,19 +483,87 @@ export function Crops({ selectedSaveId }: CropsProps) {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                <p className="text-sm text-muted-foreground">
-                  以下是按照单次收获的售价与生长期计算的每日理论平均收益：
-                </p>
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <p className="text-sm text-muted-foreground">
+                    以下是按照单次收获的售价与生长期计算的每日理论平均收益：
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      variant={profitSortField === "dailyProfit" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setProfitSortField("dailyProfit")}
+                    >
+                      日收益
+                    </Button>
+                    <Button
+                      variant={profitSortField === "sellPrice" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setProfitSortField("sellPrice")}
+                    >
+                      单价
+                    </Button>
+                    <Button
+                      variant={profitSortField === "growDays" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setProfitSortField("growDays")}
+                    >
+                      生长天数
+                    </Button>
+                    <Button
+                      variant={profitSortField === "name" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setProfitSortField("name")}
+                    >
+                      名称
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                      onClick={() => setProfitSortDirection((current) => current === "desc" ? "asc" : "desc")}
+                    >
+                      {profitSortDirection === "desc" ? (
+                        <ArrowDownAZ className="h-4 w-4" />
+                      ) : (
+                        <ArrowUpAZ className="h-4 w-4" />
+                      )}
+                      {profitSortDirection === "desc" ? "降序" : "升序"}
+                    </Button>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <ArrowUpDown className="h-3.5 w-3.5" />
+                  当前按
+                  <span className="font-medium text-foreground">
+                    {profitSortField === "dailyProfit" && "日收益"}
+                    {profitSortField === "sellPrice" && "单价"}
+                    {profitSortField === "growDays" && "生长天数"}
+                    {profitSortField === "name" && "名称"}
+                  </span>
+                  {profitSortDirection === "desc" ? "从高到低" : "从低到高"}
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {ENCYCLOPEDIA_CROPS.map((crop) => {
-                    const dailyProfit = Math.round((crop.sellPrice / crop.growDays) * 10) / 10
+                  {profitSortedCrops.map((crop) => {
+                    const dailyProfit = crop.growDays > 0 ? Math.round((crop.sellPrice / crop.growDays) * 10) / 10 : 0
                     return (
-                      <div key={crop.name} className="flex justify-between items-center p-3 rounded-lg border bg-accent/30">
-                        <div>
+                      <div key={crop.harvestId || crop.seedId || crop.name} className="flex justify-between items-center gap-3 p-3 rounded-lg border bg-accent/30">
+                        <div className="flex items-center gap-3 min-w-0">
+                          {crop.icon ? (
+                            <img
+                              src={crop.icon}
+                              alt=""
+                              className="h-7 w-7 shrink-0 object-contain"
+                              style={{ imageRendering: "pixelated" }}
+                            />
+                          ) : (
+                            <Sprout className="h-5 w-5 shrink-0 text-green-500" />
+                          )}
+                          <div className="min-w-0">
                           <p className="font-semibold text-sm">{crop.name}</p>
                           <p className="text-xs text-muted-foreground">{crop.season} · 生长 {crop.growDays} 天</p>
+                          </div>
                         </div>
-                        <div className="text-right">
+                        <div className="shrink-0 text-right">
                           <p className="font-bold text-sm text-yellow-500">{dailyProfit} g/天</p>
                           <p className="text-[10px] text-muted-foreground">单价 {crop.sellPrice}g</p>
                         </div>

@@ -19,6 +19,7 @@ import {
   Download,
   Play,
   ListChecks,
+  Fish,
 } from "lucide-react"
 
 interface SidebarProps {
@@ -29,7 +30,7 @@ interface SidebarProps {
   onSaveChange: (id: string) => void
   collapsed: boolean
   onToggleCollapse: () => void
-  onLaunchGame: () => void
+  onLaunchGame: (launchMode?: "default" | "vanilla") => void
   isGameRunning: boolean
   downloadStats: {
     running: number
@@ -46,6 +47,7 @@ const navItems: { id: Page; label: string; icon: React.ReactNode }[] = [
   { id: "crops", label: "作物管理", icon: <Sprout /> },
   { id: "npcs", label: "村民关系", icon: <Users /> },
   { id: "calendar", label: "节日日历", icon: <CalendarDays /> },
+  { id: "fishingMap", label: "钓鱼地图", icon: <Fish /> },
   { id: "mods", label: "模组管理", icon: <Puzzle /> },
   { id: "onlineMods", label: "获取模组", icon: <Download className="h-4 w-4" /> },
   { id: "downloads", label: "下载管理", icon: <ListChecks className="h-4 w-4" /> },
@@ -95,13 +97,18 @@ export function Sidebar({
   downloadStats,
 }: SidebarProps) {
   const [isOpen, setIsOpen] = useState(false)
+  const [isLaunchMenuOpen, setIsLaunchMenuOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const launchDropdownRef = useRef<HTMLDivElement>(null)
 
   // Click outside to close
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsOpen(false)
+      }
+      if (launchDropdownRef.current && !launchDropdownRef.current.contains(event.target as Node)) {
+        setIsLaunchMenuOpen(false)
       }
     }
     document.addEventListener("mousedown", handleClickOutside)
@@ -113,6 +120,11 @@ export function Sidebar({
   const handleSelectSave = (id: string) => {
     onSaveChange(id)
     setIsOpen(false)
+  }
+
+  const handleLaunch = (launchMode?: "default" | "vanilla") => {
+    setIsLaunchMenuOpen(false)
+    onLaunchGame(launchMode)
   }
 
   return (
@@ -223,21 +235,59 @@ export function Sidebar({
       {/* Navigation */}
       <ScrollArea className={cn("flex-1 py-4", collapsed ? "px-2" : "px-3")}>
         <nav className="flex flex-col gap-1">
-          <Button
-            variant="ghost"
-            className={cn(
-              "gap-3 h-10 text-sm font-medium transition-all duration-200 border border-border/40 hover:bg-sidebar-accent/50 text-sidebar-foreground",
-              collapsed ? "justify-center px-2" : "justify-start px-3"
+          <div className="relative" ref={launchDropdownRef}>
+            <div className="flex w-full">
+              <Button
+                variant="ghost"
+                className={cn(
+                  "gap-3 h-10 text-sm font-medium transition-all duration-200 border border-border/40 hover:bg-sidebar-accent/50 text-sidebar-foreground rounded-r-none",
+                  collapsed ? "flex-1 justify-center px-2" : "flex-1 justify-start px-3"
+                )}
+                onClick={() => handleLaunch()}
+                disabled={isGameRunning}
+                title={isGameRunning ? "游戏运行中" : "一键启动游戏"}
+              >
+                <span className="shrink-0">
+                  <Play className="h-4 w-4 text-primary" />
+                </span>
+                {!collapsed && (isGameRunning ? "游戏运行中" : "一键启动")}
+              </Button>
+              <Button
+                variant="ghost"
+                className={cn(
+                  "h-10 shrink-0 rounded-l-none border border-l-0 border-border/40 px-2 text-sidebar-foreground hover:bg-sidebar-accent/50",
+                  collapsed ? "w-5 px-0" : "w-8"
+                )}
+                onClick={() => setIsLaunchMenuOpen((value) => !value)}
+                disabled={isGameRunning}
+                title={isGameRunning ? "游戏运行中" : "选择启动方式"}
+              >
+                <ChevronDown
+                  className={cn(
+                    "h-3.5 w-3.5 text-muted-foreground transition-transform duration-200",
+                    isLaunchMenuOpen && "rotate-180 text-sidebar-foreground"
+                  )}
+                />
+              </Button>
+            </div>
+            {isLaunchMenuOpen && (
+              <div
+                className={cn(
+                  "absolute mt-2 rounded-lg border border-sidebar-border/80 bg-sidebar py-1 shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150",
+                  collapsed ? "left-0 w-48" : "left-0 right-0"
+                )}
+              >
+                <button
+                  type="button"
+                  onClick={() => handleLaunch("vanilla")}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-xs font-medium text-sidebar-foreground hover:bg-sidebar-accent/80 transition-all duration-150 cursor-pointer"
+                >
+                  <Play className="h-3.5 w-3.5 text-primary shrink-0" />
+                  <span className="min-w-0 flex-1">启动原版游戏</span>
+                </button>
+              </div>
             )}
-            onClick={onLaunchGame}
-            disabled={isGameRunning}
-            title={isGameRunning ? "游戏运行中" : "一键启动游戏"}
-          >
-            <span className="shrink-0">
-              <Play className="h-4 w-4 text-primary" />
-            </span>
-            {!collapsed && (isGameRunning ? "游戏运行中" : "一键启动")}
-          </Button>
+          </div>
           {navItems.map((item) => {
             const showDownloadCount = item.id === "downloads" && downloadStats.total > 0
             return (

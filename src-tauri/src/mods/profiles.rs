@@ -1,13 +1,17 @@
+use super::{ModProfile, ModStateEntry};
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::Path;
-use super::{ModProfile, ModStateEntry};
 
 fn get_profiles_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
     use tauri::Manager;
-    let app_data = app.path().app_data_dir().map_err(|e| format!("Failed to resolve app data: {}", e))?;
+    let app_data = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to resolve app data: {}", e))?;
     let profiles_dir = app_data.join("profiles");
-    fs::create_dir_all(&profiles_dir).map_err(|e| format!("Failed to create profiles dir: {}", e))?;
+    fs::create_dir_all(&profiles_dir)
+        .map_err(|e| format!("Failed to create profiles dir: {}", e))?;
     Ok(profiles_dir)
 }
 
@@ -42,7 +46,11 @@ pub fn list_profiles(app: tauri::AppHandle) -> Result<Vec<ModProfile>, String> {
 }
 
 #[tauri::command]
-pub fn save_profile(app: tauri::AppHandle, name: String, mod_states: Vec<ModStateEntry>) -> Result<ModProfile, String> {
+pub fn save_profile(
+    app: tauri::AppHandle,
+    name: String,
+    mod_states: Vec<ModStateEntry>,
+) -> Result<ModProfile, String> {
     let profiles_dir = get_profiles_dir(&app)?;
     let now = chrono_now();
     let id = sanitize_filename(&name);
@@ -71,7 +79,8 @@ pub fn save_profile(app: tauri::AppHandle, name: String, mod_states: Vec<ModStat
         updated_at: now,
     };
 
-    let json_str = serde_json::to_string_pretty(&profile).map_err(|e| format!("Serialize error: {}", e))?;
+    let json_str =
+        serde_json::to_string_pretty(&profile).map_err(|e| format!("Serialize error: {}", e))?;
     fs::write(&profile_path, json_str.as_bytes()).map_err(|e| format!("Write error: {}", e))?;
 
     Ok(profile)
@@ -88,7 +97,10 @@ pub fn delete_profile(app: tauri::AppHandle, profile_id: String) -> Result<(), S
 }
 
 #[tauri::command]
-pub fn apply_profile(game_dir: String, mod_states: Vec<ModStateEntry>) -> Result<Vec<(String, String)>, String> {
+pub fn apply_profile(
+    game_dir: String,
+    mod_states: Vec<ModStateEntry>,
+) -> Result<Vec<(String, String)>, String> {
     let mods_dir = Path::new(&game_dir).join("Mods");
     if !mods_dir.exists() {
         return Err("Mods folder does not exist".to_string());
@@ -134,7 +146,8 @@ pub fn export_profile(profile: ModProfile) -> Result<String, String> {
 
 #[tauri::command]
 pub fn import_profile(app: tauri::AppHandle, json_data: String) -> Result<ModProfile, String> {
-    let profile: ModProfile = serde_json::from_str(&json_data).map_err(|e| format!("Invalid profile JSON: {}", e))?;
+    let profile: ModProfile =
+        serde_json::from_str(&json_data).map_err(|e| format!("Invalid profile JSON: {}", e))?;
     // Re-save with a unique id to avoid conflicts
     let profiles_dir = get_profiles_dir(&app)?;
     let now = chrono_now();
@@ -153,8 +166,13 @@ pub fn import_profile(app: tauri::AppHandle, json_data: String) -> Result<ModPro
     }
     final_profile.id = id.clone();
 
-    let json_str = serde_json::to_string_pretty(&final_profile).map_err(|e| format!("Serialize error: {}", e))?;
-    fs::write(profiles_dir.join(format!("{}.json", id)), json_str.as_bytes()).map_err(|e| format!("Write error: {}", e))?;
+    let json_str = serde_json::to_string_pretty(&final_profile)
+        .map_err(|e| format!("Serialize error: {}", e))?;
+    fs::write(
+        profiles_dir.join(format!("{}.json", id)),
+        json_str.as_bytes(),
+    )
+    .map_err(|e| format!("Write error: {}", e))?;
 
     Ok(final_profile)
 }
@@ -162,7 +180,13 @@ pub fn import_profile(app: tauri::AppHandle, json_data: String) -> Result<ModPro
 fn sanitize_filename(name: &str) -> String {
     name.to_lowercase()
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect::<String>()
         .trim_matches('-')
         .to_string()
@@ -179,19 +203,28 @@ fn chrono_now() -> String {
 }
 
 #[tauri::command]
-pub fn export_profile_to_file(_app: tauri::AppHandle, profile: ModProfile, file_path: String) -> Result<String, String> {
-    let json_str = serde_json::to_string_pretty(&profile).map_err(|e| format!("Export error: {}", e))?;
+pub fn export_profile_to_file(
+    _app: tauri::AppHandle,
+    profile: ModProfile,
+    file_path: String,
+) -> Result<String, String> {
+    let json_str =
+        serde_json::to_string_pretty(&profile).map_err(|e| format!("Export error: {}", e))?;
     let path = std::path::Path::new(&file_path);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("Create dir error: {}", e))?;
     }
     let mut file = File::create(path).map_err(|e| format!("Create file error: {}", e))?;
-    file.write_all(json_str.as_bytes()).map_err(|e| format!("Write error: {}", e))?;
+    file.write_all(json_str.as_bytes())
+        .map_err(|e| format!("Write error: {}", e))?;
     Ok(file_path)
 }
 
 #[tauri::command]
-pub fn import_profile_from_file(app: tauri::AppHandle, file_path: String) -> Result<ModProfile, String> {
+pub fn import_profile_from_file(
+    app: tauri::AppHandle,
+    file_path: String,
+) -> Result<ModProfile, String> {
     let content = fs::read_to_string(&file_path).map_err(|e| format!("Read file error: {}", e))?;
     import_profile(app, content)
 }

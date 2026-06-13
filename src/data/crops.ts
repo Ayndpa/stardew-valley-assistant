@@ -3,6 +3,7 @@ export interface CropLookup {
   sellPrice: number
   regrows: boolean
   regrowDays?: number
+  icon?: string | null
 }
 
 // Comprehensive crop database mapping seedIndex or harvestIndex to metadata
@@ -111,11 +112,17 @@ export interface PlantedCrop {
 }
 
 export interface Crop {
+  seedId?: string
+  harvestId?: string
   name: string
+  icon?: string | null
   season: string
+  seasons?: string[]
   growDays: number
   sellPrice: number
   regrows: boolean
+  regrowDays?: number
+  needsWatering?: boolean
   waterNeeds: string
 }
 

@@ -1,11 +1,11 @@
-use std::fs::{self, File};
-use std::io::{BufReader, Write};
-use std::path::Path;
+use super::{Mod, ModConfigField};
 use serde::Deserialize;
 use serde_json::Value;
-use super::{Mod, ModConfigField};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::fs::{self, File};
 use std::io::ErrorKind;
+use std::io::{BufReader, Write};
+use std::path::Path;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[derive(Deserialize, Debug)]
 struct Manifest {
@@ -39,8 +39,8 @@ pub fn list_installed_mods(game_dir: String) -> Result<Vec<Mod>, String> {
     }
 
     let mut installed_mods = Vec::new();
-    let entries = fs::read_dir(&mods_dir)
-        .map_err(|e| format!("Failed to read Mods folder: {}", e))?;
+    let entries =
+        fs::read_dir(&mods_dir).map_err(|e| format!("Failed to read Mods folder: {}", e))?;
 
     for entry in entries {
         let entry = match entry {
@@ -63,7 +63,7 @@ pub fn list_installed_mods(game_dir: String) -> Result<Vec<Mod>, String> {
 
         let manifest_file = File::open(&manifest_path)
             .map_err(|e| format!("Failed to open manifest.json in {}: {}", folder_name, e))?;
-        
+
         let manifest: Manifest = match serde_json::from_reader(BufReader::new(manifest_file)) {
             Ok(m) => m,
             Err(e) => {
@@ -72,12 +72,20 @@ pub fn list_installed_mods(game_dir: String) -> Result<Vec<Mod>, String> {
             }
         };
 
-        let id = manifest.unique_id.clone().unwrap_or_else(|| folder_name.clone());
+        let id = manifest
+            .unique_id
+            .clone()
+            .unwrap_or_else(|| folder_name.clone());
         let name = manifest.name.clone().unwrap_or_else(|| folder_name.clone());
         let english_name = folder_name.trim_start_matches('.').to_string();
-        let version = manifest.version.clone().unwrap_or_else(|| "1.0.0".to_string());
+        let version = manifest
+            .version
+            .clone()
+            .unwrap_or_else(|| "1.0.0".to_string());
         let author = manifest.author.unwrap_or_else(|| "Unknown".to_string());
-        let description = manifest.description.unwrap_or_else(|| "No description provided.".to_string());
+        let description = manifest
+            .description
+            .unwrap_or_else(|| "No description provided.".to_string());
 
         let mut nexus_id = None;
         if let Some(keys) = manifest.update_keys {
@@ -105,7 +113,9 @@ pub fn list_installed_mods(game_dir: String) -> Result<Vec<Mod>, String> {
         let config_path = path.join("config.json");
         if config_path.exists() {
             if let Ok(config_file) = File::open(&config_path) {
-                if let Ok(config_val) = serde_json::from_reader::<_, serde_json::Value>(BufReader::new(config_file)) {
+                if let Ok(config_val) =
+                    serde_json::from_reader::<_, serde_json::Value>(BufReader::new(config_file))
+                {
                     if let Some(obj) = config_val.as_object() {
                         for (k, v) in obj {
                             let r#type = match v {
@@ -131,9 +141,16 @@ pub fn list_installed_mods(game_dir: String) -> Result<Vec<Mod>, String> {
         let id_lower = id.to_lowercase();
         if id_lower == "pathoschild.contentpatcher" {
             category = "core".to_string();
-        } else if id_lower.contains("contentpatcher") || dependencies.iter().any(|d| d.to_lowercase().contains("contentpatcher")) {
+        } else if id_lower.contains("contentpatcher")
+            || dependencies
+                .iter()
+                .any(|d| d.to_lowercase().contains("contentpatcher"))
+        {
             category = "content".to_string();
-        } else if id_lower.contains("expansion") || id_lower.contains("sve") || folder_name.to_lowercase().contains("expansion") {
+        } else if id_lower.contains("expansion")
+            || id_lower.contains("sve")
+            || folder_name.to_lowercase().contains("expansion")
+        {
             category = "expansion".to_string();
         }
 
@@ -188,8 +205,12 @@ pub fn toggle_mod(game_dir: String, folder_name: String, enable: bool) -> Result
 
     if new_folder_name != folder_name {
         let dest_path = mods_dir.join(&new_folder_name);
-        fs::rename(&src_path, &dest_path)
-            .map_err(|e| format!("Failed to rename folder from {} to {}: {}", folder_name, new_folder_name, e))?;
+        fs::rename(&src_path, &dest_path).map_err(|e| {
+            format!(
+                "Failed to rename folder from {} to {}: {}",
+                folder_name, new_folder_name, e
+            )
+        })?;
     }
 
     Ok(new_folder_name)
@@ -224,7 +245,11 @@ pub fn delete_mod(game_dir: String, folder_name: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn save_mod_config(game_dir: String, folder_name: String, config: serde_json::Value) -> Result<(), String> {
+pub fn save_mod_config(
+    game_dir: String,
+    folder_name: String,
+    config: serde_json::Value,
+) -> Result<(), String> {
     let mods_dir = Path::new(&game_dir).join("Mods");
     let mod_dir = mods_dir.join(&folder_name);
     if !mod_dir.exists() {
@@ -232,8 +257,8 @@ pub fn save_mod_config(game_dir: String, folder_name: String, config: serde_json
     }
 
     let config_path = mod_dir.join("config.json");
-    let mut file = File::create(&config_path)
-        .map_err(|e| format!("Failed to create config.json: {}", e))?;
+    let mut file =
+        File::create(&config_path).map_err(|e| format!("Failed to create config.json: {}", e))?;
 
     let json_str = serde_json::to_string_pretty(&config)
         .map_err(|e| format!("Failed to serialize config JSON: {}", e))?;
@@ -302,8 +327,7 @@ pub fn install_mod_from_zip_sync(game_dir: String, zip_path: String) -> Result<V
     if working_dir.exists() {
         let _ = fs::remove_dir_all(&working_dir);
     }
-    fs::create_dir_all(&working_dir)
-        .map_err(|e| format!("创建临时目录失败: {}", e))?;
+    fs::create_dir_all(&working_dir).map_err(|e| format!("创建临时目录失败: {}", e))?;
     copy_with_retry(&source_zip, &zip_target)?;
     fs::create_dir_all(&extract_dir).map_err(|e| format!("创建解压目录失败: {}", e))?;
 
@@ -346,8 +370,7 @@ pub fn install_mod_from_zip_sync(game_dir: String, zip_path: String) -> Result<V
                 return Err(format!("复制目录失败: {}", err));
             }
         } else {
-            fs::copy(&source, &target)
-                .map_err(|e| format!("复制文件失败: {}", e))?;
+            fs::copy(&source, &target).map_err(|e| format!("复制文件失败: {}", e))?;
         }
         installed_any = true;
     }
