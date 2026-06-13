@@ -8,6 +8,7 @@ pub const MAX_MAP_PREVIEW_PIXELS: usize = 16_000_000;
 
 #[derive(Debug, Clone, Default)]
 pub struct TbinMap {
+    pub properties: HashMap<String, String>,
     pub tile_sheets: HashMap<String, TbinTileSheet>,
     pub layers: Vec<TbinLayer>,
 }
@@ -97,7 +98,7 @@ impl<'a> TbinMapReader<'a> {
         self.expect_bytes(b"tBIN10")?;
         let _id = self.read_string()?;
         let _description = self.read_string()?;
-        let _properties = self.read_properties()?;
+        self.map.properties = self.read_properties()?;
         self.read_tile_sheets()?;
         self.read_layers()?;
         Ok(self.map)

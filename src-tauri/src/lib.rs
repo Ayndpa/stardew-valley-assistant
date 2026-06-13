@@ -24,7 +24,7 @@ use crate::mods::{
     open_nexus_ranking_scraper, open_scraper_window, save_mod_config, save_profile, toggle_mod,
 };
 use crate::saves::{
-    create_save_backup, delete_save_backup, get_planted_crops, get_save_detail,
+    create_save_backup, delete_save_backup, get_npc_locations, get_planted_crops, get_save_detail,
     get_save_editor_data, list_save_backups, list_save_files, restore_save_backup,
     update_save_editor_data,
 };
@@ -298,6 +298,7 @@ pub fn run() {
             restore_save_backup,
             delete_save_backup,
             get_save_detail,
+            get_npc_locations,
             get_save_editor_data,
             update_save_editor_data,
             get_planted_crops,

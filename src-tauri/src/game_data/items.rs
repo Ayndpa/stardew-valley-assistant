@@ -99,7 +99,9 @@ pub fn get_item_game_data(game_dir: Option<String>) -> Result<ItemGameData, Stri
 }
 
 #[tauri::command]
-pub fn get_item_game_data_overview(game_dir: Option<String>) -> Result<ItemGameDataOverview, String> {
+pub fn get_item_game_data_overview(
+    game_dir: Option<String>,
+) -> Result<ItemGameDataOverview, String> {
     let snapshot = load_item_snapshot(game_dir)?;
     Ok(ItemGameDataOverview {
         categories: snapshot.categories.clone(),
@@ -148,7 +150,13 @@ pub fn query_item_game_data(
     let mut texture_cache = HashMap::new();
     let items = filtered_indexes[start..end]
         .iter()
-        .map(|index| build_item_entry(&snapshot.content_dir, &snapshot.encyclopedia[*index], &mut texture_cache))
+        .map(|index| {
+            build_item_entry(
+                &snapshot.content_dir,
+                &snapshot.encyclopedia[*index],
+                &mut texture_cache,
+            )
+        })
         .collect::<Vec<_>>();
 
     Ok(ItemGameDataQueryResult {

@@ -11,6 +11,8 @@ import {
   Users,
   Sparkles,
   Gift,
+  MapPin,
+  Radar,
 } from "lucide-react"
 
 interface FriendshipInfo {
@@ -26,6 +28,8 @@ interface SaveSummary {
   id: string
   playerName: string
   farmName: string
+  dayOfMonth?: number
+  season?: number
 }
 
 interface SaveDetail {
@@ -47,6 +51,30 @@ interface NpcGameData {
   npcs: NpcProfile[]
 }
 
+type NpcLocationSource = "estimate" | "mod"
+
+interface NpcLocationInfo {
+  npcName: string
+  location: string
+  locationDisplayName: string
+  tileX?: number | null
+  tileY?: number | null
+  direction?: number | null
+  scheduleKey?: string | null
+  scheduleTime?: number | null
+  source: NpcLocationSource
+  confidence: string
+  updatedAt?: string | null
+}
+
+interface NpcLocationsResult {
+  source: NpcLocationSource
+  saveId?: string | null
+  gameTime?: number | null
+  locations: NpcLocationInfo[]
+  error?: string | null
+}
+
 interface LocalCacheEntry<T> {
   data: T
   fetchedAt: number
@@ -63,6 +91,7 @@ const relationshipStatusMap: Record<string, string> = {
 const NPC_PROFILES_CACHE_KEY = "stardew_npc_profiles_cache_v2"
 const NPC_PORTRAITS_CACHE_KEY = "stardew_npc_portraits_cache"
 const NPC_FRIENDSHIPS_CACHE_KEY = "stardew_npc_friendships_cache"
+const NPC_LOCATION_SOURCE_KEY = "stardew_npc_location_source"
 
 function normalizeGameDir(gameDir: string) {
   return gameDir.trim().toLowerCase()
@@ -122,6 +151,38 @@ function HeartBar({ hearts, maxHearts }: { hearts: number; maxHearts: number }) 
   )
 }
 
+function formatGameTime(time?: number | null) {
+  if (!time) return "未知时间"
+  const hour = Math.floor(time / 100)
+  const minute = time % 100
+  return `${hour}:${minute.toString().padStart(2, "0")}`
+}
+
+function formatTile(location?: NpcLocationInfo) {
+  if (!location || location.tileX == null || location.tileY == null) return "坐标未知"
+  return `${location.tileX}, ${location.tileY}`
+}
+
+function gameTimeOptions() {
+  const options: number[] = []
+  for (let hour = 6; hour <= 26; hour += 1) {
+    for (let minute = 0; minute <= 50; minute += 10) {
+      const time = hour * 100 + minute
+      if (time >= 600 && time <= 2600) {
+        options.push(time)
+      }
+    }
+  }
+  return options
+}
+
+const seasonOptions = [
+  { value: 0, label: "春季" },
+  { value: 1, label: "夏季" },
+  { value: 2, label: "秋季" },
+  { value: 3, label: "冬季" },
+]
+
 interface NPCsProps {
   selectedSaveId: string
   onNavigateToItem: (itemName: string) => void
@@ -169,6 +230,17 @@ export function NPCs({ selectedSaveId, onNavigateToItem }: NPCsProps) {
   const [npcPortraits, setNpcPortraits] = useState<Record<string, string>>({})
   const [loadingProfiles, setLoadingProfiles] = useState(true)
   const [loadingFriendships, setLoadingFriendships] = useState(true)
+  const [npcLocations, setNpcLocations] = useState<Record<string, NpcLocationInfo>>({})
+  const [locationSource, setLocationSource] = useState<NpcLocationSource>(() => {
+    if (typeof window === "undefined") return "estimate"
+    return window.localStorage.getItem(NPC_LOCATION_SOURCE_KEY) === "mod" ? "mod" : "estimate"
+  })
+  const [loadingLocations, setLoadingLocations] = useState(false)
+  const [locationError, setLocationError] = useState<string | null>(null)
+  const [locationGameTime, setLocationGameTime] = useState<number | null>(null)
+  const [estimateSeason, setEstimateSeason] = useState(0)
+  const [estimateDay, setEstimateDay] = useState(1)
+  const [estimateTime, setEstimateTime] = useState<number | null>(null)
 
   useEffect(() => {
     let canceled = false
@@ -301,6 +373,12 @@ export function NPCs({ selectedSaveId, onNavigateToItem }: NPCsProps) {
         })
         if (!canceled) {
           setFriendships(map)
+          if (typeof detail.summary.season === "number") {
+            setEstimateSeason(detail.summary.season)
+          }
+          if (typeof detail.summary.dayOfMonth === "number") {
+            setEstimateDay(Math.min(28, Math.max(1, detail.summary.dayOfMonth)))
+          }
         }
         writeCache(cacheKey, map)
       } catch (err) {
@@ -321,6 +399,73 @@ export function NPCs({ selectedSaveId, onNavigateToItem }: NPCsProps) {
       canceled = true
     }
   }, [selectedSaveId])
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(NPC_LOCATION_SOURCE_KEY, locationSource)
+    }
+
+    let canceled = false
+
+    async function loadNpcLocations() {
+      if (!selectedSaveId) {
+        setNpcLocations({})
+        setLocationError(null)
+        setLocationGameTime(null)
+        setLoadingLocations(false)
+        return
+      }
+
+      const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__
+      if (!isTauri) {
+        setLoadingLocations(false)
+        setLocationError("桌面应用中才能读取 NPC 位置。")
+        return
+      }
+
+      setLoadingLocations(true)
+      setLocationError(null)
+
+      try {
+        const { invoke } = await import("@tauri-apps/api/core")
+        const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+        const result = await invoke<NpcLocationsResult>("get_npc_locations", {
+          saveId: selectedSaveId,
+          gameDir: gameDir.trim() || undefined,
+          source: locationSource,
+          season: estimateSeason,
+          day: estimateDay,
+          time: estimateTime ?? undefined,
+        })
+        const map: Record<string, NpcLocationInfo> = {}
+        result.locations.forEach((location) => {
+          map[location.npcName] = location
+        })
+        if (!canceled) {
+          setNpcLocations(map)
+          setLocationGameTime(result.gameTime ?? null)
+          setLocationError(result.error ?? null)
+        }
+      } catch (err) {
+        console.error("Error loading NPC locations:", err)
+        if (!canceled) {
+          setNpcLocations({})
+          setLocationGameTime(null)
+          setLocationError(err instanceof Error ? err.message : String(err))
+        }
+      } finally {
+        if (!canceled) {
+          setLoadingLocations(false)
+        }
+      }
+    }
+
+    loadNpcLocations()
+
+    return () => {
+      canceled = true
+    }
+  }, [estimateDay, estimateSeason, estimateTime, locationSource, selectedSaveId])
 
   const npcList = useMemo(() => {
     const profileMap = new Map(npcProfiles.map((npc) => [npc.id, npc]))
@@ -356,9 +501,12 @@ export function NPCs({ selectedSaveId, onNavigateToItem }: NPCsProps) {
         status: friendData?.status || "Friendly",
         isMet: !!friendData,
         portrait: npcPortraits[npc.id],
+        locationInfo: npcLocations[npc.id],
       }
     })
-  }, [friendships, npcPortraits, npcProfiles])
+  }, [friendships, npcLocations, npcPortraits, npcProfiles])
+
+  const timeOptions = useMemo(() => gameTimeOptions(), [])
 
   const filteredNPCs = useMemo(() => {
     return npcList
@@ -399,9 +547,100 @@ export function NPCs({ selectedSaveId, onNavigateToItem }: NPCsProps) {
       <div>
         <h2 className="text-3xl font-bold tracking-tight">村民关系</h2>
         <p className="text-muted-foreground mt-1">
-          从游戏内容与存档自动解析村民资料、生日和当前好感度
+          从游戏内容与存档自动解析村民资料、生日、当前好感度和位置
         </p>
       </div>
+
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 rounded-lg border bg-background p-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <Radar className="h-4 w-4 text-primary shrink-0" />
+          <div className="min-w-0">
+            <p className="text-sm font-semibold">NPC 位置来源</p>
+            <p className="text-xs text-muted-foreground truncate">
+              {locationSource === "estimate"
+                ? `游戏日程估算${locationGameTime ? ` · ${formatGameTime(locationGameTime)}` : ""}`
+                : "SMAPI Mod 实时读取"}
+              {loadingLocations ? " · 正在刷新" : ""}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant={locationSource === "estimate" ? "default" : "secondary"}
+            size="sm"
+            onClick={() => setLocationSource("estimate")}
+          >
+            游戏逻辑估算
+          </Button>
+          <Button
+            type="button"
+            variant={locationSource === "mod" ? "default" : "secondary"}
+            size="sm"
+            onClick={() => setLocationSource("mod")}
+          >
+            Mod 实时读取
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 rounded-lg border bg-background p-3">
+        <label className="space-y-1">
+          <span className="text-xs font-semibold text-muted-foreground">估算季节</span>
+          <select
+            className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+            value={estimateSeason}
+            onChange={(event) => setEstimateSeason(Number(event.currentTarget.value))}
+          >
+            {seasonOptions.map((season) => (
+              <option key={season.value} value={season.value}>
+                {season.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="space-y-1">
+          <span className="text-xs font-semibold text-muted-foreground">估算日期</span>
+          <Input
+            type="number"
+            min={1}
+            max={28}
+            value={estimateDay}
+            onChange={(event) => {
+              const next = Number(event.currentTarget.value)
+              if (Number.isFinite(next)) {
+                setEstimateDay(Math.min(28, Math.max(1, next)))
+              }
+            }}
+          />
+        </label>
+
+        <label className="space-y-1">
+          <span className="text-xs font-semibold text-muted-foreground">估算时间</span>
+          <select
+            className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+            value={estimateTime ?? ""}
+            onChange={(event) => {
+              const value = event.currentTarget.value
+              setEstimateTime(value ? Number(value) : null)
+            }}
+          >
+            <option value="">存档当前时间</option>
+            {timeOptions.map((time) => (
+              <option key={time} value={time}>
+                {formatGameTime(time)}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {locationError && (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
+          {locationError}
+        </div>
+      )}
 
       <div className="flex flex-col lg:flex-row gap-6">
         <div className="w-full lg:w-80 space-y-4 shrink-0">
@@ -455,6 +694,10 @@ export function NPCs({ selectedSaveId, onNavigateToItem }: NPCsProps) {
                     )}
                   </div>
                   <HeartBar hearts={npc.hearts} maxHearts={npc.maxHearts} />
+                  <p className={`mt-1 flex items-center gap-1 text-[11px] truncate ${selectedNpcId === npc.id ? "text-primary-foreground/75" : "text-muted-foreground"}`}>
+                    <MapPin className="h-3 w-3 shrink-0" />
+                    {npc.locationInfo?.locationDisplayName || "位置未知"}
+                  </p>
                 </div>
               </button>
             ))}
@@ -478,6 +721,11 @@ export function NPCs({ selectedSaveId, onNavigateToItem }: NPCsProps) {
                         {activeNPC.marriageCandidate && (
                           <Badge variant="secondary" className="text-xs font-semibold">
                             可结婚角色
+                          </Badge>
+                        )}
+                        {activeNPC.locationInfo && (
+                          <Badge variant="secondary" className="text-xs font-semibold">
+                            {activeNPC.locationInfo.confidence}
                           </Badge>
                         )}
                       </div>
@@ -592,6 +840,35 @@ export function NPCs({ selectedSaveId, onNavigateToItem }: NPCsProps) {
                     <div className="border p-2.5 rounded-md bg-background">
                       <p className="text-muted-foreground">社交成就点</p>
                       <p className="font-semibold text-sm mt-0.5">{activeNPC.points} 点</p>
+                    </div>
+                    <div className="border p-2.5 rounded-md bg-background">
+                      <p className="text-muted-foreground">当前位置</p>
+                      <p className="font-semibold text-sm mt-0.5 truncate">
+                        {activeNPC.locationInfo?.locationDisplayName || "未知"}
+                      </p>
+                      {activeNPC.locationInfo && activeNPC.locationInfo.locationDisplayName !== activeNPC.locationInfo.location && (
+                        <p className="text-[11px] text-muted-foreground truncate">
+                          {activeNPC.locationInfo.location}
+                        </p>
+                      )}
+                    </div>
+                    <div className="border p-2.5 rounded-md bg-background">
+                      <p className="text-muted-foreground">位置坐标</p>
+                      <p className="font-semibold text-sm mt-0.5">
+                        {formatTile(activeNPC.locationInfo)}
+                      </p>
+                    </div>
+                    <div className="border p-2.5 rounded-md bg-background">
+                      <p className="text-muted-foreground">日程时间</p>
+                      <p className="font-semibold text-sm mt-0.5">
+                        {formatGameTime(activeNPC.locationInfo?.scheduleTime)}
+                      </p>
+                    </div>
+                    <div className="border p-2.5 rounded-md bg-background">
+                      <p className="text-muted-foreground">日程键</p>
+                      <p className="font-semibold text-sm mt-0.5 truncate">
+                        {activeNPC.locationInfo?.scheduleKey || (locationSource === "mod" ? "实时" : "未知")}
+                      </p>
                     </div>
                   </div>
                 </div>

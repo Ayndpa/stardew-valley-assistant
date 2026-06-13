@@ -11,8 +11,7 @@ use super::image_utils::render_object_icon;
 use super::tbin::{load_tbin_map_from_xnb, render_tbin_map_preview};
 use super::xnb::{
     load_localized_string_tables, load_location_fishing_xnb, load_objects_xnb,
-    load_string_dictionary_xnb,
-    RawLocationFishingData,
+    load_string_dictionary_xnb, RawLocationFishingData,
 };
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -403,11 +402,11 @@ pub fn parse_fishing_map(
         .replace('\\', "/")
         .trim_start_matches('/')
         .to_string();
-    let name = path
+    let file_stem = path
         .file_stem()
         .and_then(|value| value.to_str())
-        .unwrap_or("Unknown")
-        .replace('_', " ");
+        .unwrap_or("Unknown");
+    let name = resolve_map_display_name(content_dir, &id, file_stem, &map);
 
     Ok(Some(FishingMapDetail {
         id,
@@ -426,12 +425,65 @@ pub fn parse_fishing_map(
     }))
 }
 
-fn load_fishing_areas_for_map(content_dir: &Path, map_id: &str) -> Result<Vec<FishingArea>, String> {
+fn resolve_map_display_name(
+    content_dir: &Path,
+    map_id: &str,
+    file_stem: &str,
+    map: &super::tbin::TbinMap,
+) -> String {
+    let localized_tables = load_localized_string_tables(
+        content_dir,
+        &["Locations", "StringsFromCSFiles", "UI", "1_6_Strings"],
+    );
+
+    if let Ok(location_data) =
+        load_location_fishing_xnb(&content_dir.join("Data").join("Locations.xnb"))
+    {
+        if let Some(location_key) = resolve_location_key(map_id, &location_data) {
+            if let Some(location) = location_data.get(location_key.as_str()) {
+                let resolved = resolve_localized_text(&location.display_name, &localized_tables);
+                if is_resolved_display_name(&resolved) {
+                    return resolved;
+                }
+            }
+        }
+    }
+
+    for key in [
+        "DisplayName",
+        "displayName",
+        "LocalizedName",
+        "localizedName",
+        "Name",
+        "name",
+    ] {
+        if let Some(value) = map.properties.get(key) {
+            let resolved = resolve_localized_text(value, &localized_tables);
+            if is_resolved_display_name(&resolved) {
+                return resolved;
+            }
+        }
+    }
+
+    file_stem.replace('_', " ")
+}
+
+fn is_resolved_display_name(value: &str) -> bool {
+    let trimmed = value.trim();
+    !trimmed.is_empty() && !trimmed.starts_with("[LocalizedText ")
+}
+
+fn load_fishing_areas_for_map(
+    content_dir: &Path,
+    map_id: &str,
+) -> Result<Vec<FishingArea>, String> {
     let location_data = load_location_fishing_xnb(&content_dir.join("Data").join("Locations.xnb"))?;
     let fish_data = load_string_dictionary_xnb(&content_dir.join("Data").join("Fish.xnb"))?;
     let objects = load_objects_xnb(&content_dir.join("Data").join("Objects.xnb"))?;
-    let localized_tables =
-        load_localized_string_tables(content_dir, &["Objects", "1_6_Strings", "StringsFromCSFiles"]);
+    let localized_tables = load_localized_string_tables(
+        content_dir,
+        &["Objects", "1_6_Strings", "StringsFromCSFiles"],
+    );
     let mut texture_cache = HashMap::new();
 
     let Some(location_key) = resolve_location_key(map_id, &location_data) else {

@@ -50,6 +50,7 @@ pub struct RawLocationFishEntry {
 
 #[derive(Debug, Clone, Default)]
 pub struct RawLocationFishingData {
+    pub display_name: String,
     pub fish_areas: HashMap<String, RawLocationFishArea>,
     pub fish: Vec<RawLocationFishEntry>,
 }
@@ -395,7 +396,7 @@ impl<'a> XnbPayloadReader<'a> {
     }
 
     pub fn read_location_fishing_data(&mut self) -> Result<RawLocationFishingData, String> {
-        let _display_name = self.read_object_string_any()?;
+        let display_name = self.read_object_string_any()?;
         self.skip_nullable_point()?;
         let _exclude_from_npc_pathfinding = self.read_bool()?;
         self.skip_nullable_create_location_data()?;
@@ -425,7 +426,11 @@ impl<'a> XnbPayloadReader<'a> {
         let _music_is_town_theme = self.read_bool()?;
         self.skip_nullable_string_dictionary()?;
 
-        Ok(RawLocationFishingData { fish_areas, fish })
+        Ok(RawLocationFishingData {
+            display_name,
+            fish_areas,
+            fish,
+        })
     }
 
     fn skip_character_data_tail(&mut self) -> Result<(), String> {
@@ -1236,9 +1241,9 @@ pub fn load_location_fishing_xnb(
         }
         require_reader(&type_readers, value_reader, "ReflectiveReader")
             .map_err(|e| format!("Failed to parse location '{}' reader: {}", key, e))?;
-        let value = reader.read_location_fishing_data().map_err(|e| {
-            format!("Failed to parse location fishing data '{}' : {}", key, e)
-        })?;
+        let value = reader
+            .read_location_fishing_data()
+            .map_err(|e| format!("Failed to parse location fishing data '{}' : {}", key, e))?;
         locations.insert(key, value);
     }
     Ok(locations)

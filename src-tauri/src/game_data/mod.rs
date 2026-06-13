@@ -178,8 +178,8 @@ mod tests {
         let Some(content) = dev_content_dir() else {
             return;
         };
-        let locations = xnb::load_location_fishing_xnb(&content.join("Data").join("Locations.xnb"))
-            .unwrap();
+        let locations =
+            xnb::load_location_fishing_xnb(&content.join("Data").join("Locations.xnb")).unwrap();
         let beach = locations.get("Beach").unwrap();
         assert!(!beach.fish.is_empty());
         assert!(!beach.fish_areas.is_empty());
