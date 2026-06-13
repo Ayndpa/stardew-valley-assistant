@@ -57,7 +57,7 @@ pub use local::{
 pub use nexus::{
     check_nexus_login_status, fetch_nexus_api_key, fetch_nexus_download_metadata,
     fetch_smapi_compatibility_mods, install_nexus_mod, logout_nexus, open_nexus_login_window,
-    open_nexus_ranking_scraper, open_scraper_window,
+    close_scraper_window, open_nexus_ranking_scraper, open_scraper_window,
 };
 pub use profiles::{
     apply_profile, delete_profile, export_profile, export_profile_to_file, import_profile,

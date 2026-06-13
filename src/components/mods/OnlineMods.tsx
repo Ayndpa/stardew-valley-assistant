@@ -49,6 +49,25 @@ export interface SmapiMod {
   Slug: string
 }
 
+const SMAPI_MODS_CACHE_KEY = "smapi_mods_cache"
+
+const readSmapiModsCache = (): SmapiMod[] | null => {
+  try {
+    const cached = localStorage.getItem(SMAPI_MODS_CACHE_KEY)
+    if (!cached) return null
+    const parsed = JSON.parse(cached)
+    return Array.isArray(parsed) ? parsed as SmapiMod[] : null
+  } catch {
+    return null
+  }
+}
+
+const writeSmapiModsCache = (mods: SmapiMod[]) => {
+  try {
+    localStorage.setItem(SMAPI_MODS_CACHE_KEY, JSON.stringify(mods))
+  } catch {}
+}
+
 interface OnlineModsProps {
   onNavigate?: (page: "settings") => void
   isGameRunning?: boolean
@@ -149,8 +168,9 @@ async function getTauriInvoke() {
 }
 
 export function OnlineMods({ onNavigate, isGameRunning = false, onQueueDownload }: OnlineModsProps) {
-  const [onlineMods, setOnlineMods] = useState<SmapiMod[]>([])
-  const [loading, setLoading] = useState(true)
+  const [onlineMods, setOnlineMods] = useState<SmapiMod[]>(() => readSmapiModsCache() ?? [])
+  const [loading, setLoading] = useState(() => !readSmapiModsCache())
+  const [isBackgroundRefreshing, setIsBackgroundRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   
   // Modal State
@@ -197,8 +217,15 @@ export function OnlineMods({ onNavigate, isGameRunning = false, onQueueDownload 
   const [jumpPage, setJumpPage] = useState("")
   const itemsPerPage = 24
 
-  const fetchOnlineModsList = async () => {
-    setLoading(true)
+  const fetchOnlineModsList = async (options?: { silent?: boolean }) => {
+    const silent = options?.silent ?? false
+    const cached = readSmapiModsCache()
+
+    if (silent && cached) {
+      setIsBackgroundRefreshing(true)
+    } else {
+      setLoading(true)
+    }
     setError(null)
     const invoke = await getTauriInvoke()
 
@@ -207,16 +234,13 @@ export function OnlineMods({ onNavigate, isGameRunning = false, onQueueDownload 
         const list = await invoke("fetch_smapi_compatibility_mods") as SmapiMod[]
         if (list && list.length > 0) {
           setOnlineMods(list)
-          // Cache in localStorage as frontend fallback
-          try {
-            localStorage.setItem("smapi_mods_cache", JSON.stringify(list))
-          } catch {}
+          writeSmapiModsCache(list)
         } else {
-          // Try localStorage cache
-          const cached = localStorage.getItem("smapi_mods_cache")
           if (cached) {
-            setOnlineMods(JSON.parse(cached))
-            setError("在线数据为空，已显示上次缓存的模组列表。")
+            setOnlineMods(cached)
+            if (!silent) {
+              setError("在线数据为空，已显示上次缓存的模组列表。")
+            }
           } else {
             setOnlineMods([])
             setError("未获取到任何模组数据，请检查网络连接后重试。")
@@ -224,16 +248,10 @@ export function OnlineMods({ onNavigate, isGameRunning = false, onQueueDownload 
         }
       } catch (err: any) {
         console.error("Error loading SMAPI compatibility list:", err)
-        // Backend already tries cache; if we're here, both online and cache failed
-        // Try frontend localStorage cache as last resort
-        const cached = localStorage.getItem("smapi_mods_cache")
         if (cached) {
-          try {
-            setOnlineMods(JSON.parse(cached))
+          setOnlineMods(cached)
+          if (!silent) {
             setError("获取在线模组数据失败，已显示上次缓存的数据。原因: " + err)
-          } catch {
-            setOnlineMods([])
-            setError("获取在线模组数据失败，且无可用缓存。原因: " + err)
           }
         } else {
           setOnlineMods([])
@@ -241,12 +259,14 @@ export function OnlineMods({ onNavigate, isGameRunning = false, onQueueDownload 
         }
       } finally {
         setLoading(false)
+        setIsBackgroundRefreshing(false)
       }
     } else {
       // Web preview simulation
       setTimeout(() => {
         setOnlineMods(POPULAR_MOCK_MODS)
         setLoading(false)
+        setIsBackgroundRefreshing(false)
       }, 1000)
     }
   }
@@ -258,7 +278,7 @@ export function OnlineMods({ onNavigate, isGameRunning = false, onQueueDownload 
   useEffect(() => {
     if (activeTab === "smapi" && !smapiFetchedRef.current) {
       smapiFetchedRef.current = true
-      fetchOnlineModsList()
+      fetchOnlineModsList({ silent: true })
     }
   }, [activeTab])
 
@@ -373,14 +393,21 @@ export function OnlineMods({ onNavigate, isGameRunning = false, onQueueDownload 
               <Button
                 variant="outline"
                 size="icon"
-                onClick={fetchOnlineModsList}
+                onClick={() => fetchOnlineModsList()}
                 className="h-8 w-8 rounded-lg shrink-0 cursor-pointer"
-                disabled={loading}
+                disabled={loading || isBackgroundRefreshing}
               >
-                <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+                <RefreshCw className={`h-3.5 w-3.5 ${loading || isBackgroundRefreshing ? "animate-spin" : ""}`} />
               </Button>
             </div>
           </div>
+
+          {isBackgroundRefreshing && !loading && (
+            <div className="text-[11px] text-muted-foreground flex items-center gap-2">
+              <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+              <span>正在后台检查 SMAPI.io 缓存更新...</span>
+            </div>
+          )}
 
           {error && (
             <div className="bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 p-3 rounded-xl text-xs flex items-center gap-2">

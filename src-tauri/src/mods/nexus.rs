@@ -1337,6 +1337,7 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
 
     let handle = app.clone();
     let request_mod_id = mod_id.clone();
+    let window_label = format!("nexus-scraper-{}", mod_id);
 
     tauri::async_runtime::spawn(async move {
         use tauri::Emitter;
@@ -1344,7 +1345,7 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
         let window =
             match create_nexus_webview(
                 &handle,
-                "nexus-scraper",
+                &window_label,
                 "Nexus 验证中...",
                 url,
                 false,
@@ -1363,6 +1364,7 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
         let poll_window = window.clone();
         let poll_handle = handle.clone();
         let poll_mod_id = request_mod_id.clone();
+        let poll_window_label = window_label.clone();
         tauri::async_runtime::spawn(async move {
             let timeout = std::time::Instant::now() + std::time::Duration::from_secs(180);
             let mut cf_shown = false;
@@ -1375,7 +1377,7 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
 
             loop {
                 // Check if window still exists
-                if poll_handle.get_webview_window("nexus-scraper").is_none() {
+                if poll_handle.get_webview_window(&poll_window_label).is_none() {
                     info!(
                         "[Scraper] Window destroyed, exiting loop for mod_id={}",
                         poll_mod_id
@@ -1561,6 +1563,21 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
         });
     });
 
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn close_scraper_window(app: tauri::AppHandle, mod_id: String) -> Result<(), String> {
+    let window_label = format!("nexus-scraper-{}", mod_id);
+    if let Some(window) = app.get_webview_window(&window_label) {
+        info!(
+            "[Scraper] Closing Nexus scraper window for mod_id={}, label={}",
+            mod_id, window_label
+        );
+        window
+            .destroy()
+            .map_err(|e| format!("Failed to destroy WebView window ({}): {:?}", window_label, e))?;
+    }
     Ok(())
 }
 

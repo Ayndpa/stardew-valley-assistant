@@ -182,7 +182,6 @@ export function OnlineModDetailModal({
   const [error, setError] = useState<string | null>(null)
   const [details, setDetails] = useState<ParsedModDetails | null>(null)
   const [scrapeStatus, setScrapeStatus] = useState<"loading" | "challenge">("loading")
-  const unlistenRef = useRef<(() => void) | null>(null)
   const detailBodyRef = useRef<HTMLDivElement | null>(null)
   const [translate, setTranslate] = useState<CondensedTranslateState>({
     titleTranslated: null,
@@ -202,7 +201,10 @@ export function OnlineModDetailModal({
   const { nexusLoggedIn, nexusChecking } = useNexus()
   const nexusUrl = mod?.ModPages.find(p => p.Text === "Nexus" || p.Url.includes("nexusmods.com"))?.Url || ""
   const installDisabled = loading || !details || isInstalling || isGameRunning
-
+  const unlistenRef = useRef<(() => void) | null>(null)
+  const scrapeTimeoutRef = useRef<number | null>(null)
+  const activeRequestIdRef = useRef(0)
+  const activeNexusIdRef = useRef<string | null>(null)
   const resolveNexusUrl = (href: string) => {
     const value = href.trim()
     if (!value) return ""
@@ -622,14 +624,50 @@ export function OnlineModDetailModal({
     }
   }
 
+  const cleanupScrape = useCallback(async () => {
+    activeRequestIdRef.current += 1
+
+    if (scrapeTimeoutRef.current !== null) {
+      window.clearTimeout(scrapeTimeoutRef.current)
+      scrapeTimeoutRef.current = null
+    }
+
+    if (unlistenRef.current) {
+      unlistenRef.current()
+      unlistenRef.current = null
+    }
+
+    const closingNexusId = activeNexusIdRef.current
+    activeNexusIdRef.current = null
+    if (!closingNexusId) return
+
+    const invoke = await getTauriInvoke()
+    if (!invoke) return
+
+    try {
+      await invoke("close_scraper_window", { modId: closingNexusId })
+    } catch {
+    }
+  }, [])
+
+  const handleClose = useCallback(() => {
+    void cleanupScrape()
+    onClose()
+  }, [cleanupScrape, onClose])
+
   const startScrape = async () => {
     if (!mod) return
+    await cleanupScrape()
+
+    const requestId = activeRequestIdRef.current + 1
+    activeRequestIdRef.current = requestId
     setLoading(true)
     setError(null)
     setDetails(null)
     setScrapeStatus("loading")
 
     const nexusId = getNexusId(mod)
+    activeNexusIdRef.current = nexusId
     if (!nexusId) {
       // If it doesn't have a Nexus page, simulate standard details
         setDetails({
@@ -657,6 +695,9 @@ export function OnlineModDetailModal({
         // 1. Listen for the HTML response
         const requestNexusId = nexusId
         const unlisten = await listen<{ modId?: string; html?: string; error?: string; status?: "loading" | "challenge" }>("respond-nexus-html", (event) => {
+          if (activeRequestIdRef.current !== requestId) {
+            return
+          }
           if (event.payload.modId && event.payload.modId !== requestNexusId) {
             return
           }
@@ -670,6 +711,10 @@ export function OnlineModDetailModal({
           }
 
           if (event.payload.error) {
+            if (scrapeTimeoutRef.current !== null) {
+              window.clearTimeout(scrapeTimeoutRef.current)
+              scrapeTimeoutRef.current = null
+            }
             setError(event.payload.error)
             setLoading(false)
             if (unlistenRef.current) {
@@ -680,6 +725,10 @@ export function OnlineModDetailModal({
           }
 
           if (!event.payload.html) {
+            if (scrapeTimeoutRef.current !== null) {
+              window.clearTimeout(scrapeTimeoutRef.current)
+              scrapeTimeoutRef.current = null
+            }
             setError("未收到 Nexus 页面内容，请重试。")
             setLoading(false)
             if (unlistenRef.current) {
@@ -690,6 +739,10 @@ export function OnlineModDetailModal({
           }
 
           const parsed = parseHtml(event.payload.html)
+          if (scrapeTimeoutRef.current !== null) {
+            window.clearTimeout(scrapeTimeoutRef.current)
+            scrapeTimeoutRef.current = null
+          }
           setDetails(parsed)
           setLoading(false)
           setScrapeStatus("loading")
@@ -706,8 +759,8 @@ export function OnlineModDetailModal({
         await invoke("open_scraper_window", { modId: nexusId })
 
         // 3. Set a safety timeout in case of total failure
-        setTimeout(() => {
-          if (unlistenRef.current) {
+        scrapeTimeoutRef.current = window.setTimeout(() => {
+          if (activeRequestIdRef.current === requestId && unlistenRef.current) {
             setError("加载超时。这可能是由于网络不稳定或验证未能通过。请尝试重新打开。")
             setLoading(false)
             unlistenRef.current()
@@ -716,6 +769,13 @@ export function OnlineModDetailModal({
         }, 185000)
 
       } catch (err: any) {
+        if (activeRequestIdRef.current !== requestId) {
+          return
+        }
+        if (scrapeTimeoutRef.current !== null) {
+          window.clearTimeout(scrapeTimeoutRef.current)
+          scrapeTimeoutRef.current = null
+        }
         setError("启动网页抓取器失败: " + err)
         setLoading(false)
       }
@@ -744,16 +804,12 @@ export function OnlineModDetailModal({
 
   useEffect(() => {
     if (isOpen && mod) {
-      startScrape()
+      void startScrape()
     }
     return () => {
-      // Cleanup listener if modal unmounts
-      if (unlistenRef.current) {
-        unlistenRef.current()
-        unlistenRef.current = null
-      }
+      void cleanupScrape()
     }
-  }, [isOpen, mod])
+  }, [cleanupScrape, isOpen, mod])
 
   useEffect(() => {
     const detailNode = detailBodyRef.current
@@ -786,7 +842,7 @@ export function OnlineModDetailModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm p-4 animate-in fade-in duration-200" onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-sm p-4 animate-in fade-in duration-200" onClick={(e) => { if (e.target === e.currentTarget) handleClose() }}>
       <div className="w-full max-w-5xl max-h-[90vh] bg-card border border-border/80 shadow-2xl rounded-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
         
         {/* Header Panel */}
@@ -812,7 +868,7 @@ export function OnlineModDetailModal({
             {!loading && details && mod.Compatibility && renderStatusBadge(mod.Compatibility.Status)}
           </div>
           <button 
-            onClick={onClose} 
+            onClick={handleClose} 
             className="p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 text-muted-foreground hover:text-foreground transition-colors shrink-0 cursor-pointer"
           >
             <X className="h-5 w-5" />
@@ -1124,7 +1180,7 @@ export function OnlineModDetailModal({
 
         {/* Footer Actions */}
         <div className="p-4 border-t border-border/60 bg-accent/15 flex justify-end gap-2.5 shrink-0">
-          <Button variant="outline" size="sm" onClick={onClose} className="h-8 text-xs rounded-lg cursor-pointer">
+          <Button variant="outline" size="sm" onClick={handleClose} className="h-8 text-xs rounded-lg cursor-pointer">
             关闭
           </Button>
           
