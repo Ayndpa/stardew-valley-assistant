@@ -5,6 +5,7 @@ import { Crops } from "@/pages/Crops"
 import { Calendar } from "@/pages/Calendar"
 import { FishingMap } from "@/pages/FishingMap"
 import { SaveEditor } from "@/pages/SaveEditor"
+import { SaveBackups } from "@/pages/SaveBackups"
 import { Settings } from "@/pages/Settings"
 import { Mods } from "@/pages/Mods"
 import { Downloads } from "@/pages/Downloads"
@@ -14,7 +15,7 @@ import { TitleBar } from "@/components/TitleBar"
 import { useDownloadManager } from "@/hooks/useDownloadManager"
 import "./index.css"
 
-export type Page = "dashboard" | "crops" | "npcs" | "calendar" | "fishingMap" | "saveEditor" | "settings" | "mods" | "onlineMods" | "downloads"
+export type Page = "dashboard" | "crops" | "npcs" | "calendar" | "fishingMap" | "saveEditor" | "saveBackups" | "settings" | "mods" | "onlineMods" | "downloads"
 
 export interface SaveSummary {
   id: string
@@ -600,6 +601,14 @@ function App() {
           onRestartOnboarding={() => setShowOnboarding(true)}
           />
         )
+      case "saveBackups":
+        return (
+          <SaveBackups
+            selectedSaveId={selectedSaveId}
+            onShowToast={showGlobalToast}
+            onSavesChanged={fetchSavesList}
+          />
+        )
       case "saveEditor":
         return (
           <SaveEditor
@@ -655,60 +664,58 @@ function App() {
   }
 
   return (
-    <div ref={containerRef} className="app-shell flex h-screen overflow-hidden">
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <TitleBar />
-        <div className="flex min-h-0 flex-1 overflow-hidden">
-          <Sidebar
-            currentPage={currentPage}
-            onNavigate={setCurrentPage}
-            saves={saves}
-            selectedSaveId={selectedSaveId}
-            onSaveChange={handleSaveChange}
-            collapsed={sidebarCollapsed}
-            onToggleCollapse={toggleSidebarCollapsed}
-            onLaunchGame={handleLaunchGame}
-            isGameRunning={isGameRunning}
-            downloadStats={downloadStats}
-          />
-          <main
-            className="app-panel flex-1 overflow-auto relative"
-            onDragEnter={handleGlobalDragEnter}
-            onDragOver={handleGlobalDragOver}
-            onDragLeave={handleGlobalDragLeave}
-            onDrop={handleGlobalDrop}
-          >
-            {isGlobalDragOver && (
-              <div className="fixed inset-0 z-40 border-4 border-dashed border-primary bg-primary/10 backdrop-blur-sm pointer-events-none">
-                <div className="flex h-full w-full items-center justify-center">
-                  <div className="rounded-2xl border border-primary bg-card/95 px-6 py-4 shadow-2xl">
-                    <p className="text-sm font-semibold text-primary">松开鼠标，安装该 .zip 模组</p>
-                    <p className="mt-1 text-xs text-muted-foreground">全局支持 .zip 拖拽安装，安装后将刷新模组列表</p>
-                  </div>
+    <div ref={containerRef} className="app-shell relative flex h-screen overflow-hidden">
+      <TitleBar />
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <Sidebar
+          currentPage={currentPage}
+          onNavigate={setCurrentPage}
+          saves={saves}
+          selectedSaveId={selectedSaveId}
+          onSaveChange={handleSaveChange}
+          collapsed={sidebarCollapsed}
+          onToggleCollapse={toggleSidebarCollapsed}
+          onLaunchGame={handleLaunchGame}
+          isGameRunning={isGameRunning}
+          downloadStats={downloadStats}
+        />
+        <main
+          className="app-panel relative flex-1 overflow-auto pt-13"
+          onDragEnter={handleGlobalDragEnter}
+          onDragOver={handleGlobalDragOver}
+          onDragLeave={handleGlobalDragLeave}
+          onDrop={handleGlobalDrop}
+        >
+          {isGlobalDragOver && (
+            <div className="fixed inset-0 z-40 border-4 border-dashed border-primary bg-primary/10 backdrop-blur-sm pointer-events-none">
+              <div className="flex h-full w-full items-center justify-center">
+                <div className="rounded-2xl border border-primary bg-card/95 px-6 py-4 shadow-2xl">
+                  <p className="text-sm font-semibold text-primary">松开鼠标，安装该 .zip 模组</p>
+                  <p className="mt-1 text-xs text-muted-foreground">全局支持 .zip 拖拽安装，安装后将刷新模组列表</p>
                 </div>
               </div>
-            )}
+            </div>
+          )}
 
-            {globalToast && (
-              <div
-                className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-xl border px-5 py-4 shadow-xl ${
-                  globalToast.type === "success"
-                    ? "border-green-200 bg-green-50/90 text-green-800 dark:border-green-800 dark:bg-green-950/80 dark:text-green-200"
-                    : globalToast.type === "warning"
-                      ? "border-amber-200 bg-amber-50/90 text-amber-800 dark:border-amber-800 dark:bg-amber-950/80 dark:text-amber-200"
-                      : "border-blue-200 bg-blue-50/90 text-blue-800 dark:border-blue-800 dark:bg-blue-950/80 dark:text-blue-200"
-                }`}
-              >
-                <div className="pr-4 text-sm font-medium">{globalToast.message}</div>
-                <button onClick={() => setGlobalToast(null)} className="ml-auto rounded-lg p-1 transition-colors hover:bg-black/10 dark:hover:bg-white/10">
-                  ×
-                </button>
-              </div>
-            )}
+          {globalToast && (
+            <div
+              className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-xl border px-5 py-4 shadow-xl ${
+                globalToast.type === "success"
+                  ? "border-green-200 bg-green-50/90 text-green-800 dark:border-green-800 dark:bg-green-950/80 dark:text-green-200"
+                  : globalToast.type === "warning"
+                    ? "border-amber-200 bg-amber-50/90 text-amber-800 dark:border-amber-800 dark:bg-amber-950/80 dark:text-amber-200"
+                    : "border-blue-200 bg-blue-50/90 text-blue-800 dark:border-blue-800 dark:bg-blue-950/80 dark:text-blue-200"
+              }`}
+            >
+              <div className="pr-4 text-sm font-medium">{globalToast.message}</div>
+              <button onClick={() => setGlobalToast(null)} className="ml-auto rounded-lg p-1 transition-colors hover:bg-black/10 dark:hover:bg-white/10">
+                ×
+              </button>
+            </div>
+          )}
 
-            {renderPage()}
-          </main>
-        </div>
+          {renderPage()}
+        </main>
       </div>
       {showOnboarding && <Onboarding onComplete={handleOnboardingComplete} initialReason={onboardingReason} />}
     </div>

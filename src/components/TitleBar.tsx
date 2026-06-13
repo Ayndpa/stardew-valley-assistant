@@ -150,7 +150,7 @@ export function TitleBar() {
 
   return (
     <header
-      className="titlebar app-panel relative z-50 flex h-13 shrink-0 items-center border-b border-border/60 px-3"
+      className="titlebar absolute inset-x-0 top-0 z-50 flex h-13 items-center border-b border-border/60 px-3"
       onMouseDown={(event) => void handleDragMouseDown(event)}
     >
       <div className="flex min-w-0 flex-1 items-center">

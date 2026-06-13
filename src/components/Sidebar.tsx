@@ -21,6 +21,7 @@ import {
   ListChecks,
   Fish,
   PencilRuler,
+  ArchiveRestore,
 } from "lucide-react"
 
 interface SidebarProps {
@@ -51,6 +52,7 @@ const navItems: { id: Page; label: string; icon: React.ReactNode }[] = [
   { id: "calendar", label: "节日日历", icon: <CalendarDays /> },
   { id: "fishingMap", label: "钓鱼地图", icon: <Fish /> },
   { id: "saveEditor", label: "存档编辑", icon: <PencilRuler className="h-4 w-4" /> },
+  { id: "saveBackups", label: "存档备份", icon: <ArchiveRestore className="h-4 w-4" /> },
   { id: "mods", label: "模组管理", icon: <Puzzle /> },
   { id: "onlineMods", label: "获取模组", icon: <Download className="h-4 w-4" /> },
   { id: "downloads", label: "下载管理", icon: <ListChecks className="h-4 w-4" /> },
@@ -133,7 +135,7 @@ export function Sidebar({
 
   return (
     <aside className={cn(
-      "app-sidebar border-r border-sidebar-border/70 flex flex-col transition-all duration-300",
+      "app-sidebar border-r border-sidebar-border/70 flex flex-col pt-13 transition-all duration-300",
       collapsed ? "w-16" : "w-64"
     )}>
       {/* Logo */}
@@ -393,4 +395,3 @@ export function Sidebar({
     </aside>
   )
 }
-

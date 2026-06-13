@@ -187,21 +187,21 @@
 }
 
 .app-shell {
-  background: transparent;
+  background: var(--background);
 }
 
 .app-panel {
-  background: color-mix(in oklab, var(--background) 76%, transparent);
-  backdrop-filter: blur(22px) saturate(1.15);
+  background: var(--background);
 }
 
 .app-sidebar {
-  background: color-mix(in oklab, var(--sidebar) 72%, transparent);
-  backdrop-filter: blur(22px) saturate(1.15);
+  background: var(--sidebar);
 }
 
 .titlebar {
   user-select: none;
+  background: color-mix(in oklab, var(--background) 78%, transparent);
+  backdrop-filter: blur(18px) saturate(1.08);
 }
 
 .titlebar-brand {
