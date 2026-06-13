@@ -74,6 +74,7 @@ interface ModProfilesProps {
   onApplyProfile: (modStates: ModStateEntry[]) => Promise<void>
   // Toast helper
   showToast: (message: string, type: "success" | "info" | "warning") => void
+  isGameRunning?: boolean
 }
 
 function formatTimestamp(ts: string): string {
@@ -89,7 +90,7 @@ function formatTimestamp(ts: string): string {
   })
 }
 
-export function ModProfiles({ currentMods, onApplyProfile, showToast }: ModProfilesProps) {
+export function ModProfiles({ currentMods, onApplyProfile, showToast, isGameRunning = false }: ModProfilesProps) {
   const [profiles, setProfiles] = useState<ModProfile[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
@@ -126,6 +127,11 @@ export function ModProfiles({ currentMods, onApplyProfile, showToast }: ModProfi
   }
 
   const handleSaveProfile = async () => {
+    if (isGameRunning) {
+      showToast("游戏运行中不能保存模组档案，请退出游戏后再试。", "warning")
+      return
+    }
+
     if (!newProfileName.trim()) {
       showToast("请输入档案名称", "warning")
       return
@@ -172,6 +178,11 @@ export function ModProfiles({ currentMods, onApplyProfile, showToast }: ModProfi
   }
 
   const handleApplyProfile = async (profile: ModProfile) => {
+    if (isGameRunning) {
+      showToast("游戏运行中不能应用模组档案，请退出游戏后再试。", "warning")
+      return
+    }
+
     setIsApplyingId(profile.id)
     try {
       await onApplyProfile(profile.modStates)
@@ -183,6 +194,11 @@ export function ModProfiles({ currentMods, onApplyProfile, showToast }: ModProfi
   }
 
   const handleDeleteProfile = async (profile: ModProfile) => {
+    if (isGameRunning) {
+      showToast("游戏运行中不能删除模组档案，请退出游戏后再试。", "warning")
+      return
+    }
+
     if (!confirm(`确定要删除档案 [${profile.name}] 吗？`)) return
 
     const invoke = await getTauriInvoke()
@@ -234,6 +250,11 @@ export function ModProfiles({ currentMods, onApplyProfile, showToast }: ModProfi
   }
 
   const handleImportProfile = async () => {
+    if (isGameRunning) {
+      showToast("游戏运行中不能导入模组档案，请退出游戏后再试。", "warning")
+      return
+    }
+
     const invoke = await getTauriInvoke()
     const dialogOpen = await getTauriDialogOpen()
 
@@ -305,6 +326,8 @@ export function ModProfiles({ currentMods, onApplyProfile, showToast }: ModProfi
             size="sm"
             className="gap-1.5 h-8 text-xs rounded-lg border-border"
             onClick={handleImportProfile}
+            disabled={isGameRunning}
+            title={isGameRunning ? "游戏运行中，不能导入档案" : undefined}
           >
             <Upload className="h-3.5 w-3.5 text-sky-500" />
             导入
@@ -314,7 +337,8 @@ export function ModProfiles({ currentMods, onApplyProfile, showToast }: ModProfi
             size="sm"
             className="gap-1.5 h-8 text-xs rounded-lg"
             onClick={() => setShowSaveForm(true)}
-            disabled={currentMods.length === 0}
+            disabled={currentMods.length === 0 || isGameRunning}
+            title={isGameRunning ? "游戏运行中，不能保存档案" : undefined}
           >
             <Save className="h-3.5 w-3.5" />
             保存当前状态
@@ -338,13 +362,14 @@ export function ModProfiles({ currentMods, onApplyProfile, showToast }: ModProfi
               value={newProfileName}
               onChange={(e) => setNewProfileName(e.currentTarget.value)}
               onKeyDown={(e) => { if (e.key === "Enter") handleSaveProfile() }}
+              disabled={isGameRunning}
               autoFocus
             />
             <Button
               size="sm"
               className="h-9 px-4 rounded-lg text-xs gap-1.5"
               onClick={handleSaveProfile}
-              disabled={isSaving}
+              disabled={isSaving || isGameRunning}
             >
               {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
               {isSaving ? "保存中..." : "确认保存"}
@@ -406,7 +431,8 @@ export function ModProfiles({ currentMods, onApplyProfile, showToast }: ModProfi
                       size="sm"
                       className="gap-1 h-7 px-3 text-[11px] rounded-lg"
                       onClick={() => handleApplyProfile(profile)}
-                      disabled={isApplying}
+                      disabled={isApplying || isGameRunning}
+                      title={isGameRunning ? "游戏运行中，不能应用档案" : undefined}
                     >
                       {isApplying ? (
                         <Loader2 className="h-3 w-3 animate-spin" />
@@ -424,8 +450,13 @@ export function ModProfiles({ currentMods, onApplyProfile, showToast }: ModProfi
                     </button>
                     <button
                       onClick={() => handleDeleteProfile(profile)}
-                      className="p-1.5 hover:bg-destructive/10 text-muted-foreground hover:text-destructive rounded-lg transition-colors"
-                      title="删除档案"
+                      disabled={isGameRunning}
+                      className={`p-1.5 rounded-lg transition-colors ${
+                        isGameRunning
+                          ? "text-muted-foreground/50 cursor-not-allowed"
+                          : "hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                      }`}
+                      title={isGameRunning ? "游戏运行中，不能删除档案" : "删除档案"}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>

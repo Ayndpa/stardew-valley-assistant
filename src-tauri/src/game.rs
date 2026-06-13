@@ -2,6 +2,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use tauri::{AppHandle, Emitter};
 
 #[cfg(target_os = "windows")]
 fn get_steam_path_from_registry() -> Option<String> {
@@ -33,12 +34,14 @@ fn get_steam_path_from_registry() -> Option<String> {
 
 fn get_library_folders(steam_path: &str) -> Vec<PathBuf> {
     let mut folders = Vec::new();
-    
+
     // Add default steamapps path
     let default_path = PathBuf::from(steam_path).join("steamapps");
     folders.push(default_path);
 
-    let vdf_path = Path::new(steam_path).join("steamapps").join("libraryfolders.vdf");
+    let vdf_path = Path::new(steam_path)
+        .join("steamapps")
+        .join("libraryfolders.vdf");
     if !vdf_path.exists() {
         return folders;
     }
@@ -62,7 +65,7 @@ fn get_library_folders(steam_path: &str) -> Vec<PathBuf> {
     folders
 }
 
-fn find_stardew_valley() -> Option<String> {
+pub(crate) fn find_stardew_valley() -> Option<String> {
     if let Some(steam_path) = get_steam_path_from_registry() {
         let folders = get_library_folders(&steam_path);
         for folder in folders {
@@ -77,14 +80,22 @@ fn find_stardew_valley() -> Option<String> {
 
     if let Some(home) = std::env::var_os("HOME") {
         let home_path = PathBuf::from(home);
-        paths_to_check.push(home_path.join("Library/Application Support/Steam/steamapps/common/Stardew Valley"));
+        paths_to_check.push(
+            home_path.join("Library/Application Support/Steam/steamapps/common/Stardew Valley"),
+        );
         paths_to_check.push(home_path.join(".steam/steam/steamapps/common/Stardew Valley"));
         paths_to_check.push(home_path.join(".local/share/Steam/steamapps/common/Stardew Valley"));
     }
 
-    paths_to_check.push(PathBuf::from("C:\\Program Files (x86)\\Steam\\steamapps\\common\\Stardew Valley"));
-    paths_to_check.push(PathBuf::from("C:\\Program Files\\Steam\\steamapps\\common\\Stardew Valley"));
-    paths_to_check.push(PathBuf::from("D:\\SteamLibrary\\steamapps\\common\\Stardew Valley"));
+    paths_to_check.push(PathBuf::from(
+        "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Stardew Valley",
+    ));
+    paths_to_check.push(PathBuf::from(
+        "C:\\Program Files\\Steam\\steamapps\\common\\Stardew Valley",
+    ));
+    paths_to_check.push(PathBuf::from(
+        "D:\\SteamLibrary\\steamapps\\common\\Stardew Valley",
+    ));
 
     for path in paths_to_check {
         if path.exists() {
@@ -176,19 +187,26 @@ fn pick_executable(game_dir: &Path) -> Option<PathBuf> {
 }
 
 #[tauri::command]
-pub fn launch_game(game_dir: String) -> Result<(), String> {
+pub fn launch_game(app: AppHandle, game_dir: String) -> Result<u32, String> {
     let game_path = Path::new(&game_dir);
     if !game_path.exists() {
         return Err("游戏目录不存在，请先设置正确的目录。".to_string());
     }
 
-    let exe_path = pick_executable(game_path)
-        .ok_or_else(|| "未找到可执行文件（StardewModdingAPI.exe / Stardew Valley.exe）。".to_string())?;
+    let exe_path = pick_executable(game_path).ok_or_else(|| {
+        "未找到可执行文件（StardewModdingAPI.exe / Stardew Valley.exe）。".to_string()
+    })?;
 
-    Command::new(&exe_path)
+    let mut child = Command::new(&exe_path)
         .current_dir(game_path)
         .spawn()
         .map_err(|e| format!("启动游戏失败: {}", e))?;
 
-    Ok(())
+    let pid = child.id();
+    std::thread::spawn(move || {
+        let _ = child.wait();
+        let _ = app.emit("game-exited", pid);
+    });
+
+    Ok(pid)
 }

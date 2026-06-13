@@ -1,18 +1,23 @@
+use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::Manager;
-use serde_json::Value;
 
 struct LoginStatusCache {
     result: serde_json::Value,
     timestamp: std::time::Instant,
 }
 
-static LOGIN_STATUS_CACHE: std::sync::OnceLock<std::sync::Mutex<Option<LoginStatusCache>>> = std::sync::OnceLock::new();
+static LOGIN_STATUS_CACHE: std::sync::OnceLock<std::sync::Mutex<Option<LoginStatusCache>>> =
+    std::sync::OnceLock::new();
 static LOGIN_IN_PROGRESS: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
-static API_KEY_IN_PROGRESS: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
-static RANKING_COUNTER: std::sync::OnceLock<std::sync::atomic::AtomicU64> = std::sync::OnceLock::new();
+static API_KEY_IN_PROGRESS: std::sync::OnceLock<tokio::sync::Mutex<()>> =
+    std::sync::OnceLock::new();
+static RANKING_COUNTER: std::sync::OnceLock<std::sync::atomic::AtomicU64> =
+    std::sync::OnceLock::new();
+static DOWNLOAD_COUNTER: std::sync::OnceLock<std::sync::atomic::AtomicU64> =
+    std::sync::OnceLock::new();
 
 fn create_nexus_webview(
     app: &tauri::AppHandle,
@@ -47,21 +52,20 @@ fn create_nexus_webview(
     let is_dev = cfg!(debug_assertions);
     let initially_visible = is_dev || always_visible;
 
-    let mut builder = tauri::WebviewWindowBuilder::new(
-        app,
-        label,
-        tauri::WebviewUrl::External(url)
-    )
-    .title(title)
-    .inner_size(960.0, 720.0)
-    .min_inner_size(760.0, 560.0)
-    .visible(initially_visible);
+    let mut builder =
+        tauri::WebviewWindowBuilder::new(app, label, tauri::WebviewUrl::External(url))
+            .title(title)
+            .inner_size(960.0, 720.0)
+            .min_inner_size(760.0, 560.0)
+            .visible(initially_visible);
 
     if let Some(dir) = data_dir {
         builder = builder.data_directory(dir);
     }
 
-    let window = builder.build().map_err(|e| format!("Failed to build WebView window ({}): {:?}", label, e))?;
+    let window = builder
+        .build()
+        .map_err(|e| format!("Failed to build WebView window ({}): {:?}", label, e))?;
 
     if !initially_visible {
         let _ = window.minimize();
@@ -90,14 +94,24 @@ fn create_nexus_webview(
 
 fn eval_js_timeout(win: &tauri::WebviewWindow, js: &str, timeout_secs: u64) -> Option<String> {
     let (tx, rx) = std::sync::mpsc::channel::<String>();
-    if let Err(e) = win.eval_with_callback(js, move |result| { let _ = tx.send(result); }) {
-        println!("[eval_js_timeout] ({}) eval_with_callback error: {:?}", win.label(), e);
+    if let Err(e) = win.eval_with_callback(js, move |result| {
+        let _ = tx.send(result);
+    }) {
+        println!(
+            "[eval_js_timeout] ({}) eval_with_callback error: {:?}",
+            win.label(),
+            e
+        );
         return None;
     }
     match rx.recv_timeout(std::time::Duration::from_secs(timeout_secs)) {
         Ok(res) => Some(res),
         Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-            println!("[eval_js_timeout] ({}) JS evaluation timed out after {} seconds", win.label(), timeout_secs);
+            println!(
+                "[eval_js_timeout] ({}) JS evaluation timed out after {} seconds",
+                win.label(),
+                timeout_secs
+            );
             None
         }
         Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
@@ -153,7 +167,7 @@ fn update_window_visibility_for_cf(
         if !*cf_shown {
             *cf_shown = true;
             let _ = win.set_title(title_on_cf);
-            
+
             let center_over_main = |w: &tauri::WebviewWindow, app_handle: &tauri::AppHandle| {
                 if let Some(main_window) = app_handle.get_webview_window("main") {
                     if let (Ok(main_pos), Ok(main_size), Ok(win_size)) = (
@@ -162,7 +176,8 @@ fn update_window_visibility_for_cf(
                         w.inner_size(),
                     ) {
                         let x = main_pos.x + ((main_size.width as i32 - win_size.width as i32) / 2);
-                        let y = main_pos.y + ((main_size.height as i32 - win_size.height as i32) / 2);
+                        let y =
+                            main_pos.y + ((main_size.height as i32 - win_size.height as i32) / 2);
                         let _ = w.set_position(tauri::PhysicalPosition::new(x, y));
                         return;
                     }
@@ -210,13 +225,18 @@ pub async fn open_nexus_ranking_scraper(
     tauri::async_runtime::spawn(async move {
         use tauri::Emitter;
 
-        let window = match create_nexus_webview(&handle, &window_label, "Nexus 模组加载中...", url, false) {
-            Ok(w) => w,
-            Err(e) => {
-                println!("[RankingScraper] Failed to build ranking scraper window: {:?}", e);
-                return;
-            }
-        };
+        let window =
+            match create_nexus_webview(&handle, &window_label, "Nexus 模组加载中...", url, false)
+            {
+                Ok(w) => w,
+                Err(e) => {
+                    println!(
+                        "[RankingScraper] Failed to build ranking scraper window: {:?}",
+                        e
+                    );
+                    return;
+                }
+            };
 
         let poll_window = window.clone();
         let poll_handle = handle.clone();
@@ -235,11 +255,17 @@ pub async fn open_nexus_ranking_scraper(
                 if let Some(obj) = full_payload.as_object_mut() {
                     obj.insert("offset".to_string(), serde_json::json!(offset));
                     obj.insert("sort_field".to_string(), serde_json::json!(sort_field));
-                    obj.insert("sort_direction".to_string(), serde_json::json!(sort_direction));
+                    obj.insert(
+                        "sort_direction".to_string(),
+                        serde_json::json!(sort_direction),
+                    );
                     obj.insert("search_query".to_string(), serde_json::json!(search_val));
                     obj.insert("name_filter".to_string(), serde_json::json!(search_val));
                     obj.insert("author_filter".to_string(), serde_json::json!(author_val));
-                    obj.insert("uploader_filter".to_string(), serde_json::json!(uploader_val));
+                    obj.insert(
+                        "uploader_filter".to_string(),
+                        serde_json::json!(uploader_val),
+                    );
                 }
                 let _ = poll_handle.emit("respond-nexus-ranking-html", full_payload);
             };
@@ -251,15 +277,27 @@ pub async fn open_nexus_ranking_scraper(
             // Build GraphQL filter based on search parameters
             let mut filter_map = serde_json::Map::new();
             filter_map.insert("filter".to_string(), serde_json::json!([]));
-            filter_map.insert("gameDomainName".to_string(), serde_json::json!([{"op": "EQUALS", "value": "stardewvalley"}]));
+            filter_map.insert(
+                "gameDomainName".to_string(),
+                serde_json::json!([{"op": "EQUALS", "value": "stardewvalley"}]),
+            );
             if !search_val.is_empty() {
-                filter_map.insert("name".to_string(), serde_json::json!([{"op": "WILDCARD", "value": search_val}]));
+                filter_map.insert(
+                    "name".to_string(),
+                    serde_json::json!([{"op": "WILDCARD", "value": search_val}]),
+                );
             }
             if !author_val.is_empty() {
-                filter_map.insert("author".to_string(), serde_json::json!([{"op": "WILDCARD", "value": author_val}]));
+                filter_map.insert(
+                    "author".to_string(),
+                    serde_json::json!([{"op": "WILDCARD", "value": author_val}]),
+                );
             }
             if !uploader_val.is_empty() {
-                filter_map.insert("uploader".to_string(), serde_json::json!([{"op": "WILDCARD", "value": uploader_val}]));
+                filter_map.insert(
+                    "uploader".to_string(),
+                    serde_json::json!([{"op": "WILDCARD", "value": uploader_val}]),
+                );
             }
 
             // Build sort as array (NexusMods API expects [ModsSort!])
@@ -294,7 +332,8 @@ pub async fn open_nexus_ranking_scraper(
                 .replace('\u{2029}', "\\u2029");
 
             // JS #1: fire the GraphQL fetch, store result in window variable
-            let mut graphql_fire_js = format!(r##"
+            let mut graphql_fire_js = format!(
+                r##"
                 (() => {{
                     try {{
                         if (window.__nexusGraphQLDone || window.__nexusGraphQLFetching) return 'skip';
@@ -314,12 +353,13 @@ pub async fn open_nexus_ranking_scraper(
                         return 'started';
                     }} catch(e) {{ return 'error:' + String(e); }}
                 }})()
-            "##);
+            "##
+            );
 
             if cfg!(debug_assertions) {
                 graphql_fire_js = graphql_fire_js.replace(
                     "//PLACEHOLDER_DEV_ALERT",
-                    "alert('GraphQL Response:\\n' + JSON.stringify(json, null, 2));"
+                    "alert('GraphQL Response:\\n' + JSON.stringify(json, null, 2));",
                 );
             }
 
@@ -356,7 +396,10 @@ pub async fn open_nexus_ranking_scraper(
                 if graphql_requested {
                     let status_res = eval_js(&poll_window, graphql_status_js);
                     if cfg!(debug_assertions) {
-                        println!("[RankingScraper] GraphQL status raw result: {:?}", status_res);
+                        println!(
+                            "[RankingScraper] GraphQL status raw result: {:?}",
+                            status_res
+                        );
                     }
                     if let Some(status_str) = status_res {
                         if let Ok(status) = serde_json::from_str::<serde_json::Value>(&status_str) {
@@ -364,34 +407,58 @@ pub async fn open_nexus_ranking_scraper(
                             match s {
                                 "done" => {
                                     // Retrieve the actual data
-                                    if let Some(data_str) = eval_js(&poll_window, graphql_retrieve_js) {
+                                    if let Some(data_str) =
+                                        eval_js(&poll_window, graphql_retrieve_js)
+                                    {
                                         // Debug: log response structure
-                                        if let Ok(ref data) = serde_json::from_str::<serde_json::Value>(&data_str) {
+                                        if let Ok(ref data) =
+                                            serde_json::from_str::<serde_json::Value>(&data_str)
+                                        {
                                             let has_errors = data.get("errors").is_some();
                                             let total_count = data.pointer("/data/mods/totalCount");
-                                            let nodes_count = data.pointer("/data/mods/nodes").and_then(|n| n.as_array()).map(|a| a.len());
+                                            let nodes_count = data
+                                                .pointer("/data/mods/nodes")
+                                                .and_then(|n| n.as_array())
+                                                .map(|a| a.len());
                                             println!("[RankingScraper] GraphQL response: has_errors={}, totalCount={:?}, nodes_count={:?}", has_errors, total_count, nodes_count);
                                             if has_errors {
-                                                println!("[RankingScraper] GraphQL errors: {}", serde_json::to_string_pretty(data.get("errors").unwrap()).unwrap_or_default());
+                                                println!(
+                                                    "[RankingScraper] GraphQL errors: {}",
+                                                    serde_json::to_string_pretty(
+                                                        data.get("errors").unwrap()
+                                                    )
+                                                    .unwrap_or_default()
+                                                );
                                             }
                                         }
-                                        if let Ok(data) = serde_json::from_str::<serde_json::Value>(&data_str) {
+                                        if let Ok(data) =
+                                            serde_json::from_str::<serde_json::Value>(&data_str)
+                                        {
                                             let _ = poll_window.set_title("Nexus 排行榜已获取");
                                             println!("[RankingScraper] GraphQL data retrieved!");
                                             emit_event(serde_json::json!({ "mods": data }));
                                         } else {
-                                            emit_event(serde_json::json!({ "error": "GraphQL 数据解析失败" }));
+                                            emit_event(
+                                                serde_json::json!({ "error": "GraphQL 数据解析失败" }),
+                                            );
                                         }
                                     } else {
-                                        emit_event(serde_json::json!({ "error": "无法从 WebView 获取数据" }));
+                                        emit_event(
+                                            serde_json::json!({ "error": "无法从 WebView 获取数据" }),
+                                        );
                                     }
                                     let _ = poll_window.destroy();
                                     return;
                                 }
                                 "error" => {
-                                    let err = status.get("e").and_then(|v| v.as_str()).unwrap_or("unknown");
+                                    let err = status
+                                        .get("e")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("unknown");
                                     println!("[RankingScraper] GraphQL error: {}", err);
-                                    emit_event(serde_json::json!({ "error": format!("GraphQL 请求失败: {}", err) }));
+                                    emit_event(
+                                        serde_json::json!({ "error": format!("GraphQL 请求失败: {}", err) }),
+                                    );
                                     let _ = poll_window.destroy();
                                     return;
                                 }
@@ -425,7 +492,10 @@ pub async fn open_nexus_ranking_scraper(
                 if !is_cf {
                     graphql_requested = true;
                     println!("[RankingScraper] Page ready, firing GraphQL request...");
-                    println!("[RankingScraper] GraphQL variables: {}", serde_json::to_string(&graphql_variables).unwrap_or_default());
+                    println!(
+                        "[RankingScraper] GraphQL variables: {}",
+                        serde_json::to_string(&graphql_variables).unwrap_or_default()
+                    );
                     let res = eval_js(&poll_window, &graphql_fire_js);
                     println!("[RankingScraper] graphql_fire_js eval result: {:?}", res);
                     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
@@ -440,7 +510,9 @@ pub async fn open_nexus_ranking_scraper(
 }
 
 #[tauri::command]
-pub async fn fetch_smapi_compatibility_mods(app: tauri::AppHandle) -> Result<Vec<serde_json::Value>, String> {
+pub async fn fetch_smapi_compatibility_mods(
+    app: tauri::AppHandle,
+) -> Result<Vec<serde_json::Value>, String> {
     use tauri::Manager;
 
     // Determine cache path in app data directory
@@ -533,7 +605,8 @@ pub async fn open_nexus_login_window(app: tauri::AppHandle) -> Result<(), String
     tauri::async_runtime::spawn(async move {
         use tauri::Emitter;
 
-        let window = match create_nexus_webview(&handle, "nexus-login", "NexusMods 登录", url, true) {
+        let window = match create_nexus_webview(&handle, "nexus-login", "NexusMods 登录", url, true)
+        {
             Ok(w) => w,
             Err(e) => {
                 println!("[NexusLogin] Failed to build login window: {:?}", e);
@@ -560,9 +633,12 @@ pub async fn open_nexus_login_window(app: tauri::AppHandle) -> Result<(), String
 
                 if std::time::Instant::now() > timeout {
                     println!("[NexusLogin] Timeout reached, destroying window");
-                    let _ = poll_handle.emit("nexus-login-result", serde_json::json!({
-                        "status": "timeout"
-                    }));
+                    let _ = poll_handle.emit(
+                        "nexus-login-result",
+                        serde_json::json!({
+                            "status": "timeout"
+                        }),
+                    );
                     let _ = poll_window.destroy();
                     return;
                 }
@@ -579,7 +655,9 @@ pub async fn open_nexus_login_window(app: tauri::AppHandle) -> Result<(), String
                     "NexusMods 登录",
                 );
 
-                let snapshot_json = match eval_js(&poll_window, r##"
+                let snapshot_json = match eval_js(
+                    &poll_window,
+                    r##"
                     (() => {
                         try {
                             const href = location.href.toLowerCase();
@@ -670,7 +748,8 @@ pub async fn open_nexus_login_window(app: tauri::AppHandle) -> Result<(), String
                             };
                         }
                     })()
-                "##) {
+                "##,
+                ) {
                     None => {
                         tokio::time::sleep(std::time::Duration::from_millis(800)).await;
                         continue;
@@ -701,10 +780,13 @@ pub async fn open_nexus_login_window(app: tauri::AppHandle) -> Result<(), String
 
                 if is_logged_in {
                     println!("[NexusLogin] Login successful, user: {}", username);
-                    let _ = poll_handle.emit("nexus-login-result", serde_json::json!({
-                        "status": "success",
-                        "username": username
-                    }));
+                    let _ = poll_handle.emit(
+                        "nexus-login-result",
+                        serde_json::json!({
+                            "status": "success",
+                            "username": username
+                        }),
+                    );
                     let _ = poll_window.destroy();
                     return;
                 }
@@ -729,7 +811,10 @@ pub async fn check_nexus_login_status(app: tauri::AppHandle) -> Result<serde_jso
         if let Ok(cache_guard) = cache_mutex.lock() {
             if let Some(ref cache) = *cache_guard {
                 if cache.timestamp.elapsed() < std::time::Duration::from_secs(5) {
-                    println!("[NexusLoginCheck] Returning cached login status: {:?}", cache.result);
+                    println!(
+                        "[NexusLoginCheck] Returning cached login status: {:?}",
+                        cache.result
+                    );
                     return Ok(cache.result.clone());
                 }
             }
@@ -763,7 +848,9 @@ pub async fn check_nexus_login_status(app: tauri::AppHandle) -> Result<serde_jso
     // If no webview_data dir exists, we're definitely not logged in
     if let Some(ref dir) = data_dir {
         if !dir.exists() {
-            println!("[NexusLoginCheck] webview_data directory does not exist, returning not logged in.");
+            println!(
+                "[NexusLoginCheck] webview_data directory does not exist, returning not logged in."
+            );
             let res = serde_json::json!({ "loggedIn": false, "username": "" });
             if let Ok(mut cache_guard) = cache_mutex.lock() {
                 *cache_guard = Some(LoginStatusCache {
@@ -790,7 +877,13 @@ pub async fn check_nexus_login_status(app: tauri::AppHandle) -> Result<serde_jso
     let url = url_str.parse::<tauri::Url>().map_err(|e| e.to_string())?;
 
     // Create a hidden window using helper
-    let window = create_nexus_webview(&handle, "nexus-login-check", "Checking NexusMods login...", url, false)?;
+    let window = create_nexus_webview(
+        &handle,
+        "nexus-login-check",
+        "Checking NexusMods login...",
+        url,
+        false,
+    )?;
 
     let poll_window = window.clone();
     let poll_handle = handle.clone();
@@ -959,7 +1052,10 @@ pub async fn check_nexus_login_status(app: tauri::AppHandle) -> Result<serde_jso
 }
 
 #[tauri::command]
-pub async fn fetch_nexus_api_key(app: tauri::AppHandle, force: Option<bool>) -> Result<serde_json::Value, String> {
+pub async fn fetch_nexus_api_key(
+    app: tauri::AppHandle,
+    force: Option<bool>,
+) -> Result<serde_json::Value, String> {
     use tauri::Manager;
 
     let data_dir = app
@@ -1017,7 +1113,13 @@ pub async fn fetch_nexus_api_key(app: tauri::AppHandle, force: Option<bool>) -> 
     let url = url_str.parse::<tauri::Url>().map_err(|e| e.to_string())?;
 
     // Create a hidden window using helper
-    let window = create_nexus_webview(&handle, "nexus-apikey-fetch", "获取 API Key中...", url, false)?;
+    let window = create_nexus_webview(
+        &handle,
+        "nexus-apikey-fetch",
+        "获取 API Key中...",
+        url,
+        false,
+    )?;
 
     let poll_window = window.clone();
     let poll_handle = handle.clone();
@@ -1152,7 +1254,11 @@ pub async fn fetch_nexus_api_key(app: tauri::AppHandle, force: Option<bool>) -> 
 
     match result {
         Ok(val) => {
-            let api_key = val.get("apiKey").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+            let api_key = val
+                .get("apiKey")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string();
             if !api_key.is_empty() {
                 let _ = fs::write(&api_key_path_clone, &api_key);
             }
@@ -1199,13 +1305,14 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
     tauri::async_runtime::spawn(async move {
         use tauri::Emitter;
 
-        let window = match create_nexus_webview(&handle, "nexus-scraper", "Nexus 验证中...", url, false) {
-            Ok(w) => w,
-            Err(e) => {
-                println!("Failed to build scraper window: {:?}", e);
-                return;
-            }
-        };
+        let window =
+            match create_nexus_webview(&handle, "nexus-scraper", "Nexus 验证中...", url, false) {
+                Ok(w) => w,
+                Err(e) => {
+                    println!("Failed to build scraper window: {:?}", e);
+                    return;
+                }
+            };
 
         let poll_window = window.clone();
         let poll_handle = handle.clone();
@@ -1229,9 +1336,12 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
                 // Timeout: destroy window and notify frontend
                 if std::time::Instant::now() > timeout {
                     println!("[Scraper] Timeout reached, destroying window");
-                    let _ = poll_handle.emit("respond-nexus-html", serde_json::json!({
-                        "error": "加载超时，请重试"
-                    }));
+                    let _ = poll_handle.emit(
+                        "respond-nexus-html",
+                        serde_json::json!({
+                            "error": "加载超时，请重试"
+                        }),
+                    );
                     let _ = poll_window.destroy();
                     return;
                 }
@@ -1239,14 +1349,20 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
                 // Check Cloudflare challenge
                 let is_challenge = check_cloudflare_challenge(&poll_window);
                 if is_challenge && !cf_shown {
-                    let _ = poll_handle.emit("respond-nexus-html", serde_json::json!({
-                        "status": "challenge"
-                    }));
+                    let _ = poll_handle.emit(
+                        "respond-nexus-html",
+                        serde_json::json!({
+                            "status": "challenge"
+                        }),
+                    );
                 }
                 if !is_challenge && cf_shown && last_title == "Nexus 需要验证" {
-                    let _ = poll_handle.emit("respond-nexus-html", serde_json::json!({
-                        "status": "loading"
-                    }));
+                    let _ = poll_handle.emit(
+                        "respond-nexus-html",
+                        serde_json::json!({
+                            "status": "loading"
+                        }),
+                    );
                 }
 
                 update_window_visibility_for_cf(
@@ -1267,7 +1383,9 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
 
                 // Check page state directly. This is more reliable than depending on an injected
                 // page script because Nexus/consent/challenge navigations can replace the document.
-                let snapshot_json = match eval_js(&poll_window, r##"
+                let snapshot_json = match eval_js(
+                    &poll_window,
+                    r##"
                     (() => {
                         try {
                             const html = document.documentElement ? document.documentElement.outerHTML : "";
@@ -1304,7 +1422,8 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
                             };
                         }
                     })()
-                "##) {
+                "##,
+                ) {
                     None => {
                         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                         continue;
@@ -1344,10 +1463,16 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
                     if has_rich_content {
                         // Rich content (stats, images, sidebar) loaded — emit immediately
                         let _ = poll_window.set_title("Nexus 信息已获取");
-                        println!("[Scraper] Got HTML with rich content, length: {}", html.len());
-                        let _ = poll_handle.emit("respond-nexus-html", serde_json::json!({
-                            "html": html
-                        }));
+                        println!(
+                            "[Scraper] Got HTML with rich content, length: {}",
+                            html.len()
+                        );
+                        let _ = poll_handle.emit(
+                            "respond-nexus-html",
+                            serde_json::json!({
+                                "html": html
+                            }),
+                        );
                         let _ = poll_window.destroy();
                         return;
                     }
@@ -1355,10 +1480,16 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
                     details_ready_count += 1;
                     if details_ready_count >= 12 {
                         let _ = poll_window.set_title("Nexus 信息已获取");
-                        println!("[Scraper] Got HTML (fallback after wait), length: {}", html.len());
-                        let _ = poll_handle.emit("respond-nexus-html", serde_json::json!({
-                            "html": html
-                        }));
+                        println!(
+                            "[Scraper] Got HTML (fallback after wait), length: {}",
+                            html.len()
+                        );
+                        let _ = poll_handle.emit(
+                            "respond-nexus-html",
+                            serde_json::json!({
+                                "html": html
+                            }),
+                        );
                         let _ = poll_window.destroy();
                         return;
                     }
@@ -1391,11 +1522,29 @@ fn parse_query_param(url: &str, key: &str) -> Option<String> {
 }
 
 fn extract_game_domain(url: &str) -> Option<String> {
+    if let Some(rest) = url.strip_prefix("nxm://") {
+        return rest
+            .split(['/', '?', '#'])
+            .find(|seg| !seg.is_empty())
+            .map(|seg| seg.to_string());
+    }
+
     let path = url.split('#').next()?.split('?').next()?;
     let segments: Vec<&str> = path.split('/').filter(|seg| !seg.is_empty()).collect();
     for i in 0..segments.len() {
         if segments[i] == "mods" && i >= 1 {
             return Some(segments[i - 1].to_string());
+        }
+    }
+    None
+}
+
+fn extract_path_value_after(url: &str, marker: &str) -> Option<String> {
+    let path = url.split('#').next()?.split('?').next()?;
+    let segments: Vec<&str> = path.split('/').filter(|seg| !seg.is_empty()).collect();
+    for i in 0..segments.len() {
+        if segments[i].eq_ignore_ascii_case(marker) && i + 1 < segments.len() {
+            return Some(segments[i + 1].to_string());
         }
     }
     None
@@ -1408,11 +1557,22 @@ fn game_id_from_domain(game_domain: &str) -> Option<String> {
     }
 }
 
-fn extract_nexus_download_params(url: &str) -> Option<(String, String, String)> {
-    let file_id = parse_query_param(url, "file_id").or_else(|| parse_query_param(url, "fid"))?;
+fn extract_nexus_download_params(url: &str) -> Option<(String, String, String, String)> {
+    let file_id = parse_query_param(url, "file_id")
+        .or_else(|| parse_query_param(url, "fid"))
+        .or_else(|| extract_path_value_after(url, "files"))?;
     let game_domain = extract_game_domain(url).unwrap_or_else(|| "stardewvalley".to_string());
     let game_id = game_id_from_domain(&game_domain)?;
-    Some((game_id, file_id, game_domain))
+    let referer_url = if url.trim_start().to_ascii_lowercase().starts_with("nxm://") {
+        let mod_id = extract_path_value_after(url, "mods")?;
+        format!(
+            "https://www.nexusmods.com/{}/mods/{}?tab=files&file_id={}&nmm=1",
+            game_domain, mod_id, file_id
+        )
+    } else {
+        url.to_string()
+    };
+    Some((game_id, file_id, game_domain, referer_url))
 }
 
 fn parse_download_url_from_payload(payload: &serde_json::Value) -> Option<String> {
@@ -1422,7 +1582,19 @@ fn parse_download_url_from_payload(payload: &serde_json::Value) -> Option<String
             return Some(url.to_string());
         }
     }
-    for key in ["/data/url", "/data/download_url", "/data/uri", "/data/URI", "/data/download", "/data/link", "/result/url", "/result/download_url", "/result/download", "/result/link", "/response/url"] {
+    for key in [
+        "/data/url",
+        "/data/download_url",
+        "/data/uri",
+        "/data/URI",
+        "/data/download",
+        "/data/link",
+        "/result/url",
+        "/result/download_url",
+        "/result/download",
+        "/result/link",
+        "/response/url",
+    ] {
         if let Some(url) = payload.pointer(key).and_then(|v| v.as_str()) {
             return Some(url.to_string());
         }
@@ -1431,8 +1603,16 @@ fn parse_download_url_from_payload(payload: &serde_json::Value) -> Option<String
     payload
         .get("data")
         .and_then(|node| parse_download_url_from_payload(node))
-        .or_else(|| payload.get("result").and_then(|node| parse_download_url_from_payload(node)))
-        .or_else(|| payload.get("response").and_then(|node| parse_download_url_from_payload(node)))
+        .or_else(|| {
+            payload
+                .get("result")
+                .and_then(|node| parse_download_url_from_payload(node))
+        })
+        .or_else(|| {
+            payload
+                .get("response")
+                .and_then(|node| parse_download_url_from_payload(node))
+        })
 }
 
 fn parse_download_url_from_text(text: &str) -> Option<String> {
@@ -1442,12 +1622,23 @@ fn parse_download_url_from_text(text: &str) -> Option<String> {
             let suffix = &text[start..];
             let mut end = suffix.len();
             for (i, ch) in suffix.char_indices() {
-                if ch.is_whitespace() || ch == '"' || ch == '\'' || ch == '<' || ch == '>' || ch == '`' || ch == ')' || ch == ']' || ch == '}' {
+                if ch.is_whitespace()
+                    || ch == '"'
+                    || ch == '\''
+                    || ch == '<'
+                    || ch == '>'
+                    || ch == '`'
+                    || ch == ')'
+                    || ch == ']'
+                    || ch == '}'
+                {
                     end = i;
                     break;
                 }
             }
-            let candidate = suffix[..end].trim_end_matches(&[';',',','.'][..]).to_string();
+            let candidate = suffix[..end]
+                .trim_end_matches(&[';', ',', '.'][..])
+                .to_string();
             if !candidate.is_empty() {
                 return Some(candidate);
             }
@@ -1476,12 +1667,25 @@ async fn fetch_nexus_download_url_via_browser(
     file_id: &str,
     referer_url: &str,
 ) -> Result<String, String> {
-    let parse_url = referer_url.parse::<tauri::Url>().map_err(|e| format!("解析页面 URL 失败: {}", e))?;
+    let parse_url = referer_url
+        .parse::<tauri::Url>()
+        .map_err(|e| format!("解析页面 URL 失败: {}", e))?;
     let handle = app.clone();
+    let request_id = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_else(|_| Duration::from_secs(0))
+        .as_millis();
+    let sequence = DOWNLOAD_COUNTER
+        .get_or_init(|| std::sync::atomic::AtomicU64::new(1))
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let window_label = format!(
+        "nexus-generate-download-url-{}-{}-{}",
+        file_id, request_id, sequence
+    );
 
     let window = create_nexus_webview(
         &handle,
-        "nexus-generate-download-url",
+        &window_label,
         "Nexus 下载链接获取中...",
         parse_url,
         false,
@@ -1552,7 +1756,7 @@ async fn fetch_nexus_download_url_via_browser(
     let result = tokio::time::timeout(Duration::from_secs(90), async move {
         let mut cf_shown = false;
         loop {
-            if poll_handle.get_webview_window("nexus-generate-download-url").is_none() {
+            if poll_handle.get_webview_window(&window_label).is_none() {
                 return Err("下载链接窗口已关闭".to_string());
             }
 
@@ -1622,8 +1826,11 @@ async fn fetch_nexus_download_url_via_browser(
 }
 
 #[tauri::command]
-pub async fn install_nexus_mod(app: tauri::AppHandle, game_dir: String, download_url: String) -> Result<serde_json::Value, String> {
-
+pub async fn install_nexus_mod(
+    app: tauri::AppHandle,
+    game_dir: String,
+    download_url: String,
+) -> Result<serde_json::Value, String> {
     let game_path = PathBuf::from(&game_dir);
     if !game_path.exists() {
         return Err("游戏目录不存在".to_string());
@@ -1640,7 +1847,13 @@ pub async fn install_nexus_mod(app: tauri::AppHandle, game_dir: String, download
         .path()
         .app_data_dir()
         .map_err(|e| format!("无法获取应用数据目录: {}", e))?;
-    let working_dir = data_dir.join(format!("nexus_mod_install_{}", timestamp));
+    let working_dir = data_dir.join(format!(
+        "nexus_mod_install_{}_{}",
+        timestamp,
+        DOWNLOAD_COUNTER
+            .get_or_init(|| std::sync::atomic::AtomicU64::new(1))
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
     fs::create_dir_all(&working_dir).map_err(|e| format!("创建临时目录失败: {}", e))?;
 
     let zip_path = working_dir.join("mod.zip");
@@ -1651,15 +1864,20 @@ pub async fn install_nexus_mod(app: tauri::AppHandle, game_dir: String, download
     };
 
     let url = download_url.trim().to_string();
-    if !url.starts_with("http://") && !url.starts_with("https://") {
+    let is_http_url = url.starts_with("http://") || url.starts_with("https://");
+    let is_nxm_url = url.to_ascii_lowercase().starts_with("nxm://");
+    if !is_http_url && !is_nxm_url {
         cleanup();
         return Err("下载链接不合法".to_string());
     }
 
-    let download_result = if let Some((game_id, file_id, _game_domain)) = extract_nexus_download_params(&url) {
-        let page_download_url = fetch_nexus_download_url_via_browser(app.clone(), &game_id, &file_id, &url)
-            .await
-            .map_err(|err| format!("获取网页下载链接失败: {}", err))?;
+    let download_result = if let Some((game_id, file_id, _game_domain, referer_url)) =
+        extract_nexus_download_params(&url)
+    {
+        let page_download_url =
+            fetch_nexus_download_url_via_browser(app.clone(), &game_id, &file_id, &referer_url)
+                .await
+                .map_err(|err| format!("获取网页下载链接失败: {}", err))?;
 
         let target_url = if page_download_url.starts_with('/') {
             format!("https://www.nexusmods.com{}", page_download_url)
@@ -1668,7 +1886,9 @@ pub async fn install_nexus_mod(app: tauri::AppHandle, game_dir: String, download
         };
 
         crate::utils::download_file(&target_url, &zip_path)
-    } else if url.ends_with(".zip") || url.ends_with(".zip/") || url.contains("download") {
+    } else if is_http_url
+        && (url.ends_with(".zip") || url.ends_with(".zip/") || url.contains("download"))
+    {
         crate::utils::download_file(&url, &zip_path)
     } else {
         Err("无法解析 Nexus 下载参数（file_id 或游戏域名），且当前链接不是直接下载链接".to_string())
@@ -1723,4 +1943,39 @@ pub async fn install_nexus_mod(app: tauri::AppHandle, game_dir: String, download
         "success": true,
         "message": "mod installed"
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::extract_nexus_download_params;
+
+    #[test]
+    fn parses_nxm_download_url() {
+        let url = "nxm://stardewvalley/mods/47260/files/170963?key=2_o9UGKxBxzz4iq2e0G_GA&expires=1781499811&user_id=163085308";
+
+        let (game_id, file_id, game_domain, referer_url) =
+            extract_nexus_download_params(url).expect("nxm params");
+
+        assert_eq!(game_id, "1303");
+        assert_eq!(file_id, "170963");
+        assert_eq!(game_domain, "stardewvalley");
+        assert_eq!(
+            referer_url,
+            "https://www.nexusmods.com/stardewvalley/mods/47260?tab=files&file_id=170963&nmm=1"
+        );
+    }
+
+    #[test]
+    fn parses_nexus_http_file_id_url() {
+        let url =
+            "https://www.nexusmods.com/stardewvalley/mods/47260?tab=files&file_id=170963&nmm=1";
+
+        let (game_id, file_id, game_domain, referer_url) =
+            extract_nexus_download_params(url).expect("http params");
+
+        assert_eq!(game_id, "1303");
+        assert_eq!(file_id, "170963");
+        assert_eq!(game_domain, "stardewvalley");
+        assert_eq!(referer_url, url);
+    }
 }

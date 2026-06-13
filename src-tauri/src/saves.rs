@@ -1,6 +1,8 @@
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
-use serde::{Serialize, Deserialize};
+
+use crate::farmer_avatar::{render_farmer_avatar, FarmerAppearance};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -21,6 +23,8 @@ pub struct SaveSummary {
     pub deepest_mine_level: i32,
     pub milliseconds_played: u64,
     pub last_save_time: u64,
+    pub farmer_avatar: Option<String>,
+    pub farmer_avatar_error: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -50,7 +54,6 @@ pub struct PlantedCrop {
     pub phase_days: Vec<i32>,
 }
 
-
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveDetail {
@@ -59,6 +62,9 @@ pub struct SaveDetail {
     pub weather_tomorrow: String,
     pub museum_pieces_count: i32,
     pub friendships: Vec<FriendshipInfo>,
+    pub farmer_appearance: Option<FarmerAppearance>,
+    pub farmer_avatar: Option<String>,
+    pub farmer_avatar_error: Option<String>,
 }
 
 fn get_tag_value<'a>(xml: &'a str, tag: &str) -> Option<&'a str> {
@@ -96,7 +102,7 @@ fn parse_friendship_data(xml: &str) -> Vec<FriendshipInfo> {
     if let Some(friendship_idx) = xml.find("<friendshipData>") {
         let friendship_end = xml.find("</friendshipData>").unwrap_or(xml.len());
         let section = &xml[friendship_idx..friendship_end];
-        
+
         let mut search_pos = 0;
         while let Some(item_start) = section[search_pos..].find("<item>") {
             let abs_item_start = search_pos + item_start;
@@ -105,42 +111,49 @@ fn parse_friendship_data(xml: &str) -> Vec<FriendshipInfo> {
                 None => break,
             };
             let item_xml = &section[abs_item_start..item_end];
-            
+
             if let Some(key_start) = item_xml.find("<key>") {
                 if let Some(key_end) = item_xml.find("</key>") {
                     let key_xml = &item_xml[key_start..key_end];
                     if let Some(str_start) = key_xml.find("<string>") {
                         if let Some(str_end) = key_xml.find("</string>") {
                             let npc_name = key_xml[str_start + 8..str_end].to_string();
-                            
+
                             let mut points = 0;
                             let mut gifts_this_week = 0;
                             let mut gifts_today = 0;
                             let mut talked_to_today = false;
                             let mut status = "Friendly".to_string();
-                            
+
                             if let Some(val_start) = item_xml.find("<value>") {
                                 if let Some(val_end) = item_xml.find("</value>") {
                                     let val_xml = &item_xml[val_start..val_end];
-                                    
+
                                     if let Some(pts_start) = val_xml.find("<Points>") {
                                         if let Some(pts_end) = val_xml.find("</Points>") {
-                                            points = val_xml[pts_start + 8..pts_end].parse::<i32>().unwrap_or(0);
+                                            points = val_xml[pts_start + 8..pts_end]
+                                                .parse::<i32>()
+                                                .unwrap_or(0);
                                         }
                                     }
                                     if let Some(gtw_start) = val_xml.find("<GiftsThisWeek>") {
                                         if let Some(gtw_end) = val_xml.find("</GiftsThisWeek>") {
-                                            gifts_this_week = val_xml[gtw_start + 15..gtw_end].parse::<i32>().unwrap_or(0);
+                                            gifts_this_week = val_xml[gtw_start + 15..gtw_end]
+                                                .parse::<i32>()
+                                                .unwrap_or(0);
                                         }
                                     }
                                     if let Some(gt_start) = val_xml.find("<GiftsToday>") {
                                         if let Some(gt_end) = val_xml.find("</GiftsToday>") {
-                                            gifts_today = val_xml[gt_start + 12..gt_end].parse::<i32>().unwrap_or(0);
+                                            gifts_today = val_xml[gt_start + 12..gt_end]
+                                                .parse::<i32>()
+                                                .unwrap_or(0);
                                         }
                                     }
                                     if let Some(ttt_start) = val_xml.find("<TalkedToToday>") {
                                         if let Some(ttt_end) = val_xml.find("</TalkedToToday>") {
-                                            talked_to_today = val_xml[ttt_start + 15..ttt_end].trim() == "true";
+                                            talked_to_today =
+                                                val_xml[ttt_start + 15..ttt_end].trim() == "true";
                                         }
                                     }
                                     if let Some(st_start) = val_xml.find("<Status>") {
@@ -150,7 +163,7 @@ fn parse_friendship_data(xml: &str) -> Vec<FriendshipInfo> {
                                     }
                                 }
                             }
-                            
+
                             list.push(FriendshipInfo {
                                 npc_name,
                                 points,
@@ -169,7 +182,6 @@ fn parse_friendship_data(xml: &str) -> Vec<FriendshipInfo> {
     list
 }
 
-
 fn parse_museum_pieces_count(xml: &str) -> i32 {
     if let Some(start_idx) = xml.find("<museumPieces>") {
         if let Some(end_idx) = xml.find("</museumPieces>") {
@@ -183,13 +195,13 @@ fn parse_museum_pieces_count(xml: &str) -> i32 {
 fn parse_weather(xml: &str) -> (String, String) {
     let mut today = "Sun".to_string();
     let mut tomorrow = "Sun".to_string();
-    
+
     if let Some(start_idx) = xml.find("<locationWeather>") {
         if let Some(end_idx) = xml.find("</locationWeather>") {
             let section = &xml[start_idx..end_idx];
             if let Some(def_idx) = section.find("<string>Default</string>") {
                 let sub_sec = &section[def_idx..];
-                
+
                 // Read today's weather
                 let mut found_today = false;
                 if let Some(w_start) = sub_sec.find("<Weather>") {
@@ -201,15 +213,24 @@ fn parse_weather(xml: &str) -> (String, String) {
                         }
                     }
                 }
-                
+
                 // Fallback for today using flags if not found
                 if !found_today {
-                    let is_green_rain = sub_sec.find("<IsGreenRain>true</IsGreenRain>").is_some() || sub_sec.find("<isGreenRain>true</isGreenRain>").is_some();
-                    let is_lightning = sub_sec.find("<IsLightning>true</IsLightning>").is_some() || sub_sec.find("<isLightning>true</isLightning>").is_some();
-                    let is_raining = sub_sec.find("<IsRaining>true</IsRaining>").is_some() || sub_sec.find("<isRaining>true</isRaining>").is_some();
-                    let is_snowing = sub_sec.find("<IsSnowing>true</IsSnowing>").is_some() || sub_sec.find("<isSnowing>true</isSnowing>").is_some();
-                    let is_debris = sub_sec.find("<IsDebrisWeather>true</IsDebrisWeather>").is_some() || sub_sec.find("<isDebrisWeather>true</isDebrisWeather>").is_some();
-                    
+                    let is_green_rain = sub_sec.find("<IsGreenRain>true</IsGreenRain>").is_some()
+                        || sub_sec.find("<isGreenRain>true</isGreenRain>").is_some();
+                    let is_lightning = sub_sec.find("<IsLightning>true</IsLightning>").is_some()
+                        || sub_sec.find("<isLightning>true</isLightning>").is_some();
+                    let is_raining = sub_sec.find("<IsRaining>true</IsRaining>").is_some()
+                        || sub_sec.find("<isRaining>true</isRaining>").is_some();
+                    let is_snowing = sub_sec.find("<IsSnowing>true</IsSnowing>").is_some()
+                        || sub_sec.find("<isSnowing>true</isSnowing>").is_some();
+                    let is_debris = sub_sec
+                        .find("<IsDebrisWeather>true</IsDebrisWeather>")
+                        .is_some()
+                        || sub_sec
+                            .find("<isDebrisWeather>true</isDebrisWeather>")
+                            .is_some();
+
                     if is_green_rain {
                         today = "GreenRain".to_string();
                     } else if is_lightning {
@@ -249,22 +270,27 @@ fn get_saves_dir() -> Option<PathBuf> {
     #[cfg(not(target_os = "windows"))]
     {
         let home = std::env::var("HOME").ok()?;
-        Some(PathBuf::from(home).join(".config").join("StardewValley").join("Saves"))
+        Some(
+            PathBuf::from(home)
+                .join(".config")
+                .join("StardewValley")
+                .join("Saves"),
+        )
     }
 }
 
 #[tauri::command]
-pub fn list_save_files() -> Result<Vec<SaveSummary>, String> {
-    let saves_dir = get_saves_dir()
-        .ok_or_else(|| "Could not locate APPDATA or HOME directory".to_string())?;
-    
+pub fn list_save_files(game_dir: Option<String>) -> Result<Vec<SaveSummary>, String> {
+    let saves_dir =
+        get_saves_dir().ok_or_else(|| "Could not locate APPDATA or HOME directory".to_string())?;
+
     if !saves_dir.exists() {
         return Ok(Vec::new());
     }
 
     let mut list = Vec::new();
-    let entries = fs::read_dir(&saves_dir)
-        .map_err(|e| format!("Failed to read Saves directory: {}", e))?;
+    let entries =
+        fs::read_dir(&saves_dir).map_err(|e| format!("Failed to read Saves directory: {}", e))?;
 
     for entry in entries {
         let entry = match entry {
@@ -299,8 +325,15 @@ pub fn list_save_files() -> Result<Vec<SaveSummary>, String> {
         let fishing_level = extract_tag_i32(&xml, "fishingLevel");
         let deepest_mine_level = extract_tag_i32(&xml, "deepestMineLevel");
         let milliseconds_played = extract_tag_u64(&xml, "millisecondsPlayed");
+        let farmer_appearance = FarmerAppearance::from_save_xml(&xml);
+        let (farmer_avatar, farmer_avatar_error) =
+            match render_farmer_avatar(&farmer_appearance, game_dir.as_deref()) {
+                Ok(data_url) => (Some(data_url), None),
+                Err(error) => (None, Some(error)),
+            };
 
-        let last_save_time = entry.metadata()
+        let last_save_time = entry
+            .metadata()
             .and_then(|m| m.modified())
             .ok()
             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
@@ -324,6 +357,8 @@ pub fn list_save_files() -> Result<Vec<SaveSummary>, String> {
             deepest_mine_level,
             milliseconds_played,
             last_save_time,
+            farmer_avatar,
+            farmer_avatar_error,
         });
     }
 
@@ -333,10 +368,14 @@ pub fn list_save_files() -> Result<Vec<SaveSummary>, String> {
 }
 
 #[tauri::command]
-pub fn get_save_detail(id: String) -> Result<SaveDetail, String> {
-    let saves_dir = get_saves_dir()
-        .ok_or_else(|| "Could not locate APPDATA or HOME directory".to_string())?;
-    
+pub fn get_save_detail(
+    id: String,
+    game_dir: Option<String>,
+    include_avatar: Option<bool>,
+) -> Result<SaveDetail, String> {
+    let saves_dir =
+        get_saves_dir().ok_or_else(|| "Could not locate APPDATA or HOME directory".to_string())?;
+
     let save_folder = saves_dir.join(&id);
     if !save_folder.exists() {
         return Err(format!("Save folder {} does not exist", id));
@@ -364,7 +403,8 @@ pub fn get_save_detail(id: String) -> Result<SaveDetail, String> {
     let deepest_mine_level = extract_tag_i32(&info_xml, "deepestMineLevel");
     let milliseconds_played = extract_tag_u64(&info_xml, "millisecondsPlayed");
 
-    let last_save_time = save_game_info_path.metadata()
+    let last_save_time = save_game_info_path
+        .metadata()
         .and_then(|m| m.modified())
         .ok()
         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
@@ -388,6 +428,8 @@ pub fn get_save_detail(id: String) -> Result<SaveDetail, String> {
         deepest_mine_level,
         milliseconds_played,
         last_save_time,
+        farmer_avatar: None,
+        farmer_avatar_error: None,
     };
 
     let main_save_path = save_folder.join(&id);
@@ -400,6 +442,15 @@ pub fn get_save_detail(id: String) -> Result<SaveDetail, String> {
     let (weather_today, weather_tomorrow) = parse_weather(&main_xml);
     let museum_pieces_count = parse_museum_pieces_count(&main_xml);
     let friendships = parse_friendship_data(&info_xml);
+    let farmer_appearance = FarmerAppearance::from_save_xml(&info_xml);
+    let (farmer_avatar, farmer_avatar_error) = if include_avatar.unwrap_or(false) {
+        match render_farmer_avatar(&farmer_appearance, game_dir.as_deref()) {
+            Ok(data_url) => (Some(data_url), None),
+            Err(error) => (None, Some(error)),
+        }
+    } else {
+        (None, None)
+    };
 
     Ok(SaveDetail {
         summary,
@@ -407,14 +458,17 @@ pub fn get_save_detail(id: String) -> Result<SaveDetail, String> {
         weather_tomorrow,
         museum_pieces_count,
         friendships,
+        farmer_appearance: Some(farmer_appearance),
+        farmer_avatar,
+        farmer_avatar_error,
     })
 }
 
 #[tauri::command]
 pub fn get_planted_crops(id: String) -> Result<Vec<PlantedCrop>, String> {
-    let saves_dir = get_saves_dir()
-        .ok_or_else(|| "Could not locate APPDATA or HOME directory".to_string())?;
-    
+    let saves_dir =
+        get_saves_dir().ok_or_else(|| "Could not locate APPDATA or HOME directory".to_string())?;
+
     let save_folder = saves_dir.join(&id);
     if !save_folder.exists() {
         return Err(format!("Save folder {} does not exist", id));
@@ -429,13 +483,13 @@ pub fn get_planted_crops(id: String) -> Result<Vec<PlantedCrop>, String> {
         .map_err(|e| format!("Failed to read main save file: {}", e))?;
 
     let mut planted_crops = Vec::new();
-    
+
     let mut location_blocks = Vec::new();
     let mut search_pos = 0;
     while let Some(start_idx) = xml[search_pos..].find("<GameLocation") {
         let abs_start = search_pos + start_idx;
         let block_content = &xml[abs_start..];
-        
+
         let end_offset = match block_content.find("</GameLocation>") {
             Some(offset) => offset,
             None => break,
@@ -447,8 +501,10 @@ pub fn get_planted_crops(id: String) -> Result<Vec<PlantedCrop>, String> {
     }
 
     for loc_xml in location_blocks {
-        let name = get_tag_value(loc_xml, "name").unwrap_or("Unknown").to_string();
-        
+        let name = get_tag_value(loc_xml, "name")
+            .unwrap_or("Unknown")
+            .to_string();
+
         let mut terrain_features_section = "";
         if let Some(tf_start) = loc_xml.find("<terrainFeatures>") {
             if let Some(tf_end) = loc_xml[tf_start..].find("</terrainFeatures>") {
@@ -468,7 +524,7 @@ pub fn get_planted_crops(id: String) -> Result<Vec<PlantedCrop>, String> {
                 None => break,
             };
             let item_xml = &terrain_features_section[abs_item_start..item_end];
-            
+
             if item_xml.contains("xsi:type=\"HoeDirt\"") || item_xml.contains("type=\"HoeDirt\"") {
                 let mut x = 0;
                 let mut y = 0;
@@ -491,11 +547,13 @@ pub fn get_planted_crops(id: String) -> Result<Vec<PlantedCrop>, String> {
                 if let Some(val_start) = item_xml.find("<value>") {
                     if let Some(val_end) = item_xml.find("</value>") {
                         let val_xml = &item_xml[val_start..val_end];
-                        
+
                         let mut is_watered = false;
                         if let Some(state_start) = val_xml.find("<state>") {
                             if let Some(state_end) = val_xml.find("</state>") {
-                                let state_val = val_xml[state_start + 7..state_end].parse::<i32>().unwrap_or(0);
+                                let state_val = val_xml[state_start + 7..state_end]
+                                    .parse::<i32>()
+                                    .unwrap_or(0);
                                 is_watered = state_val == 1;
                             }
                         }
@@ -503,17 +561,19 @@ pub fn get_planted_crops(id: String) -> Result<Vec<PlantedCrop>, String> {
                         if let Some(crop_start) = val_xml.find("<crop>") {
                             if let Some(crop_end) = val_xml.find("</crop>") {
                                 let crop_xml = &val_xml[crop_start..crop_end];
-                                
+
                                 let current_phase = extract_tag_i32(crop_xml, "currentPhase");
-                                let day_of_current_phase = extract_tag_i32(crop_xml, "dayOfCurrentPhase");
-                                
+                                let day_of_current_phase =
+                                    extract_tag_i32(crop_xml, "dayOfCurrentPhase");
+
                                 let mut fully_grown = false;
                                 if let Some(fg_start) = crop_xml.find("<fullGrown>") {
                                     if let Some(fg_end) = crop_xml.find("</fullGrown>") {
-                                        fully_grown = crop_xml[fg_start + 11..fg_end].trim() == "true";
+                                        fully_grown =
+                                            crop_xml[fg_start + 11..fg_end].trim() == "true";
                                     }
                                 }
-                                
+
                                 let mut dead = false;
                                 if let Some(d_start) = crop_xml.find("<dead>") {
                                     if let Some(d_end) = crop_xml.find("</dead>") {
@@ -531,9 +591,12 @@ pub fn get_planted_crops(id: String) -> Result<Vec<PlantedCrop>, String> {
                                         let mut pd_pos = 0;
                                         while let Some(int_start) = pd_xml[pd_pos..].find("<int>") {
                                             let abs_int_start = pd_pos + int_start;
-                                            if let Some(int_end) = pd_xml[abs_int_start..].find("</int>") {
+                                            if let Some(int_end) =
+                                                pd_xml[abs_int_start..].find("</int>")
+                                            {
                                                 let abs_int_end = abs_int_start + int_end;
-                                                let val_str = &pd_xml[abs_int_start + 5..abs_int_end];
+                                                let val_str =
+                                                    &pd_xml[abs_int_start + 5..abs_int_end];
                                                 if let Ok(val) = val_str.parse::<i32>() {
                                                     phase_days.push(val);
                                                 }
@@ -576,7 +639,7 @@ mod tests {
 
     #[test]
     fn test_list() {
-        match list_save_files() {
+        match list_save_files(None) {
             Ok(list) => {
                 println!("SUCCESS: Listed {} saves", list.len());
                 for s in list {
@@ -590,5 +653,3 @@ mod tests {
         }
     }
 }
-
-

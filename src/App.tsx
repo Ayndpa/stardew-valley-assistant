@@ -6,11 +6,13 @@ import { NPCs } from "@/pages/NPCs"
 import { Calendar } from "@/pages/Calendar"
 import { Settings } from "@/pages/Settings"
 import { Mods } from "@/pages/Mods"
+import { Downloads } from "@/pages/Downloads"
 import { OnlineMods } from "@/components/mods/OnlineMods"
 import { Onboarding } from "@/components/Onboarding"
+import { useDownloadManager } from "@/hooks/useDownloadManager"
 import "./index.css"
 
-export type Page = "dashboard" | "crops" | "npcs" | "calendar" | "settings" | "mods" | "onlineMods"
+export type Page = "dashboard" | "crops" | "npcs" | "calendar" | "settings" | "mods" | "onlineMods" | "downloads"
 
 export interface SaveSummary {
   id: string
@@ -29,6 +31,8 @@ export interface SaveSummary {
   deepestMineLevel: number
   millisecondsPlayed: number
   lastSaveTime: number
+  farmerAvatar?: string | null
+  farmerAvatarError?: string | null
 }
 
 function App() {
@@ -39,9 +43,12 @@ function App() {
   const [modListRefreshSignal, setModListRefreshSignal] = useState(0)
   const [globalToast, setGlobalToast] = useState<{ message: string; type: "success" | "info" | "warning" } | null>(null)
   const [isGlobalDragOver, setIsGlobalDragOver] = useState(false)
+  const [isGameRunning, setIsGameRunning] = useState(false)
   const globalDragCounterRef = useRef(0)
   const isHandlingGlobalDropRef = useRef(false)
   const lastHandledDropRef = useRef<{ sig: string; at: number } | null>(null)
+  const isHandlingNxmRef = useRef(false)
+  const lastHandledNxmRef = useRef<{ sig: string; at: number } | null>(null)
   
   const [saves, setSaves] = useState<SaveSummary[]>([])
   const [selectedSaveId, setSelectedSaveId] = useState<string>(() => {
@@ -99,7 +106,10 @@ function App() {
       if (isTauri) {
         try {
           const mod = await import("@tauri-apps/api/core");
-          const list: SaveSummary[] = await mod.invoke("list_save_files")
+          const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+          const list: SaveSummary[] = await mod.invoke("list_save_files", {
+            gameDir: gameDir.trim() || undefined,
+          })
           setSaves(list)
           if (list.length > 0) {
             const storedId = localStorage.getItem("selectedSaveId")
@@ -138,7 +148,26 @@ function App() {
     setGlobalToast({ message, type })
   }, [])
 
+  const {
+    tasks: downloadTasks,
+    stats: downloadStats,
+    queueNexusDownload,
+    queueSmapiDownload,
+    retryTask,
+    removeTask,
+    clearCompletedTasks,
+  } = useDownloadManager({
+    isGameRunning,
+    onModInstalled: () => setModListRefreshSignal((value) => value + 1),
+    onShowToast: showGlobalToast,
+  })
+
   const handleLaunchGame = useCallback(async () => {
+    if (isGameRunning) {
+      showGlobalToast("游戏正在运行中，暂时不能重复启动。", "info")
+      return
+    }
+
     const gameDir = localStorage.getItem("stardewGameDirectory") || ""
     if (!gameDir) {
       showGlobalToast("请先配置游戏安装目录。", "warning")
@@ -153,10 +182,35 @@ function App() {
     try {
       const invokeModule = await import("@tauri-apps/api/core")
       await invokeModule.invoke("launch_game", { gameDir })
+      setIsGameRunning(true)
       showGlobalToast("游戏启动中…", "success")
     } catch (err) {
       console.error("launch_game failed:", err)
       showGlobalToast("启动游戏失败: " + err, "warning")
+    }
+  }, [isGameRunning, showGlobalToast])
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !(window as any).__TAURI_INTERNALS__) {
+      return
+    }
+
+    let unlisten: (() => void) | null = null
+    const setupGameExitListener = async () => {
+      try {
+        const eventModule = await import("@tauri-apps/api/event")
+        unlisten = await eventModule.listen<number>("game-exited", () => {
+          setIsGameRunning(false)
+          showGlobalToast("游戏已退出，模组管理已恢复可修改。", "info")
+        })
+      } catch (err) {
+        console.debug("Unable to setup game exit listener:", err)
+      }
+    }
+
+    setupGameExitListener()
+    return () => {
+      unlisten?.()
     }
   }, [showGlobalToast])
 
@@ -174,6 +228,11 @@ function App() {
   }, [])
 
   const handleGlobalZipDrop = useCallback(async (paths: string[], source: string) => {
+    if (isGameRunning) {
+      showGlobalToast("游戏运行中不能安装模组，请退出游戏后再试。", "warning")
+      return
+    }
+
     const zipPath = getZipPathFromPayload(paths)
 
     if (!zipPath) {
@@ -227,7 +286,64 @@ function App() {
     } finally {
       isHandlingGlobalDropRef.current = false
     }
-  }, [getZipPathFromPayload, showGlobalToast])
+  }, [getZipPathFromPayload, isGameRunning, showGlobalToast])
+
+  const handleNxmUrl = useCallback(async (downloadUrl: string, source: string) => {
+    if (isGameRunning) {
+      showGlobalToast("游戏运行中不能下载并安装模组，请退出游戏后再试。", "warning")
+      return
+    }
+
+    const normalizedUrl = downloadUrl.trim()
+    if (!normalizedUrl.toLowerCase().startsWith("nxm://")) {
+      return
+    }
+
+    const signature = normalizedUrl.toLowerCase()
+    const now = Date.now()
+    const lastHandled = lastHandledNxmRef.current
+    if (isHandlingNxmRef.current) {
+      if (!lastHandled || lastHandled.sig !== signature || now - lastHandled.at > 1200) {
+        showGlobalToast(`【${source}】已有 Nexus 下载正在处理，请稍后重试`, "warning")
+      }
+      return
+    }
+    if (lastHandled && lastHandled.sig === signature && now - lastHandled.at < 1200) {
+      return
+    }
+
+    const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+    if (!gameDir) {
+      showGlobalToast("收到 NexusMods 下载链接，但未配置游戏安装目录", "warning")
+      setShowOnboarding(true)
+      return
+    }
+
+    if (typeof window === "undefined" || !(window as any).__TAURI_INTERNALS__) {
+      showGlobalToast("当前运行环境不支持 NexusMods 协议安装，请在桌面应用中运行", "warning")
+      return
+    }
+
+    isHandlingNxmRef.current = true
+    lastHandledNxmRef.current = { sig: signature, at: now }
+    const result = queueNexusDownload({
+      modName: "NexusMods 模组",
+      author: source,
+      downloadUrl: normalizedUrl,
+    })
+    if (result.ok) {
+      showGlobalToast("NexusMods 下载已加入下载管理", "info")
+    } else {
+      showGlobalToast(result.message, "warning")
+    }
+    isHandlingNxmRef.current = false
+  }, [isGameRunning, queueNexusDownload, showGlobalToast])
+
+  const handleNxmUrls = useCallback(async (urls: string[], source: string) => {
+    for (const url of urls) {
+      await handleNxmUrl(url, source)
+    }
+  }, [handleNxmUrl])
 
   const extractZipPathFromDataTransfer = useCallback((dataTransfer: DataTransfer | null): string | null => {
     if (!dataTransfer) return null
@@ -236,6 +352,45 @@ function App() {
     if (!zipFile) return null
     return (zipFile as File & { path?: string }).path || null
   }, [])
+
+  useEffect(() => {
+    const unlistenFns: Array<() => void> = []
+
+    const setupNxmDeepLink = async () => {
+      if (typeof window === "undefined" || !(window as any).__TAURI_INTERNALS__) {
+        return
+      }
+
+      try {
+        const [invokeModule, eventModule] = await Promise.all([
+          import("@tauri-apps/api/core"),
+          import("@tauri-apps/api/event"),
+        ])
+
+        const takePending = async () => {
+          const pending = await invokeModule.invoke<string[]>("take_pending_nxm_urls")
+          if (pending.length > 0) {
+            await handleNxmUrls(pending, "NexusMods 协议")
+          }
+        }
+
+        await takePending()
+        unlistenFns.push(
+          await eventModule.listen<string>("nxm-download-url", async () => {
+            await takePending()
+          })
+        )
+      } catch (err) {
+        console.debug("Unable to setup nxm deep link listener:", err)
+      }
+    }
+
+    setupNxmDeepLink()
+
+    return () => {
+      unlistenFns.forEach((unlisten) => unlisten())
+    }
+  }, [handleNxmUrls])
 
   useEffect(() => {
     const unlistenFns: Array<() => void> = []
@@ -356,7 +511,25 @@ function App() {
           />
         )
       case "mods":
-        return <Mods onNavigate={setCurrentPage} refreshSignal={modListRefreshSignal} />
+        return (
+          <Mods
+            onNavigate={setCurrentPage}
+            refreshSignal={modListRefreshSignal}
+            isGameRunning={isGameRunning}
+            onQueueSmapiDownload={queueSmapiDownload}
+          />
+        )
+      case "downloads":
+        return (
+          <Downloads
+            tasks={downloadTasks}
+            stats={downloadStats}
+            isGameRunning={isGameRunning}
+            onRetry={retryTask}
+            onRemove={removeTask}
+            onClearCompleted={clearCompletedTasks}
+          />
+        )
       case "onlineMods":
         return (
           <div className="p-8 space-y-6">
@@ -366,7 +539,11 @@ function App() {
                 浏览 SMAPI.io 兼容性数据库和 NexusMods。您可以搜索数千个星露谷物语模组，并了解它们与当前版本的兼容状态。
               </p>
             </div>
-            <OnlineMods onNavigate={setCurrentPage} />
+            <OnlineMods
+              onNavigate={setCurrentPage}
+              isGameRunning={isGameRunning}
+              onQueueDownload={queueNexusDownload}
+            />
           </div>
         )
       default:
@@ -385,6 +562,8 @@ function App() {
         collapsed={sidebarCollapsed}
         onToggleCollapse={toggleSidebarCollapsed}
         onLaunchGame={handleLaunchGame}
+        isGameRunning={isGameRunning}
+        downloadStats={downloadStats}
       />
       <main
         className="flex-1 overflow-auto relative"

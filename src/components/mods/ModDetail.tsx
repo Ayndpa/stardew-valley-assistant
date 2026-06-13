@@ -27,6 +27,7 @@ interface ModDetailProps {
   onOpenFolder: () => void
   onConfigChange: (modId: string, key: string, value: any) => void
   onSaveConfig: () => void
+  isGameRunning?: boolean
 }
 
 export function ModDetail({
@@ -37,6 +38,7 @@ export function ModDetail({
   onOpenFolder,
   onConfigChange,
   onSaveConfig,
+  isGameRunning = false,
 }: ModDetailProps) {
   if (!selectedMod) {
     return (
@@ -48,6 +50,7 @@ export function ModDetail({
   }
 
   const hasUpdate = selectedMod.version !== selectedMod.latestVersion
+  const canEdit = selectedMod.isEnabled && !isGameRunning
 
   return (
     <Card className="border border-border shadow-md rounded-xl overflow-hidden bg-card">
@@ -188,6 +191,8 @@ export function ModDetail({
               size="sm"
               className="flex-1 gap-1.5 py-2 rounded-xl text-xs font-semibold"
               onClick={() => onToggleMod(selectedMod.id)}
+              disabled={isGameRunning}
+              title={isGameRunning ? "游戏运行中，不能启用或禁用模组" : undefined}
             >
               <Power className="h-3.5 w-3.5" />
               {selectedMod.isEnabled ? "禁用此模组" : "启用此模组"}
@@ -218,7 +223,8 @@ export function ModDetail({
                 size="sm"
                 className="bg-primary hover:bg-primary/95 text-primary-foreground gap-1.5 rounded-lg text-xs"
                 onClick={onSaveConfig}
-                disabled={!selectedMod.isEnabled}
+                disabled={!canEdit}
+                title={isGameRunning ? "游戏运行中，不能保存配置" : undefined}
               >
                 <Save className="h-3.5 w-3.5" />
                 保存配置
@@ -231,6 +237,11 @@ export function ModDetail({
               模组当前处于禁用状态，请在“模组信息”中启用模组后再编辑参数配置。
             </div>
           )}
+          {isGameRunning && (
+            <div className="bg-amber-500/10 border border-amber-500/20 p-3.5 rounded-xl text-center text-xs text-amber-600 dark:text-amber-400">
+              游戏运行中，暂时不能修改模组配置。
+            </div>
+          )}
 
           <div className="space-y-4 mt-2 max-h-[300px] overflow-y-auto pr-1">
             {selectedMod.config.length > 0 ? (
@@ -238,7 +249,7 @@ export function ModDetail({
                 <div
                   key={field.key}
                   className={`p-3 rounded-lg border transition-all ${
-                    !selectedMod.isEnabled 
+                    !canEdit 
                       ? "opacity-50 border-border bg-accent/10" 
                       : "border-border/60 bg-accent/10 hover:border-primary/30"
                   }`}
@@ -261,17 +272,17 @@ export function ModDetail({
                       {field.type === "boolean" && (
                         <div 
                           onClick={() => {
-                            if(selectedMod.isEnabled) {
+                            if(canEdit) {
                               onConfigChange(selectedMod.id, field.key, !field.value)
                             }
                           }}
                         >
                           <button
                             type="button"
-                            disabled={!selectedMod.isEnabled}
+                            disabled={!canEdit}
                             className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
                               field.value ? "bg-primary" : "bg-muted-foreground/30"
-                            } ${!selectedMod.isEnabled ? "cursor-not-allowed" : ""}`}
+                            } ${!canEdit ? "cursor-not-allowed" : ""}`}
                           >
                             <span
                               className={`pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg ring-0 transition-transform ${
@@ -285,7 +296,7 @@ export function ModDetail({
                       {field.type === "number" && (
                         <Input
                           type="number"
-                          disabled={!selectedMod.isEnabled}
+                          disabled={!canEdit}
                           className="w-16 h-8 text-xs text-center border-border bg-card rounded-md"
                           value={field.value}
                           onChange={(e) =>
@@ -301,7 +312,7 @@ export function ModDetail({
                       {field.type === "string" && (
                         <Input
                           type="text"
-                          disabled={!selectedMod.isEnabled}
+                          disabled={!canEdit}
                           className="w-24 h-8 text-xs border border-border bg-card rounded-md"
                           value={field.value}
                           onChange={(e) =>

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { Mod } from "@/components/mods/ModList"
 import { ModStateEntry } from "@/components/mods/ModProfiles"
+import type { QueueSmapiDownloadRequest } from "@/hooks/useDownloadManager"
 
 // Helper functions for dynamic imports to ensure web compatibility
 async function getTauriInvoke() {
@@ -29,9 +30,12 @@ async function getTauriOpen() {
 
 type UseModManagementOptions = {
   refreshSignal?: number
+  isGameRunning?: boolean
+  onQueueSmapiDownload?: (request: QueueSmapiDownloadRequest) => { ok: boolean; message: string }
 }
 
 export function useModManagement(options?: UseModManagementOptions) {
+  const isGameRunning = options?.isGameRunning ?? false
   const [mods, setMods] = useState<Mod[]>([])
   const [isLoadingMods, setIsLoadingMods] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
@@ -81,6 +85,12 @@ export function useModManagement(options?: UseModManagementOptions) {
   const showToast = useCallback((message: string, type: "success" | "info" | "warning") => {
     setToast({ message, type })
   }, [])
+
+  const ensureCanModify = useCallback(() => {
+    if (!isGameRunning) return true
+    showToast("游戏运行中不能修改模组或 SMAPI，请退出游戏后再试。", "warning")
+    return false
+  }, [isGameRunning, showToast])
 
   // Auto Dismiss Toast
   useEffect(() => {
@@ -218,6 +228,8 @@ export function useModManagement(options?: UseModManagementOptions) {
 
   // Handlers
   const handleToggleMod = useCallback(async (modId: string) => {
+    if (!ensureCanModify()) return
+
     const gameDir = localStorage.getItem("stardewGameDirectory") || ""
     const targetMod = mods.find((m) => m.id === modId)
     if (!targetMod) return
@@ -264,7 +276,7 @@ export function useModManagement(options?: UseModManagementOptions) {
         })
       )
     }
-  }, [mods, showToast])
+  }, [ensureCanModify, mods, showToast])
 
   const handleScanDirectory = useCallback(async () => {
     const gameDir = localStorage.getItem("stardewGameDirectory") || ""
@@ -384,6 +396,8 @@ export function useModManagement(options?: UseModManagementOptions) {
 
   // Handle configuration changes locally
   const handleConfigChange = useCallback((modId: string, key: string, newValue: any) => {
+    if (!ensureCanModify()) return
+
     setMods((prevMods) =>
       prevMods.map((m) => {
         if (m.id === modId) {
@@ -398,9 +412,11 @@ export function useModManagement(options?: UseModManagementOptions) {
         return m
       })
     )
-  }, [])
+  }, [ensureCanModify])
 
   const handleSaveConfig = useCallback(async () => {
+    if (!ensureCanModify()) return
+
     if (!selectedMod) return
     const gameDir = localStorage.getItem("stardewGameDirectory") || ""
 
@@ -427,9 +443,11 @@ export function useModManagement(options?: UseModManagementOptions) {
       // Browser Mock
       showToast(`（Web 模式模拟）模组 [${selectedMod.name}] 的配置参数已保存至本地 config.json。`, "success")
     }
-  }, [selectedMod, showToast])
+  }, [ensureCanModify, selectedMod, showToast])
 
   const handleInstallSmapi = useCallback(async () => {
+    if (!ensureCanModify()) return
+
     const gameDir = localStorage.getItem("stardewGameDirectory") || ""
     if (!gameDir) {
       showToast("未配置游戏安装目录，请先在设置中配置", "warning")
@@ -446,6 +464,49 @@ export function useModManagement(options?: UseModManagementOptions) {
     }
 
     const downloadUrl = smapiMirror === "ghproxy" ? `https://gh-proxy.org/${rawUrl}` : rawUrl
+
+    if (options?.onQueueSmapiDownload) {
+      setInstallStatus("downloading")
+      setInstallProgress(10)
+      const result = options.onQueueSmapiDownload({
+        version: smapiLatestVersion,
+        downloadUrl,
+        mirror: smapiMirror,
+        onSuccess: async () => {
+          setInstallStatus("success")
+          setInstallProgress(100)
+          showToast("SMAPI 安装成功！", "success")
+
+          const invoke = await getTauriInvoke()
+          if (!invoke) return
+
+          const status = await invoke("check_smapi_status", { gameDir }) as any
+          setSmapiStatus(status)
+
+          const loadedMods = await invoke("list_installed_mods", { gameDir }) as any[]
+          setMods(loadedMods)
+          setSelectedModId(loadedMods.length > 0 ? loadedMods[0].id : "")
+
+          setTimeout(() => {
+            setInstallStatus("idle")
+          }, 1500)
+        },
+        onError: (error) => {
+          setInstallStatus("error")
+          setInstallProgress(0)
+          setInstallError(error)
+        },
+      })
+
+      if (result.ok) {
+        showToast(result.message, "info")
+      } else {
+        setInstallStatus("idle")
+        showToast(result.message, "warning")
+      }
+      return
+    }
+
     const invoke = await getTauriInvoke()
 
     if (invoke) {
@@ -515,9 +576,11 @@ export function useModManagement(options?: UseModManagementOptions) {
         }, 1000)
       }, 1000)
     }
-  }, [smapiDownloadUrl, smapiMirror, smapiLatestVersion, showToast])
+  }, [ensureCanModify, options, smapiDownloadUrl, smapiMirror, smapiLatestVersion, showToast])
 
   const handleUninstallSmapi = useCallback(async () => {
+    if (!ensureCanModify()) return
+
     const gameDir = localStorage.getItem("stardewGameDirectory") || ""
     if (!gameDir) return
 
@@ -550,10 +613,12 @@ export function useModManagement(options?: UseModManagementOptions) {
         setIsManagementOpen(false)
       }
     }
-  }, [showToast])
+  }, [ensureCanModify, showToast])
 
   const handleAddNewMod = useCallback((e: React.FormEvent) => {
     e.preventDefault()
+    if (!ensureCanModify()) return
+
     if (!newModName || !newModAuthor) {
       showToast("请完整填写模组名称与作者！", "warning")
       return
@@ -590,9 +655,11 @@ export function useModManagement(options?: UseModManagementOptions) {
     setNewModDesc("")
     setNewModCategory("utility")
     setNewModVersion("1.0.0")
-  }, [newModName, newModAuthor, newModEngName, newModVersion, newModDesc, newModCategory, showToast])
+  }, [ensureCanModify, newModName, newModAuthor, newModEngName, newModVersion, newModDesc, newModCategory, showToast])
 
   const handleInstallModFromZip = useCallback(async (zipPath: string) => {
+    if (!ensureCanModify()) return
+
     const gameDir = localStorage.getItem("stardewGameDirectory") || ""
     if (!gameDir) {
       showToast("未配置游戏安装目录，请先在设置中配置", "warning")
@@ -630,9 +697,11 @@ export function useModManagement(options?: UseModManagementOptions) {
     } finally {
       setIsScanning(false)
     }
-  }, [selectedModId, showToast])
+  }, [ensureCanModify, selectedModId, showToast])
 
   const handleDeleteMod = useCallback(async (modId: string) => {
+    if (!ensureCanModify()) return
+
     const modToDelete = mods.find((m) => m.id === modId)
     if (!modToDelete) return
     const gameDir = localStorage.getItem("stardewGameDirectory") || ""
@@ -669,7 +738,7 @@ export function useModManagement(options?: UseModManagementOptions) {
     } finally {
       setIsScanning(false)
     }
-  }, [mods, selectedModId, showToast])
+  }, [ensureCanModify, mods, selectedModId, showToast])
 
   const handleOpenOfficialSite = useCallback(async () => {
     const openUrl = await getTauriOpen()
@@ -682,6 +751,8 @@ export function useModManagement(options?: UseModManagementOptions) {
 
   // Apply a profile: toggle each mod to match the profile state
   const handleApplyProfile = useCallback(async (modStates: ModStateEntry[]) => {
+    if (!ensureCanModify()) return
+
     const gameDir = localStorage.getItem("stardewGameDirectory") || ""
     const invoke = await getTauriInvoke()
 
@@ -718,7 +789,7 @@ export function useModManagement(options?: UseModManagementOptions) {
         })
       )
     }
-  }, [])
+  }, [ensureCanModify])
 
   // Filter and search computation
   const filteredMods = useMemo(() => {

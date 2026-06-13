@@ -13,6 +13,7 @@ interface SmapiManagerProps {
   gameVersion: string | null
   smapiLatestVersion: string | null
   onUninstall: () => void
+  isGameRunning?: boolean
 }
 
 export function SmapiManager({
@@ -22,6 +23,7 @@ export function SmapiManager({
   gameVersion,
   smapiLatestVersion,
   onUninstall,
+  isGameRunning = false,
 }: SmapiManagerProps) {
   if (!isManagementOpen || !smapiStatus?.installed) return null
 
@@ -70,6 +72,8 @@ export function SmapiManager({
           variant="destructive"
           size="sm"
           onClick={onUninstall}
+          disabled={isGameRunning}
+          title={isGameRunning ? "游戏运行中，不能卸载 SMAPI" : undefined}
           className="rounded-xl font-semibold gap-1.5 self-end sm:self-auto shrink-0 bg-red-600 hover:bg-red-700 text-white shadow-sm transition-colors"
         >
           <Trash2 className="h-4 w-4" />

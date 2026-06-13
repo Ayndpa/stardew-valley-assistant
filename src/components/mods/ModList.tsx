@@ -60,6 +60,7 @@ interface ModListProps {
   onImportMod: () => void
   isLoading?: boolean
   onGoOnline?: () => void
+  isGameRunning?: boolean
 }
 
 export function ModList({
@@ -82,7 +83,10 @@ export function ModList({
   onImportMod,
   isLoading = false,
   onGoOnline,
+  isGameRunning = false,
 }: ModListProps) {
+  const lockedTitle = isGameRunning ? "游戏运行中，不能修改模组" : undefined
+
   return (
     <div className="space-y-4">
       {/* Toolbar / Actions Bar */}
@@ -149,6 +153,8 @@ export function ModList({
             size="sm" 
             className="gap-2 h-10 bg-primary hover:bg-primary/95 text-primary-foreground text-sm font-semibold rounded-xl px-4 shadow-sm"
             onClick={onImportMod}
+            disabled={isGameRunning}
+            title={lockedTitle}
           >
             <FileUp className="h-4 w-4" />
             导入新模组
@@ -255,14 +261,17 @@ export function ModList({
                       className="mt-1 flex-shrink-0"
                       onClick={(e) => {
                         e.stopPropagation() // Don't trigger selection
+                        if (isGameRunning) return
                         onToggleMod(mod.id)
                       }}
                     >
                       <button
                         type="button"
+                        disabled={isGameRunning}
+                        title={lockedTitle}
                         className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
                           mod.isEnabled ? "bg-primary" : "bg-muted-foreground/30"
-                        }`}
+                        } ${isGameRunning ? "cursor-not-allowed opacity-60" : ""}`}
                       >
                         <span
                           className={`pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg ring-0 transition-transform ${
@@ -323,12 +332,18 @@ export function ModList({
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
+                        if (isGameRunning) return
                         if(confirm(`确定要从列表中移除模组 [${mod.name}] 吗？`)) {
                           onDeleteMod(mod.id)
                         }
                       }}
-                      className="opacity-0 group-hover:opacity-100 p-1 hover:bg-destructive/15 text-muted-foreground hover:text-destructive rounded transition-all mt-1"
-                      title="移除该模组"
+                      className={`opacity-0 group-hover:opacity-100 p-1 rounded transition-all mt-1 ${
+                        isGameRunning
+                          ? "text-muted-foreground/50 cursor-not-allowed"
+                          : "hover:bg-destructive/15 text-muted-foreground hover:text-destructive"
+                      }`}
+                      disabled={isGameRunning}
+                      title={isGameRunning ? "游戏运行中，不能移除模组" : "移除该模组"}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>

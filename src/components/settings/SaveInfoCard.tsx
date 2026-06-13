@@ -19,11 +19,40 @@ export interface SaveSummary {
   deepestMineLevel: number
   millisecondsPlayed: number
   lastSaveTime: number
+  farmerAvatar?: string | null
+  farmerAvatarError?: string | null
 }
 
 export interface FriendshipInfo {
   npcName: string
   points: number
+}
+
+export interface RgbaColor {
+  r: number
+  g: number
+  b: number
+  a: number
+}
+
+export interface FarmerAppearance {
+  gender: string
+  isMale: boolean
+  hair: number
+  skin: number
+  shoes: string
+  shirt: string
+  pants: string
+  accessory: number
+  hatIndex?: number | null
+  hatIgnoreHairstyleOffset: boolean
+  hatHairDrawType?: number | null
+  shirtIndex: number
+  pantsIndex: number
+  hairColor: RgbaColor
+  eyeColor: RgbaColor
+  pantsColor: RgbaColor
+  shirtColor: RgbaColor
 }
 
 export interface SaveDetail {
@@ -32,6 +61,9 @@ export interface SaveDetail {
   weatherTomorrow: string
   museumPiecesCount: number
   friendships: FriendshipInfo[]
+  farmerAppearance?: FarmerAppearance | null
+  farmerAvatar?: string | null
+  farmerAvatarError?: string | null
 }
 
 interface SaveInfoCardProps {
@@ -41,12 +73,23 @@ interface SaveInfoCardProps {
 }
 
 export function SaveInfoCard({ loading, detail, seasons }: SaveInfoCardProps) {
+  const farmerAvatar = detail?.farmerAvatar
+
   return (
     <Card className="overflow-hidden border border-border/80">
       <CardHeader className="bg-gradient-to-r from-primary/10 via-transparent to-transparent pb-4">
         <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center border border-primary/20 shrink-0">
-            <User className="h-5 w-5 text-primary" />
+          <div className="h-16 w-14 rounded-md bg-primary/10 flex items-center justify-center border border-primary/20 shrink-0 overflow-hidden">
+            {farmerAvatar ? (
+              <img
+                src={farmerAvatar}
+                alt={detail?.summary.playerName || "Farmer"}
+                className="h-full w-auto object-contain [image-rendering:pixelated]"
+                draggable={false}
+              />
+            ) : (
+              <User className="h-6 w-6 text-primary" />
+            )}
           </div>
           <div>
             <CardTitle className="text-lg font-bold">当前存档信息</CardTitle>

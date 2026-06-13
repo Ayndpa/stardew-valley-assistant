@@ -28,6 +28,8 @@ interface OnlineModDetailModalProps {
   onClose: () => void
   mod: SmapiMod | null
   onNavigate?: (page: "settings") => void
+  onQueueDownload?: (task: { modName: string; author: string; downloadUrl: string }) => { ok: boolean; message: string }
+  isGameRunning?: boolean
 }
 
 interface ParsedModDetails {
@@ -174,7 +176,9 @@ export function OnlineModDetailModal({
   isOpen,
   onClose,
   mod,
-  onNavigate
+  onNavigate,
+  onQueueDownload,
+  isGameRunning = false
 }: OnlineModDetailModalProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -344,6 +348,11 @@ export function OnlineModDetailModal({
     setInstallError(null)
     setInstallMessage(null)
 
+    if (isGameRunning) {
+      setInstallError("游戏运行中不能下载并安装模组，请退出游戏后再试。")
+      return
+    }
+
     const gameDir = localStorage.getItem("stardewGameDirectory") || ""
     if (!gameDir) {
       setInstallError("未配置游戏安装目录，请先在设置中配置")
@@ -377,6 +386,22 @@ export function OnlineModDetailModal({
       return
     }
 
+    if (onQueueDownload) {
+      const result = onQueueDownload({
+        modName: details.title || mod.Name,
+        author: details.author || mod.Author,
+        downloadUrl,
+      })
+      if (result.ok) {
+        setInstallMessage(result.message)
+        setInstallError(null)
+      } else {
+        setInstallError(result.message)
+        setInstallMessage(null)
+      }
+      return
+    }
+
     setIsInstalling(true)
     setInstallMessage("正在下载并安装...")
     try {
@@ -389,7 +414,7 @@ export function OnlineModDetailModal({
     } finally {
       setIsInstalling(false)
     }
-  }, [details, mod, nexusChecking, nexusLoggedIn, onNavigate, nexusUrl])
+  }, [details, isGameRunning, mod, nexusChecking, nexusLoggedIn, onNavigate, nexusUrl, onQueueDownload])
 
   // Extract Nexus ID from URL
   const getNexusId = (modItem: SmapiMod) => {
@@ -1068,14 +1093,15 @@ export function OnlineModDetailModal({
           <Button 
             variant="default" 
             size="sm" 
-            disabled={isInstalling}
+            disabled={isInstalling || isGameRunning}
             onClick={handleDownloadAndInstall}
             className="h-8 text-xs rounded-lg gap-1 bg-primary text-primary-foreground hover:bg-primary/95 cursor-pointer group relative"
+            title={isGameRunning ? "游戏运行中，不能下载并安装模组" : undefined}
           >
             {isInstalling ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
-            <span>{isInstalling ? "安装中..." : "下载并安装"}</span>
+            <span>{isGameRunning ? "游戏运行中" : isInstalling ? "安装中..." : "加入下载管理"}</span>
             <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-popover text-popover-foreground border text-[9px] px-2 py-1 rounded shadow-lg whitespace-nowrap z-50">
-              尝试从详情页抓取下载链接并解压到 Mods 目录
+              {isGameRunning ? "退出游戏后可加入下载队列" : "加入侧边栏的全局下载队列"}
             </span>
           </Button>
         </div>

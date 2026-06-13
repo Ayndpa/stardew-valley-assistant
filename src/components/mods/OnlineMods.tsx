@@ -10,7 +10,7 @@ import {
   Info,
   Eye,
   Trophy,
-  Database
+  Database,
 } from "lucide-react"
 import { OnlineModDetailModal } from "./OnlineModDetailModal"
 import { NexusModsRanking, type NexusRankedMod } from "./NexusModsRanking"
@@ -51,6 +51,8 @@ export interface SmapiMod {
 
 interface OnlineModsProps {
   onNavigate?: (page: "settings") => void
+  isGameRunning?: boolean
+  onQueueDownload?: (task: { modName: string; author: string; downloadUrl: string }) => { ok: boolean; message: string }
 }
 
 // Initial premium popular mods to display if loading fails or in mock preview
@@ -146,7 +148,7 @@ async function getTauriInvoke() {
   return null;
 }
 
-export function OnlineMods({ onNavigate }: OnlineModsProps) {
+export function OnlineMods({ onNavigate, isGameRunning = false, onQueueDownload }: OnlineModsProps) {
   const [onlineMods, setOnlineMods] = useState<SmapiMod[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -597,6 +599,8 @@ export function OnlineMods({ onNavigate }: OnlineModsProps) {
         onClose={() => setIsDetailOpen(false)}
         mod={selectedDetailMod}
         onNavigate={onNavigate}
+        onQueueDownload={onQueueDownload}
+        isGameRunning={isGameRunning}
       />
     </div>
   )

@@ -62,7 +62,10 @@ const MOCK_SAVE_DETAIL: SaveDetail = {
   weatherToday: "Sun",
   weatherTomorrow: "Rain",
   museumPiecesCount: 62,
-  friendships: []
+  friendships: [],
+  farmerAppearance: null,
+  farmerAvatar: null,
+  farmerAvatarError: null,
 }
 
 const SEASONS = ["春季", "夏季", "秋季", "冬季"]
@@ -108,7 +111,11 @@ export function Settings({
         try {
           const invoke = await getTauriInvoke()
           if (invoke) {
-            const d: SaveDetail = await invoke("get_save_detail", { id: selectedSaveId })
+            const d: SaveDetail = await invoke("get_save_detail", {
+              id: selectedSaveId,
+              gameDir: gameDir.trim() || undefined,
+              includeAvatar: true,
+            })
             setDetail(d)
           } else {
             setDetail(MOCK_SAVE_DETAIL)
@@ -125,7 +132,7 @@ export function Settings({
       }
     }
     fetchDetail()
-  }, [selectedSaveId])
+  }, [selectedSaveId, gameDir])
 
   useEffect(() => {
     if (!gameDir.trim()) {

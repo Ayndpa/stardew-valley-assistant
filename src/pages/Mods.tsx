@@ -10,6 +10,7 @@ import { SmapiManager } from "@/components/mods/SmapiManager"
 import { ModList } from "@/components/mods/ModList"
 import { ModDetail } from "@/components/mods/ModDetail"
 import { ModProfiles } from "@/components/mods/ModProfiles"
+import type { QueueSmapiDownloadRequest } from "@/hooks/useDownloadManager"
 
 // Category Translations
 const CATEGORY_MAP = {
@@ -23,9 +24,11 @@ const CATEGORY_MAP = {
 type ModsProps = {
   onNavigate?: (page: Page) => void
   refreshSignal?: number
+  isGameRunning?: boolean
+  onQueueSmapiDownload?: (request: QueueSmapiDownloadRequest) => { ok: boolean; message: string }
 }
 
-export function Mods({ onNavigate, refreshSignal }: ModsProps) {
+export function Mods({ onNavigate, refreshSignal, isGameRunning = false, onQueueSmapiDownload }: ModsProps) {
   const {
     mods,
     isLoadingMods,
@@ -73,9 +76,14 @@ export function Mods({ onNavigate, refreshSignal }: ModsProps) {
     handleApplyProfile,
     handleInstallModFromZip,
     showToast
-  } = useModManagement({ refreshSignal })
+  } = useModManagement({ refreshSignal, isGameRunning, onQueueSmapiDownload })
 
   const handlePickZipFile = async () => {
+    if (isGameRunning) {
+      showToast("游戏运行中不能导入或安装模组，请退出游戏后再试。", "warning")
+      return
+    }
+
     if (typeof window === "undefined" || !(window as any).__TAURI_INTERNALS__) {
       showToast("当前运行环境不支持本地文件选择，请在桌面应用中运行", "warning")
       return
@@ -145,6 +153,7 @@ export function Mods({ onNavigate, refreshSignal }: ModsProps) {
           installProgress={installProgress}
           installError={installError}
           gameVersion={gameVersion}
+          isGameRunning={isGameRunning}
         />
       ) : (
         <>
@@ -185,6 +194,11 @@ export function Mods({ onNavigate, refreshSignal }: ModsProps) {
                     管理 SMAPI
                   </Button>
                 )}
+                {isGameRunning && (
+                  <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20 gap-1.5 px-3 py-1 font-semibold rounded-full">
+                    游戏运行中：已锁定修改
+                  </Badge>
+                )}
               </div>
               <p className="text-muted-foreground mt-2 text-sm max-w-xl">
                 对游戏扩展模组的加载进行集中控制。您可以在此处扫描本地模组、进行一键版本查重升级，或者直接对每个模组的本地 <code className="bg-accent/40 px-1 py-0.5 rounded text-xs">config.json</code> 参数进行模拟可视化编辑。
@@ -220,12 +234,14 @@ export function Mods({ onNavigate, refreshSignal }: ModsProps) {
             gameVersion={gameVersion}
             smapiLatestVersion={smapiLatestVersion}
             onUninstall={handleUninstallSmapi}
+            isGameRunning={isGameRunning}
           />
           {/* Mod Profiles Section */}
           <ModProfiles
             currentMods={mods.map((m) => ({ folderName: m.folderName.replace(/^\./, ""), isEnabled: m.isEnabled, name: m.name }))}
             onApplyProfile={handleApplyProfile}
             showToast={showToast}
+            isGameRunning={isGameRunning}
           />
 
           {/* Main Split Layout */}
@@ -254,6 +270,7 @@ export function Mods({ onNavigate, refreshSignal }: ModsProps) {
                 onImportMod={() => {
                   void handlePickZipFile()
                 }}
+                isGameRunning={isGameRunning}
               />
             </div>
 
@@ -267,6 +284,7 @@ export function Mods({ onNavigate, refreshSignal }: ModsProps) {
                 onOpenFolder={handleOpenFolder}
                 onConfigChange={handleConfigChange}
                 onSaveConfig={handleSaveConfig}
+                isGameRunning={isGameRunning}
               />
             </div>
           </div>

@@ -12,6 +12,7 @@ interface SmapiInstallerProps {
   installProgress: number
   installError: string | null
   gameVersion: string | null
+  isGameRunning?: boolean
 }
 
 export function SmapiInstaller({
@@ -24,6 +25,7 @@ export function SmapiInstaller({
   installProgress,
   installError,
   gameVersion,
+  isGameRunning = false,
 }: SmapiInstallerProps) {
 
 
@@ -122,7 +124,8 @@ export function SmapiInstaller({
               <div className="flex flex-col sm:flex-row justify-center gap-3">
                 <Button
                   onClick={onInstall}
-                  disabled={smapiLatestVersion === null}
+                  disabled={smapiLatestVersion === null || isGameRunning}
+                  title={isGameRunning ? "游戏运行中，不能安装 SMAPI" : undefined}
                   className="bg-primary hover:bg-primary/95 text-primary-foreground font-bold text-sm px-8 py-6 rounded-2xl shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2"
                 >
                   <Download className="h-5 w-5" />
@@ -147,6 +150,8 @@ export function SmapiInstaller({
                 <div className="flex justify-center gap-3">
                   <Button
                     onClick={onInstall}
+                    disabled={isGameRunning}
+                    title={isGameRunning ? "游戏运行中，不能安装 SMAPI" : undefined}
                     className="bg-primary hover:bg-primary/95 text-primary-foreground font-bold text-xs px-6 py-4 rounded-xl"
                   >
                     <RefreshCw className="h-4 w-4 mr-1.5 animate-spin" style={{ animationDuration: '3s' }} /> 重新尝试安装
@@ -173,7 +178,7 @@ export function SmapiInstaller({
                   ></div>
                 </div>
                 <p className="text-[10px] text-muted-foreground text-center">
-                  正在自动为您下载平台特定的运行库并完成目录重定向，请勿关闭程序。
+                  {isGameRunning ? "游戏运行中，安装功能已暂时锁定。" : "正在自动为您下载平台特定的运行库并完成目录重定向，请勿关闭程序。"}
                 </p>
               </div>
             )}

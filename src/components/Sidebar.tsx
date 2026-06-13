@@ -18,6 +18,7 @@ import {
   User,
   Download,
   Play,
+  ListChecks,
 } from "lucide-react"
 
 interface SidebarProps {
@@ -29,6 +30,15 @@ interface SidebarProps {
   collapsed: boolean
   onToggleCollapse: () => void
   onLaunchGame: () => void
+  isGameRunning: boolean
+  downloadStats: {
+    running: number
+    queued: number
+    failed: number
+    finished: number
+    total: number
+    maxConcurrent: number
+  }
 }
 
 const navItems: { id: Page; label: string; icon: React.ReactNode }[] = [
@@ -38,8 +48,39 @@ const navItems: { id: Page; label: string; icon: React.ReactNode }[] = [
   { id: "calendar", label: "节日日历", icon: <CalendarDays /> },
   { id: "mods", label: "模组管理", icon: <Puzzle /> },
   { id: "onlineMods", label: "获取模组", icon: <Download className="h-4 w-4" /> },
+  { id: "downloads", label: "下载管理", icon: <ListChecks className="h-4 w-4" /> },
   { id: "settings", label: "设置", icon: <Settings /> },
 ]
+
+function SaveAvatar({
+  save,
+  className,
+  iconClassName,
+}: {
+  save?: SaveSummary
+  className?: string
+  iconClassName?: string
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-md flex items-center justify-center bg-primary/10 border border-sidebar-border/60 shrink-0 overflow-hidden shadow-sm",
+        className
+      )}
+    >
+      {save?.farmerAvatar ? (
+        <img
+          src={save.farmerAvatar}
+          alt={`${save.playerName}头像`}
+          className="h-full w-auto object-contain [image-rendering:pixelated]"
+          draggable={false}
+        />
+      ) : (
+        <User className={cn("h-4 w-4 text-primary", iconClassName)} />
+      )}
+    </div>
+  )
+}
 
 export function Sidebar({
   currentPage,
@@ -50,6 +91,8 @@ export function Sidebar({
   collapsed,
   onToggleCollapse,
   onLaunchGame,
+  isGameRunning,
+  downloadStats,
 }: SidebarProps) {
   const [isOpen, setIsOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -66,21 +109,6 @@ export function Sidebar({
   }, [])
 
   const currentSave = saves.find((s) => s.id === selectedSaveId) || saves[0]
-
-  // A helper to generate a premium gradient based on the player name's length/content
-  const getAvatarGradient = (name: string) => {
-    const sum = name.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0)
-    const gradients = [
-      "from-amber-500 to-orange-600",
-      "from-emerald-500 to-teal-600",
-      "from-blue-500 to-indigo-600",
-      "from-indigo-500 to-purple-600",
-      "from-violet-500 to-fuchsia-600",
-      "from-pink-500 to-rose-600",
-      "from-rose-500 to-red-600",
-    ]
-    return gradients[sum % gradients.length]
-  }
 
   const handleSelectSave = (id: string) => {
     onSaveChange(id)
@@ -129,17 +157,12 @@ export function Sidebar({
             >
               <div className={cn("flex items-center", collapsed ? "" : "gap-2.5 min-w-0")}>
                 {currentSave ? (
-                  <div className={cn(
-                    "rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0 shadow-sm bg-gradient-to-br",
-                    collapsed ? "h-9 w-9" : "h-8 w-8",
-                    getAvatarGradient(currentSave.playerName)
-                  )}>
-                    {currentSave.playerName.charAt(0)}
-                  </div>
+                  <SaveAvatar
+                    save={currentSave}
+                    className={collapsed ? "h-11 w-10" : "h-10 w-9"}
+                  />
                 ) : (
-                  <div className="h-8 w-8 rounded-full flex items-center justify-center bg-muted text-muted-foreground shrink-0 border border-sidebar-border/50">
-                    <User className="h-4 w-4" />
-                  </div>
+                  <SaveAvatar className="h-10 w-9" iconClassName="text-muted-foreground" />
                 )}
                 {!collapsed && (
                   <div className="flex flex-col min-w-0">
@@ -176,12 +199,7 @@ export function Sidebar({
                             isSelected && "bg-sidebar-accent text-sidebar-accent-foreground border-primary font-medium"
                           )}
                         >
-                          <div className={cn(
-                            "h-7 w-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0 shadow-sm bg-gradient-to-br",
-                            getAvatarGradient(s.playerName)
-                          )}>
-                            {s.playerName.charAt(0)}
-                          </div>
+                          <SaveAvatar save={s} className="h-9 w-8" />
                           <div className="flex flex-col min-w-0 flex-1">
                             <span className="text-xs font-semibold truncate leading-normal">
                               {s.playerName}
@@ -212,31 +230,47 @@ export function Sidebar({
               collapsed ? "justify-center px-2" : "justify-start px-3"
             )}
             onClick={onLaunchGame}
-            title="一键启动游戏"
+            disabled={isGameRunning}
+            title={isGameRunning ? "游戏运行中" : "一键启动游戏"}
           >
             <span className="shrink-0">
               <Play className="h-4 w-4 text-primary" />
             </span>
-            {!collapsed && "一键启动"}
+            {!collapsed && (isGameRunning ? "游戏运行中" : "一键启动")}
           </Button>
-          {navItems.map((item) => (
-            <Button
-              key={item.id}
-              variant={currentPage === item.id ? "secondary" : "ghost"}
-              className={cn(
-                "gap-3 h-10 text-sm font-medium transition-all duration-200",
-                collapsed ? "justify-center px-2" : "justify-start px-3",
-                currentPage === item.id
-                  ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                  : "text-sidebar-foreground hover:bg-sidebar-accent/50"
-              )}
-              onClick={() => onNavigate(item.id)}
-              title={collapsed ? item.label : undefined}
-            >
-              <span className="shrink-0">{item.icon}</span>
-              {!collapsed && item.label}
-            </Button>
-          ))}
+          {navItems.map((item) => {
+            const showDownloadCount = item.id === "downloads" && downloadStats.total > 0
+            return (
+              <Button
+                key={item.id}
+                variant={currentPage === item.id ? "secondary" : "ghost"}
+                className={cn(
+                  "gap-3 h-10 text-sm font-medium transition-all duration-200 relative",
+                  collapsed ? "justify-center px-2" : "justify-start px-3",
+                  currentPage === item.id
+                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                    : "text-sidebar-foreground hover:bg-sidebar-accent/50"
+                )}
+                onClick={() => onNavigate(item.id)}
+                title={collapsed ? item.label : undefined}
+              >
+                <span className="shrink-0">{item.icon}</span>
+                {!collapsed && (
+                  <>
+                    <span className="min-w-0 flex-1 text-left">{item.label}</span>
+                    {showDownloadCount && (
+                      <span className="ml-auto min-w-5 rounded-full bg-primary px-1.5 text-center text-[10px] font-bold leading-5 text-primary-foreground">
+                        {downloadStats.total}
+                      </span>
+                    )}
+                  </>
+                )}
+                {collapsed && showDownloadCount && (
+                  <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-primary" />
+                )}
+              </Button>
+            )
+          })}
         </nav>
       </ScrollArea>
 
