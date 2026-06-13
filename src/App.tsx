@@ -138,6 +138,28 @@ function App() {
     setGlobalToast({ message, type })
   }, [])
 
+  const handleLaunchGame = useCallback(async () => {
+    const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+    if (!gameDir) {
+      showGlobalToast("请先配置游戏安装目录。", "warning")
+      return
+    }
+
+    if (typeof window === "undefined" || !(window as any).__TAURI_INTERNALS__) {
+      showGlobalToast("当前为 Web 模式，暂不支持直接启动游戏。", "warning")
+      return
+    }
+
+    try {
+      const invokeModule = await import("@tauri-apps/api/core")
+      await invokeModule.invoke("launch_game", { gameDir })
+      showGlobalToast("游戏启动中…", "success")
+    } catch (err) {
+      console.error("launch_game failed:", err)
+      showGlobalToast("启动游戏失败: " + err, "warning")
+    }
+  }, [showGlobalToast])
+
   useEffect(() => {
     if (globalToast) {
       const timer = setTimeout(() => {
@@ -328,9 +350,9 @@ function App() {
         return <Calendar selectedSaveId={selectedSaveId} />
       case "settings":
         return (
-          <Settings
-            selectedSaveId={selectedSaveId}
-            onRestartOnboarding={() => setShowOnboarding(true)}
+        <Settings
+          selectedSaveId={selectedSaveId}
+          onRestartOnboarding={() => setShowOnboarding(true)}
           />
         )
       case "mods":
@@ -362,6 +384,7 @@ function App() {
         onSaveChange={handleSaveChange}
         collapsed={sidebarCollapsed}
         onToggleCollapse={toggleSidebarCollapsed}
+        onLaunchGame={handleLaunchGame}
       />
       <main
         className="flex-1 overflow-auto relative"

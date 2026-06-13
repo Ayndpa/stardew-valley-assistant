@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 #[cfg(target_os = "windows")]
 fn get_steam_path_from_registry() -> Option<String> {
@@ -142,4 +143,52 @@ pub fn get_stardew_valley_version(game_dir: &str) -> Option<String> {
 pub fn get_game_version(game_dir: String) -> Result<String, String> {
     get_stardew_valley_version(&game_dir)
         .ok_or_else(|| "无法检测游戏版本，请确认游戏安装目录是否正确。".to_string())
+}
+
+fn pick_executable(game_dir: &Path) -> Option<PathBuf> {
+    #[cfg(target_os = "windows")]
+    {
+        let smapi_launcher = game_dir.join("StardewModdingAPI.exe");
+        if smapi_launcher.exists() {
+            return Some(smapi_launcher);
+        }
+
+        let game_exe = game_dir.join("Stardew Valley.exe");
+        if game_exe.exists() {
+            return Some(game_exe);
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let smapi_launcher = game_dir.join("StardewModdingAPI");
+        if smapi_launcher.exists() {
+            return Some(smapi_launcher);
+        }
+
+        let game_exe = game_dir.join("StardewValley");
+        if game_exe.exists() {
+            return Some(game_exe);
+        }
+    }
+
+    None
+}
+
+#[tauri::command]
+pub fn launch_game(game_dir: String) -> Result<(), String> {
+    let game_path = Path::new(&game_dir);
+    if !game_path.exists() {
+        return Err("游戏目录不存在，请先设置正确的目录。".to_string());
+    }
+
+    let exe_path = pick_executable(game_path)
+        .ok_or_else(|| "未找到可执行文件（StardewModdingAPI.exe / Stardew Valley.exe）。".to_string())?;
+
+    Command::new(&exe_path)
+        .current_dir(game_path)
+        .spawn()
+        .map_err(|e| format!("启动游戏失败: {}", e))?;
+
+    Ok(())
 }

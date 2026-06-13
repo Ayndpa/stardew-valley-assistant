@@ -17,6 +17,7 @@ import {
   ChevronRight,
   User,
   Download,
+  Play,
 } from "lucide-react"
 
 interface SidebarProps {
@@ -27,6 +28,7 @@ interface SidebarProps {
   onSaveChange: (id: string) => void
   collapsed: boolean
   onToggleCollapse: () => void
+  onLaunchGame: () => void
 }
 
 const navItems: { id: Page; label: string; icon: React.ReactNode }[] = [
@@ -39,7 +41,16 @@ const navItems: { id: Page; label: string; icon: React.ReactNode }[] = [
   { id: "settings", label: "设置", icon: <Settings /> },
 ]
 
-export function Sidebar({ currentPage, onNavigate, saves, selectedSaveId, onSaveChange, collapsed, onToggleCollapse }: SidebarProps) {
+export function Sidebar({
+  currentPage,
+  onNavigate,
+  saves,
+  selectedSaveId,
+  onSaveChange,
+  collapsed,
+  onToggleCollapse,
+  onLaunchGame,
+}: SidebarProps) {
   const [isOpen, setIsOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
@@ -194,6 +205,20 @@ export function Sidebar({ currentPage, onNavigate, saves, selectedSaveId, onSave
       {/* Navigation */}
       <ScrollArea className={cn("flex-1 py-4", collapsed ? "px-2" : "px-3")}>
         <nav className="flex flex-col gap-1">
+          <Button
+            variant="ghost"
+            className={cn(
+              "gap-3 h-10 text-sm font-medium transition-all duration-200 border border-border/40 hover:bg-sidebar-accent/50 text-sidebar-foreground",
+              collapsed ? "justify-center px-2" : "justify-start px-3"
+            )}
+            onClick={onLaunchGame}
+            title="一键启动游戏"
+          >
+            <span className="shrink-0">
+              <Play className="h-4 w-4 text-primary" />
+            </span>
+            {!collapsed && "一键启动"}
+          </Button>
           {navItems.map((item) => (
             <Button
               key={item.id}
@@ -231,13 +256,9 @@ export function Sidebar({ currentPage, onNavigate, saves, selectedSaveId, onSave
       </div>
 
       {/* Footer */}
-      {!collapsed && (
-        <div className="border-t border-sidebar-border px-6 py-4">
-          <p className="text-xs text-muted-foreground text-center">
-            v0.1.0 · 星露谷物语助手
-          </p>
-        </div>
-      )}
+      <div className={cn("border-t border-sidebar-border text-xs text-muted-foreground", collapsed ? "px-2 py-3" : "px-6 py-3")}>
+        {!collapsed && <p className="text-center">v0.1.0 · 星露谷物语助手</p>}
+      </div>
     </aside>
   )
 }

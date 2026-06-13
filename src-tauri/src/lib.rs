@@ -4,7 +4,7 @@ mod smapi;
 mod mods;
 mod saves;
 
-use crate::game::{auto_detect_game_dir, get_game_version};
+use crate::game::{auto_detect_game_dir, get_game_version, launch_game};
 use crate::smapi::{check_smapi_status, install_smapi, uninstall_smapi};
 use crate::mods::{
     apply_profile,
@@ -55,6 +55,7 @@ pub fn run() {
             open_nexus_ranking_scraper,
             open_in_file_manager,
             get_game_version,
+            launch_game,
             install_smapi,
             uninstall_smapi,
             list_save_files,
