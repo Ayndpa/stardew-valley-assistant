@@ -49,7 +49,7 @@ export function ModDetail({
     )
   }
 
-  const hasUpdate = selectedMod.version !== selectedMod.latestVersion
+  const hasUpdate = !!selectedMod.latestVersion && selectedMod.version !== selectedMod.latestVersion
   const canEdit = selectedMod.isEnabled && !isGameRunning
 
   return (
@@ -81,6 +81,16 @@ export function ModDetail({
           <div>
             当前版本: <span className="font-semibold text-foreground">v{selectedMod.version}</span>
           </div>
+          {selectedMod.latestVersion && selectedMod.latestVersion !== selectedMod.version && (
+            <div>
+              最新版本: <span className="font-semibold text-amber-600 dark:text-amber-400">v{selectedMod.latestVersion}</span>
+            </div>
+          )}
+          {selectedMod.latestVersion && selectedMod.latestVersion === selectedMod.version && (
+            <div>
+              最新版本: <span className="font-semibold text-green-600 dark:text-green-400">v{selectedMod.latestVersion} ✓</span>
+            </div>
+          )}
           {selectedMod.nexusId && (
             <button
               onClick={() => openUrl(`https://www.nexusmods.com/stardewvalley/mods/${selectedMod.nexusId}`)}

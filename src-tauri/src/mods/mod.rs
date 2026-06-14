@@ -56,7 +56,7 @@ pub use local::{
     save_mod_config, toggle_mod,
 };
 pub use nexus::{
-    check_nexus_login_status, close_scraper_window, fetch_nexus_api_key,
+    check_mod_updates, check_nexus_login_status, load_cached_mod_updates, close_scraper_window, fetch_nexus_api_key,
     fetch_nexus_download_metadata, fetch_smapi_compatibility_mods, install_nexus_mod, logout_nexus,
     open_nexus_login_window, open_nexus_ranking_scraper, open_scraper_window,
 };

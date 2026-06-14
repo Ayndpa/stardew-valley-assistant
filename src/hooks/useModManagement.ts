@@ -217,6 +217,23 @@ export function useModManagement(options?: UseModManagementOptions) {
           if (!loadedMods.length) return ""
           return loadedMods.some((mod: any) => mod.id === prevId) ? prevId : loadedMods[0].id
         })
+
+        // Load cached latest versions (non-blocking, best-effort)
+        try {
+          const cachedVersions = (await invoke("load_cached_mod_updates")) as Record<number, string>
+          if (Object.keys(cachedVersions).length > 0) {
+            setMods((prev) =>
+              prev.map((m) => {
+                if (m.nexusId && cachedVersions[m.nexusId]) {
+                  return { ...m, latestVersion: cachedVersions[m.nexusId] }
+                }
+                return m
+              })
+            )
+          }
+        } catch (cacheErr) {
+          console.warn("Failed to load cached mod updates:", cacheErr)
+        }
       } catch (err: any) {
         console.error("Failed to refresh installed mods:", err)
       } finally {
@@ -302,6 +319,23 @@ export function useModManagement(options?: UseModManagementOptions) {
           setSelectedModId("")
         }
         showToast(`扫描成功！已在 [${gameDir}\\Mods] 中检索到 ${loadedMods.length} 个模组文件夹。`, "success")
+
+        // Load cached latest versions (non-blocking, best-effort)
+        try {
+          const cachedVersions = (await invoke("load_cached_mod_updates")) as Record<number, string>
+          if (Object.keys(cachedVersions).length > 0) {
+            setMods((prev) =>
+              prev.map((m) => {
+                if (m.nexusId && cachedVersions[m.nexusId]) {
+                  return { ...m, latestVersion: cachedVersions[m.nexusId] }
+                }
+                return m
+              })
+            )
+          }
+        } catch (cacheErr) {
+          console.warn("Failed to load cached mod updates:", cacheErr)
+        }
       } catch (err: any) {
         console.error("Scan error:", err)
         showToast("扫描失败: " + err, "warning")
@@ -322,30 +356,35 @@ export function useModManagement(options?: UseModManagementOptions) {
     const invoke = await getTauriInvoke()
     if (invoke) {
       try {
-        const compatMods = await invoke("fetch_smapi_compatibility_mods") as any[]
-        // Build a map: nexusId -> latest compatible version
-        const versionMap = new Map<number, string>()
-        for (const cm of compatMods) {
-          if (cm.nexusId && cm.version) {
-            versionMap.set(cm.nexusId, cm.version)
-          }
+        // Collect all nexusIds from installed mods
+        const modIds = mods.filter((m) => m.nexusId).map((m) => m.nexusId!)
+        if (modIds.length === 0) {
+          setIsCheckingUpdates(false)
+          showToast("没有可检查更新的模组（已安装模组均无 NexusMods ID）。", "info")
+          return
         }
+
+        // Call NexusMods REST API to get latest versions (force refresh)
+        const versionMap = (await invoke("check_mod_updates", {
+          modIds,
+          force: true,
+        })) as Record<number, string>
+
+        // Count how many mods have updates available
+        const needsUpdateCount = mods.filter(
+          (m) => m.nexusId && versionMap[m.nexusId] && m.version !== versionMap[m.nexusId]
+        ).length
+
         // Update latestVersion for each installed mod
         setMods((prev) =>
           prev.map((m) => {
-            if (m.nexusId && versionMap.has(m.nexusId)) {
-              return { ...m, latestVersion: versionMap.get(m.nexusId)! }
+            if (m.nexusId && versionMap[m.nexusId]) {
+              return { ...m, latestVersion: versionMap[m.nexusId] }
             }
             return m
           })
         )
-        const updatedMods = mods.map((m) => {
-          if (m.nexusId && versionMap.has(m.nexusId)) {
-            return { ...m, latestVersion: versionMap.get(m.nexusId)! }
-          }
-          return m
-        })
-        const needsUpdateCount = updatedMods.filter((m) => m.version !== m.latestVersion).length
+
         setIsCheckingUpdates(false)
         if (needsUpdateCount > 0) {
           showToast(`检查完毕！发现 ${needsUpdateCount} 个模组有新版本。请点击黄色卡片升级。`, "warning")

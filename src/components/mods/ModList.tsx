@@ -236,7 +236,7 @@ export function ModList({
           </Card>
         ) : (
           filteredMods.map((mod) => {
-            const hasUpdate = mod.version !== mod.latestVersion
+            const hasUpdate = !!mod.latestVersion && mod.version !== mod.latestVersion
             const isSelected = mod.id === selectedModId
             const isSyncingTranslation = translationSyncingModIds.has(mod.id)
             return (
@@ -301,7 +301,10 @@ export function ModList({
                         </span>
                       </div>
                       <p className="text-xs text-muted-foreground mt-1 font-medium">
-                        作者: {mod.author} · 本地版本: v{mod.version}
+                        作者: {mod.author} · 版本: v{mod.version}
+                        {hasUpdate && (
+                          <span className="text-amber-600 dark:text-amber-400"> → v{mod.latestVersion}</span>
+                        )}
                       </p>
                       <p className="text-xs text-muted-foreground/80 mt-1 line-clamp-1">
                         {mod.description}
@@ -333,7 +336,7 @@ export function ModList({
                       </Badge>
                     ) : (
                       <Badge variant="outline" className="text-[10px] text-green-600 dark:text-green-400 border-green-200 dark:border-green-900/40 bg-green-500/5 dark:bg-green-500/2 py-0.5 px-1.5 rounded-md">
-                        最新版
+                        {mod.latestVersion ? `最新版 v${mod.latestVersion}` : "最新版"}
                       </Badge>
                     )}
 
