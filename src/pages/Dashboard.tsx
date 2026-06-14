@@ -194,7 +194,6 @@ export function Dashboard({ selectedSaveId }: DashboardProps) {
   const { t, i18n } = useTranslation()
   const [detail, setDetail] = useState<SaveDetail | null>(null)
   const [loading, setLoading] = useState(true)
-  const [showAllForecast, setShowAllForecast] = useState(false)
   const [selectedForecastIndex, setSelectedForecastIndex] = useState(0)
   const [itemEntries, setItemEntries] = useState<ItemEntry[] | null>(null)
 
@@ -435,9 +434,6 @@ export function Dashboard({ selectedSaveId }: DashboardProps) {
     forecastData.length > 0 ? forecastData.length - 1 : 0,
   )
   const currentForecast = forecastData[safeForecastIndex] || forecastData[0]
-  const timelineIndices = showAllForecast ? forecastData.map((_, index) => index) : [0, 1]
-  const visibleTimeline = timelineIndices
-    .filter((index) => index < forecastData.length)
 
   return (
     <div className="p-8 space-y-8">
