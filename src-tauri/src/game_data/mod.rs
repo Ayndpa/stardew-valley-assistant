@@ -195,8 +195,13 @@ mod tests {
             &content,
             &["Characters", "NPCNames", "UI", "1_6_Strings"],
         );
-        let festivals =
-            calendar::load_calendar_festivals(&content, &localized_tables, true).unwrap();
+        let festivals = calendar::load_calendar_festivals(
+            &content,
+            &localized_tables,
+            true,
+            xnb::get_lang_suffix(Some("zh")),
+        )
+        .unwrap();
         let birthdays =
             calendar::load_calendar_birthdays(&content, &localized_tables, true).unwrap();
 
@@ -224,7 +229,7 @@ mod tests {
                 "Objects",
             ],
         );
-        let npcs = npc::load_npc_profiles(&content, &localized_tables).unwrap();
+        let npcs = npc::load_npc_profiles(&content, &localized_tables, true).unwrap();
 
         assert!(npcs.iter().any(|entry| entry.id == "Abigail"));
         assert!(npcs.iter().any(|entry| entry.id == "Lewis"));
@@ -246,7 +251,8 @@ mod tests {
             &content,
             &["Objects", "1_6_Strings", "StringsFromCSFiles", "NPCNames"],
         );
-        let recipe_sources = items::load_cooking_recipe_sources(&content, &localized_tables);
+        let recipe_sources =
+            items::load_cooking_recipe_sources_localized(&content, &localized_tables, true);
 
         // Should have recipe sources for some items
         assert!(!recipe_sources.is_empty());

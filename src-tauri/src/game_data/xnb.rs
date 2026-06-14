@@ -1375,6 +1375,7 @@ pub fn load_string_dictionary_xnb(path: &Path) -> Result<HashMap<String, String>
     Ok(values)
 }
 
+#[cfg(test)]
 pub fn load_localized_string_tables(
     content_dir: &Path,
     asset_names: &[&str],
@@ -1406,20 +1407,7 @@ pub fn load_localized_string_tables_with_lang(
     lang: Option<&str>,
 ) -> HashMap<String, HashMap<String, String>> {
     let lang_str = lang.unwrap_or("zh");
-    let suffix = match lang_str.to_lowercase().as_str() {
-        "zh" | "zh-cn" => ".zh-CN",
-        "ja" | "ja-jp" => ".ja-JP",
-        "ru" | "ru-ru" => ".ru-RU",
-        "de" | "de-de" => ".de-DE",
-        "es" | "es-es" => ".es-ES",
-        "fr" | "fr-fr" => ".fr-FR",
-        "it" | "it-it" => ".it-IT",
-        "ko" | "ko-kr" => ".ko-KR",
-        "pt" | "pt-br" => ".pt-BR",
-        "tr" | "tr-tr" => ".tr-TR",
-        "hu" | "hu-hu" => ".hu-HU",
-        _ => "",
-    };
+    let suffix = get_lang_suffix(Some(lang_str));
 
     let mut tables = HashMap::new();
     for asset_name in asset_names {
