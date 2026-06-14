@@ -227,7 +227,26 @@
       "snow": "Snowy",
       "wind": "Windy",
       "greenRain": "Green Rain",
-      "festival": "Festival Sunny"
+      "festival": "Festival Sunny",
+      "flavor": {
+        "sun": "It's going to be a beautiful sunny day tomorrow!",
+        "rain": "It's going to rain tomorrow. A perfect time to catch some rare fish!",
+        "storm": "There's a storm coming tomorrow. Got your lightning rods ready?",
+        "snow": "It's going to snow tomorrow. Enjoy the winter wonderland!",
+        "wind": "It's going to be windy tomorrow. Watch the leaves dance!",
+        "greenRain": "A strange green cloud is approaching... Green rain is coming!",
+        "festival": "Tomorrow is a festival! The weather will be wonderful."
+      },
+      "tip": {
+        "sun": "A great day for farming.",
+        "sunWinter": "Crops won't grow outdoors in winter, except in the greenhouse.",
+        "rain": "No need to water crops, go fishing instead!",
+        "storm": "Watch out for lightning! Rods collect batteries.",
+        "snow": "Crops won't grow in winter, except in the greenhouse.",
+        "wind": "Lots of forageables will appear today.",
+        "greenRain": "Strange trees will grow, check the forest!",
+        "festival": "Attend the festival and have a good time."
+      }
     },
     "stats": {
       "moneyTitle": "Money",

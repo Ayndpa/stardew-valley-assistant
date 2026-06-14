@@ -140,26 +140,50 @@ pub fn parse_friendship_data(xml: &str) -> Vec<FriendshipInfo> {
 
 pub fn parse_museum_pieces(xml: &str) -> Vec<String> {
     let mut pieces = Vec::new();
-    if let Some(start_idx) = xml.find("<museumPieces>") {
-        if let Some(end_idx) = xml.find("</museumPieces>") {
-            let inner = &xml[start_idx + 14..end_idx];
-            let mut search_pos = 0;
-            while let Some(item_start) = inner[search_pos..].find("<item>") {
-                let abs_start = search_pos + item_start;
-                let Some(item_end_rel) = inner[abs_start..].find("</item>") else {
-                    break;
-                };
-                let abs_end = abs_start + item_end_rel;
-                let item_xml = &inner[abs_start + 6..abs_end];
-                let id = item_xml
-                    .replace("<int>", "")
-                    .replace("</int>", "")
-                    .trim()
-                    .to_string();
-                if !id.is_empty() {
-                    pieces.push(id);
+    // In 1.6, museum pieces are in the LibraryMuseum location
+    if let Some(museum_start) = xml.find("<GameLocation xsi:type=\"LibraryMuseum\">") {
+        let museum_end = xml[museum_start..].find("</GameLocation>").unwrap_or(xml.len()) + museum_start;
+        let museum_xml = &xml[museum_start..museum_end];
+
+        if let Some(start_idx) = museum_xml.find("<museumPieces>") {
+            if let Some(end_idx) = museum_xml.find("</museumPieces>") {
+                let inner = &museum_xml[start_idx + 14..end_idx];
+                let mut search_pos = 0;
+                while let Some(item_start) = inner[search_pos..].find("<item>") {
+                    let abs_start = search_pos + item_start;
+                    let Some(item_end_rel) = inner[abs_start..].find("</item>") else {
+                        break;
+                    };
+                    let abs_end = abs_start + item_end_rel;
+                    let item_xml = &inner[abs_start + 6..abs_end];
+
+                    // Try to find <value><string>ID</string></value> (1.6 format)
+                    let mut id = String::new();
+                    if let Some(val_start) = item_xml.find("<value>") {
+                        if let Some(val_end) = item_xml.find("</value>") {
+                            let val_xml = &item_xml[val_start..val_end];
+                            if let Some(s_start) = val_xml.find("<string>") {
+                                if let Some(s_end) = val_xml.find("</string>") {
+                                    id = val_xml[s_start + 8..s_end].to_string();
+                                }
+                            }
+                        }
+                    }
+
+                    // Fallback to <int>ID</int> (Legacy format)
+                    if id.is_empty() {
+                        id = item_xml
+                            .replace("<int>", "")
+                            .replace("</int>", "")
+                            .trim()
+                            .to_string();
+                    }
+
+                    if !id.is_empty() {
+                        pieces.push(id);
+                    }
+                    search_pos = abs_end + 7;
                 }
-                search_pos = abs_end + 7;
             }
         }
     }

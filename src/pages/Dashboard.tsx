@@ -69,24 +69,80 @@ const VILLAGERS = new Set([
   "Sebastian", "Shane", "Vincent", "Willy", "Wizard", "Dwarf"
 ])
 
-const getWeatherConfig = (weather: string, t: any) => {
+const getWeatherConfig = (weather: string, season: number, t: any) => {
   switch (weather) {
     case "Sun":
-      return { label: t("dashboard.weather.sun"), color: "text-yellow-500", icon: Sun }
+      return {
+        label: t("dashboard.weather.sun"),
+        color: "text-yellow-500",
+        icon: Sun,
+        bgGradient: "from-yellow-500/15 via-amber-500/10 to-orange-500/10",
+        flavor: t("dashboard.weather.flavor.sun"),
+        tip: season === 3 ? t("dashboard.weather.tip.sunWinter") : t("dashboard.weather.tip.sun")
+      }
     case "Rain":
-      return { label: t("dashboard.weather.rain"), color: "text-blue-400", icon: CloudRain }
+      return {
+        label: t("dashboard.weather.rain"),
+        color: "text-blue-400",
+        icon: CloudRain,
+        bgGradient: "from-blue-500/15 via-sky-500/10 to-indigo-500/10",
+        flavor: t("dashboard.weather.flavor.rain"),
+        tip: t("dashboard.weather.tip.rain")
+      }
     case "Storm":
-      return { label: t("dashboard.weather.storm"), color: "text-purple-400", icon: CloudLightning }
+      return {
+        label: t("dashboard.weather.storm"),
+        color: "text-purple-400",
+        icon: CloudLightning,
+        bgGradient: "from-purple-500/15 via-fuchsia-500/10 to-indigo-500/10",
+        flavor: t("dashboard.weather.flavor.storm"),
+        tip: t("dashboard.weather.tip.storm")
+      }
     case "Snow":
-      return { label: t("dashboard.weather.snow"), color: "text-sky-300", icon: Snowflake }
+      return {
+        label: t("dashboard.weather.snow"),
+        color: "text-sky-300",
+        icon: Snowflake,
+        bgGradient: "from-sky-300/15 via-blue-300/10 to-indigo-300/10",
+        flavor: t("dashboard.weather.flavor.snow"),
+        tip: t("dashboard.weather.tip.snow")
+      }
     case "Wind":
-      return { label: t("dashboard.weather.wind"), color: "text-teal-400", icon: Wind }
+      return {
+        label: t("dashboard.weather.wind"),
+        color: "text-teal-400",
+        icon: Wind,
+        bgGradient: "from-teal-500/15 via-emerald-500/10 to-cyan-500/10",
+        flavor: t("dashboard.weather.flavor.wind"),
+        tip: t("dashboard.weather.tip.wind")
+      }
     case "GreenRain":
-      return { label: t("dashboard.weather.greenRain"), color: "text-emerald-400", icon: CloudRain }
+      return {
+        label: t("dashboard.weather.greenRain"),
+        color: "text-emerald-400",
+        icon: CloudRain,
+        bgGradient: "from-emerald-500/15 via-green-500/10 to-teal-500/10",
+        flavor: t("dashboard.weather.flavor.greenRain"),
+        tip: t("dashboard.weather.tip.greenRain")
+      }
     case "Festival":
-      return { label: t("dashboard.weather.festival"), color: "text-amber-400", icon: Sun }
+      return {
+        label: t("dashboard.weather.festival"),
+        color: "text-amber-400",
+        icon: Sun,
+        bgGradient: "from-amber-500/15 via-orange-500/10 to-red-500/10",
+        flavor: t("dashboard.weather.flavor.festival"),
+        tip: t("dashboard.weather.tip.festival")
+      }
     default:
-      return { label: t("dashboard.weather.sun"), color: "text-yellow-500", icon: Sun }
+      return {
+        label: t("dashboard.weather.sun"),
+        color: "text-yellow-500",
+        icon: Sun,
+        bgGradient: "from-yellow-500/15 via-amber-500/10 to-orange-500/10",
+        flavor: t("dashboard.weather.flavor.sun"),
+        tip: t("dashboard.weather.tip.sun")
+      }
   }
 }
 
@@ -286,7 +342,7 @@ export function Dashboard({ selectedSaveId }: DashboardProps) {
   const playHours = Math.floor(summary.millisecondsPlayed / 3600000)
   const playTimeStr = t("dashboard.playTime", { hours: playHours })
 
-  const weatherConfig = getWeatherConfig(detail.weatherToday, t)
+  const weatherConfig = getWeatherConfig(detail.weatherToday, summary.season, t)
   const WeatherIcon = weatherConfig.icon
 
     // Calculate relationships
@@ -361,13 +417,16 @@ export function Dashboard({ selectedSaveId }: DashboardProps) {
   }
 
   const forecastData = forecastRaw.map((item) => {
-    const config = getWeatherConfig(item.weather, t)
+    const config = getWeatherConfig(item.weather, summary.season, t)
     const DayIcon = config.icon
     return {
       day: getForecastDayLabel(item.dayOffset, dayOfMonth),
       weather: config.label,
       icon: <DayIcon className={`h-6 w-6 ${config.color}`} />,
       temp: getSeasonalTemp(item.weather, summary.season),
+      bgGradient: config.bgGradient,
+      flavor: config.flavor,
+      tip: config.tip,
     }
   })
 
@@ -422,88 +481,66 @@ export function Dashboard({ selectedSaveId }: DashboardProps) {
         ))}
       </div>
 
-      {/* Weather Forecast */}
-      <Card>
-        <CardHeader className="space-y-3">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <CardTitle className="text-lg">{t("dashboard.forecast.title")}</CardTitle>
-            </div>
-            {forecastData.length > 2 && (
-              <button
-                type="button"
-                onClick={() => {
-                  setShowAllForecast((s) => !s)
-                  setSelectedForecastIndex(0)
-                }}
-                className="text-xs font-medium px-3 py-1.5 rounded-full bg-accent hover:bg-accent/80 text-accent-foreground transition-colors"
-              >
-                {showAllForecast ? t("dashboard.forecast.showLess") : t("dashboard.forecast.showMore")}
-              </button>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {currentForecast && (
-            <div className="rounded-2xl border border-primary/30 bg-gradient-to-br from-sky-500/15 via-cyan-500/10 to-indigo-500/10 p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs text-muted-foreground">{t("dashboard.forecast.currentViewing")}</p>
-                  <p className="text-xl font-black mt-1">{currentForecast.day}</p>
-                  <p className="text-sm text-muted-foreground mt-1">{currentForecast.weather}</p>
-                  <p className="text-3xl font-black mt-2 leading-none">
-                    {currentForecast.temp}
-                  </p>
+      {/* Weather Forecast Widget */}
+      <Card className="overflow-hidden border-none bg-gradient-to-br from-card/50 to-card shadow-lg">
+        <CardContent className="p-0">
+          <div className={`p-6 md:p-8 flex flex-col md:flex-row items-center md:items-stretch gap-8 transition-colors duration-700 bg-gradient-to-br ${currentForecast.bgGradient.replace(/\/1[05]/g, '/10')}`}>
+            {/* Left: Selected Day Details */}
+            <div className="flex flex-col items-center md:items-start text-center md:text-left space-y-2 md:min-w-[200px]">
+              <p className="text-sm font-bold uppercase tracking-widest text-foreground/60">{currentForecast.day}</p>
+              <div className="flex items-center gap-4">
+                <div className="p-3 rounded-3xl bg-background/40 backdrop-blur-md border border-white/10 shadow-sm">
+                  <div className="scale-125 transform">{currentForecast.icon}</div>
                 </div>
-                <div className="rounded-xl bg-white/10 dark:bg-black/20 p-2">
-                  {currentForecast.icon}
+                <div>
+                  <p className="text-4xl font-black tracking-tighter">{currentForecast.temp}</p>
+                  <p className="font-bold text-foreground/80">{currentForecast.weather}</p>
                 </div>
               </div>
-              <p className="mt-3 text-xs text-muted-foreground">
-                {t("dashboard.forecast.tip")}
-              </p>
+              <div className="pt-2">
+                <p className="text-sm leading-relaxed text-foreground/70 max-w-[280px]">
+                  {currentForecast.flavor}
+                </p>
+                {currentForecast.tip && (
+                  <p className="text-[11px] mt-2 font-bold text-primary flex items-center gap-1.5 opacity-80">
+                    <Sun className="h-3 w-3" />
+                    {currentForecast.tip}
+                  </p>
+                )}
+              </div>
             </div>
-          )}
-          <div className="flex items-center gap-2 overflow-x-auto pb-2 snap-x snap-mandatory">
-            {visibleTimeline.map((globalIndex) => {
-              const forecast = forecastData[globalIndex]
-              if (!forecast) return null
-              const isActive = globalIndex === selectedForecastIndex
-              return (
-                <button
-                  type="button"
-                  key={`${forecast.day}-${globalIndex}`}
-                  onClick={() => setSelectedForecastIndex(globalIndex)}
-                  className={`snap-start min-w-[132px] shrink-0 rounded-2xl border px-3 py-3 text-left transition-all ${
-                    isActive || safeForecastIndex === globalIndex
-                      ? "border-primary/50 bg-primary/8 shadow-sm shadow-primary/20"
-                      : "border-border/70 bg-card"
-                  }`}
-                >
-                  <p className="text-xs text-muted-foreground">{forecast.day}</p>
-                  <div className="mt-2 flex items-center justify-between">
-                    <span className="text-xs font-medium">{forecast.weather}</span>
-                    {forecast.icon}
-                  </div>
-                  <p className="text-sm font-bold mt-2">{forecast.temp}</p>
-                </button>
-              )
-            })}
+
+            {/* Right: 7-Day Timeline Strip */}
+            <div className="flex-1 flex flex-col justify-center">
+              <div className="grid grid-cols-4 sm:grid-cols-7 gap-2 md:gap-3 w-full">
+                {forecastData.map((forecast, globalIndex) => {
+                  const isActive = globalIndex === selectedForecastIndex;
+                  return (
+                    <button
+                      type="button"
+                      key={`${forecast.day}-${globalIndex}`}
+                      onClick={() => setSelectedForecastIndex(globalIndex)}
+                      className={`flex flex-col items-center p-2 md:p-3 rounded-2xl transition-all duration-300 border ${
+                        isActive
+                          ? "bg-background/60 border-primary/40 shadow-sm scale-105"
+                          : "bg-transparent border-transparent hover:bg-background/30"
+                      }`}
+                    >
+                      <span className={`text-[10px] font-bold uppercase mb-2 ${isActive ? 'text-primary' : 'text-muted-foreground'}`}>
+                        {forecast.day === t("dashboard.forecast.today") ? t("dashboard.forecast.today").substring(0, 2) : forecast.day.substring(0, 3)}
+                      </span>
+                      <div className={`mb-2 p-1.5 rounded-xl ${isActive ? 'bg-primary/10' : ''}`}>
+                        {forecast.icon && (
+                          <div className="scale-90">{forecast.icon}</div>
+                        )}
+                      </div>
+                      <span className="text-xs font-black tabular-nums">{forecast.temp}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
-          {showAllForecast && (
-            <div className="text-center">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowAllForecast(false)
-                  setSelectedForecastIndex(0)
-                }}
-                className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-3"
-              >
-                {t("dashboard.forecast.collapseTip")}
-              </button>
-            </div>
-          )}
         </CardContent>
       </Card>
 
