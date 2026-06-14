@@ -15,29 +15,35 @@ import {
   AlertTriangle,
   Power,
   FolderOpen,
-  Save
+  Save,
+  CheckCircle2,
+  XCircle
 } from "lucide-react"
 import { Mod } from "./ModList"
 
 interface ModDetailProps {
   selectedMod: Mod | undefined
+  mods: Mod[]
   activeDetailTab: string
   setActiveDetailTab: (tab: string) => void
   onToggleMod: (id: string) => void
   onOpenFolder: () => void
   onConfigChange: (modId: string, key: string, value: any) => void
   onSaveConfig: () => void
+  onSelectMod: (id: string) => void
   isGameRunning?: boolean
 }
 
 export function ModDetail({
   selectedMod,
+  mods,
   activeDetailTab,
   setActiveDetailTab,
   onToggleMod,
   onOpenFolder,
   onConfigChange,
   onSaveConfig,
+  onSelectMod,
   isGameRunning = false,
 }: ModDetailProps) {
   if (!selectedMod) {
@@ -152,13 +158,33 @@ export function ModDetail({
           <div className="grid grid-cols-2 gap-4 text-xs">
             <div>
               <span className="text-muted-foreground block mb-0.5">SMAPI 依赖项</span>
-              <div className="flex flex-wrap gap-1 mt-1">
+              <div className="flex flex-wrap gap-1.5 mt-1.5">
                 {selectedMod.dependencies.length > 0 ? (
-                  selectedMod.dependencies.map((dep) => (
-                    <Badge key={dep} variant="outline" className="text-[10px] py-0 px-1.5">
-                      {dep}
-                    </Badge>
-                  ))
+                  selectedMod.dependencies.map((dep) => {
+                    const depLower = dep.toLowerCase()
+                    const installedMod = mods.find(m => m.id.toLowerCase() === depLower)
+                    const isInstalled = !!installedMod
+                    return isInstalled ? (
+                      <button
+                        key={dep}
+                        onClick={() => onSelectMod(installedMod.id)}
+                        className="inline-flex items-center gap-1 text-[10px] py-0.5 px-1.5 rounded-md border border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/40 transition-colors cursor-pointer"
+                        title={`已安装: ${installedMod.name} v${installedMod.version}，点击查看`}
+                      >
+                        <CheckCircle2 className="h-3 w-3 flex-shrink-0" />
+                        {dep}
+                      </button>
+                    ) : (
+                      <span
+                        key={dep}
+                        className="inline-flex items-center gap-1 text-[10px] py-0.5 px-1.5 rounded-md border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400"
+                        title="该依赖项未安装"
+                      >
+                        <XCircle className="h-3 w-3 flex-shrink-0" />
+                        {dep}
+                      </span>
+                    )
+                  })
                 ) : (
                   <span className="text-muted-foreground italic">无依赖项</span>
                 )}

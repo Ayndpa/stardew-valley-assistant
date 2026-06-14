@@ -305,12 +305,14 @@ export function Mods({ onNavigate, refreshSignal, isGameRunning = false, onQueue
             <div className="xl:col-span-5">
               <ModDetail
                 selectedMod={selectedMod}
+                mods={mods}
                 activeDetailTab={activeDetailTab}
                 setActiveDetailTab={setActiveDetailTab}
                 onToggleMod={handleToggleMod}
                 onOpenFolder={handleOpenFolder}
                 onConfigChange={handleConfigChange}
                 onSaveConfig={handleSaveConfig}
+                onSelectMod={setSelectedModId}
                 isGameRunning={isGameRunning}
               />
             </div>

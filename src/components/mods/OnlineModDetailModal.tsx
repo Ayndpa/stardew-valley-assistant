@@ -1,13 +1,15 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 import { openUrl } from "@tauri-apps/plugin-opener"
-import { 
-  X, 
-  ExternalLink, 
-  Download, 
-  Loader2, 
+import {
+  X,
+  ExternalLink,
+  Download,
+  Loader2,
   AlertTriangle,
   RefreshCw,
-  Languages
+  Languages,
+  CheckCircle2,
+  ArrowUpCircle
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -90,9 +92,11 @@ export function OnlineModDetailModal({
   const [isInstalling, setIsInstalling] = useState(false)
   const [installMessage, setInstallMessage] = useState<string | null>(null)
   const [installError, setInstallError] = useState<string | null>(null)
+  const [installedMod, setInstalledMod] = useState<{ name: string; version: string } | null>(null)
   const { nexusLoggedIn, nexusChecking } = useNexus()
   const nexusUrl = mod?.ModPages.find(p => p.Text === "Nexus" || p.Url.includes("nexusmods.com"))?.Url || ""
-  const installDisabled = loading || !details || isInstalling || isGameRunning
+  const isUpToDate = !!installedMod && installedMod.version === details?.version
+  const installDisabled = loading || !details || isInstalling || isGameRunning || isUpToDate
   const unlistenRef = useRef<(() => void) | null>(null)
   const scrapeTimeoutRef = useRef<number | null>(null)
   const activeRequestIdRef = useRef(0)
@@ -174,6 +178,34 @@ export function OnlineModDetailModal({
     })
     setShowTranslated({ title: false, desc: false, condensedDesc: false })
   }, [mod])
+
+  // Check if this mod is already installed
+  useEffect(() => {
+    if (!isOpen || !mod) { setInstalledMod(null); return }
+
+    const nexusUrl = mod.ModPages.find(p => p.Text === "Nexus" || p.Url.includes("nexusmods.com"))?.Url || ""
+    const match = nexusUrl.match(/nexusmods\.com\/stardewvalley\/mods\/(\d+)/)
+    const nexusId = match ? match[1] : null
+
+    if (!nexusId) { setInstalledMod(null); return }
+
+    let cancelled = false
+    ;(async () => {
+      if (typeof window === "undefined" || !(window as any).__TAURI_INTERNALS__) return
+      try {
+        const { invoke } = await import("@tauri-apps/api/core")
+        const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+        if (!gameDir) return
+        const mods = await invoke("list_installed_mods", { gameDir }) as any[]
+        if (cancelled) return
+        const found = mods.find((m: any) => m.nexusId && String(m.nexusId) === nexusId)
+        setInstalledMod(found ? { name: found.name, version: found.version } : null)
+      } catch {
+        if (!cancelled) setInstalledMod(null)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [isOpen, mod])
 
   const handleDownloadAndInstall = useCallback(async () => {
     if (!mod || !details) return
@@ -636,26 +668,61 @@ export function OnlineModDetailModal({
             </Button>
           )}
 
-          <Button 
-            variant="default" 
-            size="sm" 
+          <Button
+            variant={installedMod ? "outline" : "default"}
+            size="sm"
             disabled={installDisabled}
             onClick={handleDownloadAndInstall}
-            className="h-8 text-xs rounded-lg gap-1 bg-primary text-primary-foreground hover:bg-primary/95 cursor-pointer group relative"
+            className={`h-8 text-xs rounded-lg gap-1 cursor-pointer group relative ${
+              installedMod
+                ? installedMod.version !== details?.version
+                  ? "border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30"
+                  : "border-green-300 dark:border-green-700 text-green-700 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-950/30"
+                : "bg-primary text-primary-foreground hover:bg-primary/95"
+            }`}
             title={
               loading || !details
                 ? "模组详情加载完成后才能安装"
                 : isGameRunning
                   ? "游戏运行中，不能下载并安装模组"
-                  : undefined
+                  : installedMod
+                    ? installedMod.version !== details?.version
+                      ? `已安装 v${installedMod.version}，最新 v${details?.version}，点击更新`
+                      : `已安装 v${installedMod.version}，版本一致`
+                    : undefined
             }
           >
-            {isInstalling ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+            {isInstalling ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : installedMod ? (
+              installedMod.version !== details?.version ? (
+                <ArrowUpCircle className="h-3 w-3" />
+              ) : (
+                <CheckCircle2 className="h-3 w-3" />
+              )
+            ) : (
+              <Download className="h-3 w-3" />
+            )}
             <span>
-              {loading || !details ? "加载中..." : isGameRunning ? "游戏运行中" : isInstalling ? "安装中..." : "安装"}
+              {loading || !details ? "加载中..."
+                : isGameRunning ? "游戏运行中"
+                : isInstalling ? "安装中..."
+                : installedMod
+                  ? installedMod.version !== details?.version
+                    ? `更新 (v${installedMod.version})`
+                    : "已安装"
+                : "安装"
+              }
             </span>
             <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-popover text-popover-foreground border text-[9px] px-2 py-1 rounded shadow-lg whitespace-nowrap z-50">
-              {loading || !details ? "请等待详情和下载信息加载完成" : isGameRunning ? "退出游戏后可加入下载队列" : "加入侧边栏的全局下载队列"}
+              {loading || !details ? "请等待详情和下载信息加载完成"
+                : isGameRunning ? "退出游戏后可加入下载队列"
+                : installedMod
+                  ? installedMod.version !== details?.version
+                    ? `当前 v${installedMod.version} → 最新 v${details?.version}，点击更新`
+                    : "已是最新版本"
+                : "加入侧边栏的全局下载队列"
+              }
             </span>
           </Button>
         </div>
