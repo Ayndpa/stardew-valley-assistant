@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react"
+import { getVersion } from "@tauri-apps/api/app"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
@@ -107,8 +108,13 @@ export function Sidebar({
   const { t } = useTranslation()
   const [isOpen, setIsOpen] = useState(false)
   const [isLaunchMenuOpen, setIsLaunchMenuOpen] = useState(false)
+  const [appVersion, setAppVersion] = useState<string>("")
   const dropdownRef = useRef<HTMLDivElement>(null)
   const launchDropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    getVersion().then(setAppVersion).catch(() => setAppVersion(""))
+  }, [])
 
   // Click outside to close
   useEffect(() => {
@@ -159,7 +165,11 @@ export function Sidebar({
                 <span className="text-sm font-bold leading-tight text-sidebar-foreground truncate">
                   {t("sidebar.appName")}
                 </span>
-                <span className="shrink-0 rounded border border-sidebar-border/60 bg-sidebar-accent/40 px-1.5 py-0.5 text-[10px] text-muted-foreground">v0.1.0</span>
+                {appVersion && (
+                  <span className="shrink-0 rounded border border-sidebar-border/60 bg-sidebar-accent/40 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                    v{appVersion}
+                  </span>
+                )}
               </div>
               {t("sidebar.appNameSubtitle") && (
                 <span className="text-xs font-medium leading-tight text-muted-foreground truncate">

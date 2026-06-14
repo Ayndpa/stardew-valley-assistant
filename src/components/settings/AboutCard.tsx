@@ -1,10 +1,17 @@
+import { useState, useEffect } from "react"
 import { Info } from "lucide-react"
+import { getVersion } from "@tauri-apps/api/app"
 import { Separator } from "@/components/ui/separator"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useTranslation } from "react-i18next"
 
 export function AboutCard() {
   const { t } = useTranslation()
+  const [appVersion, setAppVersion] = useState<string>("")
+
+  useEffect(() => {
+    getVersion().then(setAppVersion).catch(() => setAppVersion(""))
+  }, [])
 
   return (
     <Card>
@@ -17,7 +24,7 @@ export function AboutCard() {
       <CardContent className="space-y-3">
         <div className="flex items-center justify-between text-sm">
           <span className="text-muted-foreground">{t("settings.about.version")}</span>
-          <span>0.1.0</span>
+          <span>{appVersion || "—"}</span>
         </div>
         <Separator />
         <div className="flex items-center justify-between text-sm">
