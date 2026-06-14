@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react"
+import i18next from "i18next"
 import { Mod } from "@/components/mods/ModList"
 import type { QueueSmapiDownloadRequest } from "@/hooks/useDownloadManager"
 import { syncModTranslations } from "@/lib/mod-translation-library"
@@ -53,7 +54,7 @@ export function useModManagement(options?: UseModManagementOptions) {
 
   const ensureCanModify = useCallback(() => {
     if (!isGameRunning) return true
-    showToast("游戏运行中不能修改模组或 SMAPI，请退出游戏后再试。", "warning")
+    showToast(i18next.t("mods.toast.gameRunningNoModify"), "warning")
     return false
   }, [isGameRunning, showToast])
 
@@ -68,6 +69,10 @@ export function useModManagement(options?: UseModManagementOptions) {
   }, [toast])
 
   useEffect(() => {
+    // 非中文语言下不自动翻译
+    const lang = i18next.resolvedLanguage || i18next.language || "zh"
+    if (!lang.startsWith("zh")) return
+
     const pendingMods = mods.filter((mod) => {
       return !completedTranslationModIdsRef.current.has(mod.id) && !syncingTranslationModIdsRef.current.has(mod.id)
     })

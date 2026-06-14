@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -48,8 +49,6 @@ interface SaveEditorForm {
   friendships: EditableFriendship[]
 }
 
-const SEASONS = ["春季", "夏季", "秋季", "冬季"]
-
 const FIELD_LIMITS: Record<keyof Omit<SaveEditorForm, "friendships">, { min: number; max: number }> = {
   money: { min: 0, max: 999999999 },
   totalMoneyEarned: { min: 0, max: 999999999 },
@@ -96,11 +95,19 @@ export function SaveEditor({
   onAcknowledgeWarning: () => void
   onCancel: () => void
 }) {
+  const { t } = useTranslation()
   const [editorData, setEditorData] = useState<SaveEditorData | null>(null)
   const [form, setForm] = useState<SaveEditorForm | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [friendshipFilter, setFriendshipFilter] = useState("")
+
+  const SEASONS = [
+    t("saveEditor.seasons.spring"),
+    t("saveEditor.seasons.summer"),
+    t("saveEditor.seasons.fall"),
+    t("saveEditor.seasons.winter"),
+  ]
 
   const fetchEditorData = async () => {
     if (!selectedSaveId) {
@@ -126,7 +133,7 @@ export function SaveEditor({
       setForm(toFormState(data))
     } catch (err) {
       console.error("Failed to load save editor data:", err)
-      onShowToast("读取存档编辑数据失败。", "warning")
+      onShowToast(t("saveEditor.toast.loadError"), "warning")
       setEditorData(null)
       setForm(null)
     } finally {
@@ -190,7 +197,7 @@ export function SaveEditor({
     if (!form || !selectedSaveId) return
     const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__
     if (!isTauri) {
-      onShowToast("Web 模式下不能写回游戏存档。", "warning")
+      onShowToast(t("saveEditor.toast.webModeError"), "warning")
       return
     }
 
@@ -217,10 +224,10 @@ export function SaveEditor({
       setEditorData(updated)
       setForm(toFormState(updated))
       await onSaved()
-      onShowToast("存档已保存，并自动生成原文件备份。", "success")
+      onShowToast(t("saveEditor.toast.saveSuccess"), "success")
     } catch (err) {
       console.error("Failed to save edited save:", err)
-      onShowToast("保存存档失败，请检查字段范围。", "warning")
+      onShowToast(t("saveEditor.toast.saveError"), "warning")
     } finally {
       setSaving(false)
     }
@@ -231,9 +238,9 @@ export function SaveEditor({
       <div className="p-8">
         <div className="mx-auto max-w-4xl space-y-6">
           <div>
-            <h2 className="text-3xl font-bold tracking-tight">存档编辑警告</h2>
+            <h2 className="text-3xl font-bold tracking-tight">{t("saveEditor.warningTitle")}</h2>
             <p className="text-muted-foreground mt-2">
-              在继续之前，请先完整阅读下面的说明。这个页面不是普通的功能页，它会直接改写你的游戏存档文件。
+              {t("saveEditor.warningDesc")}
             </p>
           </div>
 
@@ -241,37 +248,25 @@ export function SaveEditor({
             <CardHeader>
               <CardTitle className="text-xl flex items-center gap-2 text-amber-900 dark:text-amber-100">
                 <TriangleAlert className="h-5 w-5" />
-                这是作弊功能
+                {t("saveEditor.warningCardTitle")}
               </CardTitle>
               <CardDescription className="text-amber-800/90 dark:text-amber-200/90">
-                进入后你可以直接修改金币、日期、技能等级、矿洞层数和村民好感度。这些内容本应通过正常游玩、规划、尝试和失误慢慢获得。
+                {t("saveEditor.warningCardDesc")}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4 text-sm leading-7 text-amber-950 dark:text-amber-50">
-              <p>
-                使用存档编辑器，本质上是在绕过游戏设计。你不再需要承担季节安排失误的后果，也不再需要为了装备、金钱、关系或技能投入时间。短期看这会让进度推进得非常快，但代价通常不是“少刷一点时间”，而是把游戏最核心的成长过程直接跳过去。
-              </p>
-              <p>
-                《星露谷物语》的乐趣很大一部分来自节奏感：种错作物后的补救、前期缺钱时的取舍、礼物送错后的重新规划、矿洞推进时的风险判断，以及一个季节结束后回头看自己到底经营出了什么。你一旦直接改数值，这些原本会形成记忆点的过程，往往就只剩下结果，不再有过程。
-              </p>
-              <p>
-                更现实的问题是，作弊会让很多系统失去意义。金币改太高，采购和生产链会失去压力；技能直接拉满，前中期工具升级、路线选择和赚钱方式会变得空洞；好感度直接提高，会让送礼、节日、对话和角色关系推进显得像一张被跳过的表。看起来你“省了时间”，但实际往往是把后续几十小时本来要慢慢展开的体验压扁了。
-              </p>
-              <p>
-                另外，存档编辑不只影响体验，也有实际风险。错误修改可能导致存档数值不协调、进度失真，严重时甚至造成游戏内显示异常或后续游玩判断混乱。虽然这个工具会自动备份原文件，但备份只能解决“回退”，不能恢复已经被你自己破坏掉的探索感和成长感。
-              </p>
-              <p>
-                如果你只是因为某次误操作、Bug、模组冲突、时间不够，或者单纯不想重打某段内容，那么你至少应该清楚：这不是一个无代价的“便利功能”。它确实能帮你改回结果，但也确实会削弱游戏体验，尤其是第一次游玩或仍在正常推进的存档。
-              </p>
-              <p className="font-medium">
-                只有在你完全理解以上后果，并且明确接受“这会破坏部分甚至大量游戏体验”这一点时，才应该继续进入存档编辑器。
-              </p>
+              <p>{t("saveEditor.warningP1")}</p>
+              <p>{t("saveEditor.warningP2")}</p>
+              <p>{t("saveEditor.warningP3")}</p>
+              <p>{t("saveEditor.warningP4")}</p>
+              <p>{t("saveEditor.warningP5")}</p>
+              <p className="font-medium">{t("saveEditor.warningP6")}</p>
             </CardContent>
           </Card>
 
           <div className="flex flex-wrap items-center gap-3">
-            <Button variant="outline" onClick={onCancel}>返回仪表盘</Button>
-            <Button variant="destructive" onClick={onAcknowledgeWarning}>我已知悉后果，仍要继续</Button>
+            <Button variant="outline" onClick={onCancel}>{t("saveEditor.backToDashboard")}</Button>
+            <Button variant="destructive" onClick={onAcknowledgeWarning}>{t("saveEditor.acknowledgeAndContinue")}</Button>
           </div>
         </div>
       </div>
@@ -283,7 +278,7 @@ export function SaveEditor({
       <div className="p-8 flex items-center justify-center h-[60vh]">
         <div className="text-center space-y-3">
           <LoaderCircle className="h-8 w-8 animate-spin mx-auto text-primary" />
-          <p className="text-sm text-muted-foreground">正在读取可编辑存档数据...</p>
+          <p className="text-sm text-muted-foreground">{t("saveEditor.loading")}</p>
         </div>
       </div>
     )
@@ -296,9 +291,9 @@ export function SaveEditor({
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
               <PencilRuler className="h-5 w-5 text-primary" />
-              存档编辑器
+              {t("saveEditor.noSaveTitle")}
             </CardTitle>
-            <CardDescription>请选择一个本地存档后再编辑。</CardDescription>
+            <CardDescription>{t("saveEditor.noSaveDesc")}</CardDescription>
           </CardHeader>
         </Card>
       </div>
@@ -309,25 +304,30 @@ export function SaveEditor({
     <div className="p-8 space-y-6">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">存档编辑器</h2>
+          <h2 className="text-3xl font-bold tracking-tight">{t("saveEditor.title")}</h2>
           <p className="text-muted-foreground mt-1">
-            当前存档：{editorData.summary.playerName} · {editorData.summary.farmName}农场
+            {t("saveEditor.currentSave", {
+              playerName: editorData.summary.playerName,
+              farmName: editorData.summary.farmName,
+            })}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="secondary">第 {form.year} 年</Badge>
-          <Badge variant="secondary">{SEASONS[form.season]} {form.dayOfMonth} 日</Badge>
-          {dirty && <Badge className="bg-amber-500 text-white hover:bg-amber-500">未保存</Badge>}
+          <Badge variant="secondary">{t("saveEditor.yearBadge", { year: form.year })}</Badge>
+          <Badge variant="secondary">
+            {t("saveEditor.dateBadge", { season: SEASONS[form.season], day: form.dayOfMonth })}
+          </Badge>
+          {dirty && <Badge className="bg-amber-500 text-white hover:bg-amber-500">{t("saveEditor.unsaved")}</Badge>}
           <Button variant="outline" onClick={fetchEditorData} disabled={saving}>
             <RefreshCw className="h-4 w-4" />
-            重新读取
+            {t("saveEditor.reload")}
           </Button>
           <Button variant="outline" onClick={handleReset} disabled={!dirty || saving}>
-            重置修改
+            {t("saveEditor.resetChanges")}
           </Button>
           <Button onClick={handleSave} disabled={!dirty || saving}>
             {saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            保存存档
+            {t("saveEditor.saveSave")}
           </Button>
         </div>
       </div>
@@ -335,7 +335,7 @@ export function SaveEditor({
       <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-100">
         <div className="flex items-start gap-3">
           <ShieldAlert className="h-4 w-4 mt-0.5 shrink-0" />
-          <p>每次保存都会在原存档目录旁生成时间戳备份文件。建议不要在游戏运行时编辑存档。</p>
+          <p>{t("saveEditor.backupNotice")}</p>
         </div>
       </div>
 
@@ -345,29 +345,29 @@ export function SaveEditor({
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <Coins className="h-5 w-5 text-yellow-500" />
-                核心数值
+                {t("saveEditor.coreValues.title")}
               </CardTitle>
-              <CardDescription>修改金钱、总收益和游戏日期。</CardDescription>
+              <CardDescription>{t("saveEditor.coreValues.desc")}</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2">
               <label className="space-y-2">
-                <span className="text-sm font-medium">当前金币</span>
+                <span className="text-sm font-medium">{t("saveEditor.coreValues.money")}</span>
                 <Input type="number" value={form.money} min={0} max={999999999} onChange={(e) => updateField("money", e.target.value)} />
               </label>
               <label className="space-y-2">
-                <span className="text-sm font-medium">累计收益</span>
+                <span className="text-sm font-medium">{t("saveEditor.coreValues.totalMoneyEarned")}</span>
                 <Input type="number" value={form.totalMoneyEarned} min={0} max={999999999} onChange={(e) => updateField("totalMoneyEarned", e.target.value)} />
               </label>
               <label className="space-y-2">
-                <span className="text-sm font-medium">年份</span>
+                <span className="text-sm font-medium">{t("saveEditor.coreValues.year")}</span>
                 <Input type="number" value={form.year} min={1} max={999} onChange={(e) => updateField("year", e.target.value)} />
               </label>
               <label className="space-y-2">
-                <span className="text-sm font-medium">日期</span>
+                <span className="text-sm font-medium">{t("saveEditor.coreValues.dayOfMonth")}</span>
                 <Input type="number" value={form.dayOfMonth} min={1} max={28} onChange={(e) => updateField("dayOfMonth", e.target.value)} />
               </label>
               <div className="space-y-2 md:col-span-2">
-                <span className="text-sm font-medium">季节</span>
+                <span className="text-sm font-medium">{t("saveEditor.coreValues.season")}</span>
                 <div className="grid grid-cols-4 gap-2">
                   {SEASONS.map((seasonLabel, index) => (
                     <Button
@@ -385,32 +385,32 @@ export function SaveEditor({
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">技能与进度</CardTitle>
-              <CardDescription>覆盖五项技能和矿洞进度。</CardDescription>
+              <CardTitle className="text-lg">{t("saveEditor.skillsProgress.title")}</CardTitle>
+              <CardDescription>{t("saveEditor.skillsProgress.desc")}</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2">
               <label className="space-y-2">
-                <span className="text-sm font-medium">耕种等级</span>
+                <span className="text-sm font-medium">{t("saveEditor.skillsProgress.farming")}</span>
                 <Input type="number" value={form.farmingLevel} min={0} max={10} onChange={(e) => updateField("farmingLevel", e.target.value)} />
               </label>
               <label className="space-y-2">
-                <span className="text-sm font-medium">采矿等级</span>
+                <span className="text-sm font-medium">{t("saveEditor.skillsProgress.mining")}</span>
                 <Input type="number" value={form.miningLevel} min={0} max={10} onChange={(e) => updateField("miningLevel", e.target.value)} />
               </label>
               <label className="space-y-2">
-                <span className="text-sm font-medium">战斗等级</span>
+                <span className="text-sm font-medium">{t("saveEditor.skillsProgress.combat")}</span>
                 <Input type="number" value={form.combatLevel} min={0} max={10} onChange={(e) => updateField("combatLevel", e.target.value)} />
               </label>
               <label className="space-y-2">
-                <span className="text-sm font-medium">觅食等级</span>
+                <span className="text-sm font-medium">{t("saveEditor.skillsProgress.foraging")}</span>
                 <Input type="number" value={form.foragingLevel} min={0} max={10} onChange={(e) => updateField("foragingLevel", e.target.value)} />
               </label>
               <label className="space-y-2">
-                <span className="text-sm font-medium">钓鱼等级</span>
+                <span className="text-sm font-medium">{t("saveEditor.skillsProgress.fishing")}</span>
                 <Input type="number" value={form.fishingLevel} min={0} max={10} onChange={(e) => updateField("fishingLevel", e.target.value)} />
               </label>
               <label className="space-y-2">
-                <span className="text-sm font-medium">矿洞最深层</span>
+                <span className="text-sm font-medium">{t("saveEditor.skillsProgress.deepestMineLevel")}</span>
                 <Input type="number" value={form.deepestMineLevel} min={0} max={999} onChange={(e) => updateField("deepestMineLevel", e.target.value)} />
               </label>
             </CardContent>
@@ -421,11 +421,11 @@ export function SaveEditor({
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
               <Heart className="h-5 w-5 text-rose-500" />
-              村民好感度
+              {t("saveEditor.friendship.title")}
             </CardTitle>
-            <CardDescription>直接编辑点数，范围 0 到 2500，对应 0 到 10 心。</CardDescription>
+            <CardDescription>{t("saveEditor.friendship.desc")}</CardDescription>
             <Input
-              placeholder="搜索 NPC 名称"
+              placeholder={t("saveEditor.friendship.searchPlaceholder")}
               value={friendshipFilter}
               onChange={(e) => setFriendshipFilter(e.target.value)}
             />
@@ -439,7 +439,7 @@ export function SaveEditor({
                     <div key={friendship.npcName} className="grid grid-cols-[minmax(0,1fr)_120px_58px] items-center gap-3 rounded-lg border p-3">
                       <div className="min-w-0">
                         <p className="text-sm font-medium truncate">{friendship.npcName}</p>
-                        <p className="text-xs text-muted-foreground">{hearts} 心</p>
+                        <p className="text-xs text-muted-foreground">{t("saveEditor.friendship.hearts", { hearts })}</p>
                       </div>
                       <Input
                         type="number"

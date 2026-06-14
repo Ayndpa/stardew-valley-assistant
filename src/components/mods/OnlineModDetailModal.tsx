@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react"
+import { useTranslation } from "react-i18next"
 import { openUrl } from "@tauri-apps/plugin-opener"
 import {
   X,
@@ -94,6 +95,8 @@ export function OnlineModDetailModal({
   const [installError, setInstallError] = useState<string | null>(null)
   const [installedMod, setInstalledMod] = useState<{ name: string; version: string } | null>(null)
   const { nexusLoggedIn, nexusChecking } = useNexus()
+  const { i18n, t } = useTranslation()
+  const isChineseLang = (i18n.resolvedLanguage || i18n.language || "zh").startsWith("zh")
   const nexusUrl = mod?.ModPages.find(p => p.Text === "Nexus" || p.Url.includes("nexusmods.com"))?.Url || ""
   const isUpToDate = !!installedMod && installedMod.version === details?.version
   const installDisabled = loading || !details || isInstalling || isGameRunning || isUpToDate
@@ -119,7 +122,7 @@ export function OnlineModDetailModal({
       setTranslate(prev => ({ ...prev, titleTranslated: translated, titleLoading: false }))
       setShowTranslated(prev => ({ ...prev, title: true }))
     } catch (err: any) {
-      setTranslate(prev => ({ ...prev, titleLoading: false, error: "标题翻译失败: " + err.message }))
+      setTranslate(prev => ({ ...prev, titleLoading: false, error: t("mods.onlineDetail.translateTitleFailed") + err.message }))
     }
   }, [details, translate.titleLoading, showTranslated.title, translate.titleTranslated])
 
@@ -140,7 +143,7 @@ export function OnlineModDetailModal({
       setTranslate(prev => ({ ...prev, descriptionTranslated: translatedHtml, descLoading: false }))
       setShowTranslated(prev => ({ ...prev, desc: true }))
     } catch (err: any) {
-      setTranslate(prev => ({ ...prev, descLoading: false, error: "描述翻译失败: " + err.message }))
+      setTranslate(prev => ({ ...prev, descLoading: false, error: t("mods.onlineDetail.translateDescFailed") + err.message }))
     }
   }, [details, translate.descLoading, showTranslated.desc, translate.descriptionTranslated])
 
@@ -161,7 +164,7 @@ export function OnlineModDetailModal({
       setTranslate(prev => ({ ...prev, condensedDescriptionTranslated: translatedHtml, condensedDescLoading: false }))
       setShowTranslated(prev => ({ ...prev, condensedDesc: true }))
     } catch (err: any) {
-      setTranslate(prev => ({ ...prev, condensedDescLoading: false, error: "补充说明翻译失败: " + err.message }))
+      setTranslate(prev => ({ ...prev, condensedDescLoading: false, error: t("mods.onlineDetail.translateCondensedFailed") + err.message }))
     }
   }, [details, translate.condensedDescLoading, showTranslated.condensedDesc, translate.condensedDescriptionTranslated])
 
@@ -214,30 +217,30 @@ export function OnlineModDetailModal({
     setInstallMessage(null)
 
     if (isGameRunning) {
-      setInstallError("游戏运行中不能下载并安装模组，请退出游戏后再试。")
+      setInstallError(t("mods.onlineDetail.installGameRunning"))
       return
     }
 
     const gameDir = localStorage.getItem("stardewGameDirectory") || ""
     if (!gameDir) {
-      setInstallError("未配置游戏安装目录，请先在设置中配置")
+      setInstallError(t("mods.onlineDetail.installNoGameDir"))
       return
     }
 
     if (nexusChecking) {
-      setInstallError("正在确认 Nexus 登录状态，请稍后重试")
+      setInstallError(t("mods.onlineDetail.installNexusChecking"))
       return
     }
 
     if (!nexusLoggedIn) {
-      setInstallMessage("检测到未登录 NexusMods，正在跳转到设置页...")
+      setInstallMessage(t("mods.onlineDetail.installNexusNotLoggedIn"))
       onNavigate?.("settings")
       return
     }
 
     const downloadUrl = details.downloadUrl?.trim()
     if (!downloadUrl) {
-      setInstallError("未能解析到可直接下载链接，请先在 Nexus 页面手动下载。")
+      setInstallError(t("mods.onlineDetail.installNoDownloadUrl"))
       if (nexusUrl) {
         openUrl(nexusUrl)
       }
@@ -246,7 +249,7 @@ export function OnlineModDetailModal({
 
     const invoke = await getTauriInvoke()
     if (!invoke) {
-      setInstallError("当前环境不支持直接安装，请先在 Nexus 页面手动下载并解压到 Mods 目录。")
+      setInstallError(t("mods.onlineDetail.installNotSupported"))
       openUrl(downloadUrl)
       return
     }
@@ -269,12 +272,12 @@ export function OnlineModDetailModal({
     }
 
     setIsInstalling(true)
-    setInstallMessage("正在下载并安装...")
+    setInstallMessage(t("mods.onlineDetail.installDownloading"))
     try {
       await invoke("install_nexus_mod", { gameDir, downloadUrl })
-      setInstallMessage("已成功安装：模组已写入 Mods 目录。")
+      setInstallMessage(t("mods.onlineDetail.installSuccess"))
     } catch (err: any) {
-      setInstallError(`安装失败: ${err}`)
+      setInstallError(t("mods.onlineDetail.installFailed", { error: String(err) }))
       setInstallMessage(null)
     } finally {
       setIsInstalling(false)
@@ -334,7 +337,7 @@ export function OnlineModDetailModal({
           imageUrl: "",
           galleryImages: [],
           condensedDescription: "",
-          description: mod.Compatibility?.Summary || "该模组没有关联的 NexusMods 页面，仅提供基础兼容性说明。",
+          description: mod.Compatibility?.Summary || t("mods.onlineDetail.noNexusPage"),
           version: "—",
           uniqueDls: "—",
           totalDls: "—",
@@ -389,7 +392,7 @@ export function OnlineModDetailModal({
               window.clearTimeout(scrapeTimeoutRef.current)
               scrapeTimeoutRef.current = null
             }
-            setError("未收到 Nexus 页面内容，请重试。")
+            setError(t("mods.onlineDetail.errorNoContent"))
             setLoading(false)
             if (unlistenRef.current) {
               unlistenRef.current()
@@ -438,7 +441,7 @@ export function OnlineModDetailModal({
         // 3. Set a safety timeout in case of total failure
         scrapeTimeoutRef.current = window.setTimeout(() => {
           if (activeRequestIdRef.current === requestId && unlistenRef.current) {
-            setError("加载超时。这可能是由于网络不稳定或验证未能通过。请尝试重新打开。")
+            setError(t("mods.onlineDetail.errorTimeout"))
             setLoading(false)
             unlistenRef.current()
             unlistenRef.current = null
@@ -453,7 +456,7 @@ export function OnlineModDetailModal({
           window.clearTimeout(scrapeTimeoutRef.current)
           scrapeTimeoutRef.current = null
         }
-        setError("启动网页抓取器失败: " + err)
+        setError(t("mods.onlineDetail.errorScraperFailed") + err)
         setLoading(false)
       }
     } else {
@@ -507,9 +510,9 @@ export function OnlineModDetailModal({
         <div className="p-5 border-b border-border/60 flex items-center justify-between bg-gradient-to-r from-accent/20 to-card">
           <div className="flex items-center gap-3 min-w-0 pr-4">
             <h3 className="text-base font-bold truncate text-foreground">
-              {loading ? "正在获取 Nexus 模组信息..." : (showTranslated.title && translate.titleTranslated ? translate.titleTranslated : details?.title)}
+              {loading ? t("mods.onlineDetail.titleLoading") : (showTranslated.title && translate.titleTranslated ? translate.titleTranslated : details?.title)}
             </h3>
-            {!loading && details && (
+            {!loading && details && isChineseLang && (
               <button
                 onClick={handleTranslateTitle}
                 disabled={translate.titleLoading}
@@ -518,7 +521,7 @@ export function OnlineModDetailModal({
                     ? "bg-primary/15 text-primary hover:bg-primary/25"
                     : "hover:bg-black/5 dark:hover:bg-white/5 text-muted-foreground hover:text-foreground"
                 } ${translate.titleLoading ? "opacity-50 cursor-wait" : ""}`}
-                title={showTranslated.title ? "切换回原文" : "翻译标题"}
+                title={showTranslated.title ? t("mods.onlineDetail.switchToOriginal") : t("mods.onlineDetail.translateTitle")}
               >
                 {translate.titleLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Languages className="h-3.5 w-3.5" />}
               </button>
@@ -539,12 +542,12 @@ export function OnlineModDetailModal({
             <Loader2 className="h-8 w-8 text-primary animate-spin" />
             <div className="text-center space-y-2 max-w-md">
               <p className="text-xs font-bold text-foreground">
-                {scrapeStatus === "challenge" ? "需要完成 Cloudflare 验证" : "正在启动后台安全解析通道..."}
+                {scrapeStatus === "challenge" ? t("mods.onlineDetail.cloudflareVerifyNeeded") : t("mods.onlineDetail.startingScraper")}
               </p>
               <p className="text-[11px] text-muted-foreground leading-relaxed">
                 {scrapeStatus === "challenge"
-                  ? "Nexus 的验证页面已在独立窗口显示。请在该窗口中点击验证框，验证通过后这里会自动继续加载模组详情。"
-                  : "正在通过 WebView 加载 Nexus 页面并同步解析结果。遇到 Cloudflare 人机验证时，验证窗口会自动显示。"}
+                  ? t("mods.onlineDetail.cloudflareDesc")
+                  : t("mods.onlineDetail.scraperDesc")}
               </p>
             </div>
           </div>
@@ -555,12 +558,12 @@ export function OnlineModDetailModal({
           <div className="flex-1 flex flex-col items-center justify-center p-8 space-y-4 min-h-[300px]">
             <AlertTriangle className="h-8 w-8 text-amber-500" />
             <div className="text-center space-y-2 max-w-md">
-              <p className="text-xs font-bold text-foreground">模组详情加载失败</p>
+              <p className="text-xs font-bold text-foreground">{t("mods.onlineDetail.loadFailed")}</p>
               <p className="text-[11px] text-muted-foreground leading-relaxed">{error}</p>
               <div className="pt-2">
                 <Button variant="outline" size="sm" onClick={startScrape} className="h-8 text-xs gap-1 cursor-pointer">
                   <RefreshCw className="h-3 w-3" />
-                  <span>重新加载</span>
+                  <span>{t("mods.onlineDetail.reload")}</span>
                 </Button>
               </div>
             </div>
@@ -588,8 +591,9 @@ export function OnlineModDetailModal({
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                      {showTranslated.desc ? "模组详细介绍 (已翻译)" : "模组详细介绍 (Description)"}
+                      {showTranslated.desc ? `${t("mods.onlineDetail.descTitle")} ${t("mods.onlineDetail.translatedSuffix")}` : t("mods.onlineDetail.descTitle")}
                     </h4>
+                    {isChineseLang && (
                     <button
                       onClick={handleTranslateDesc}
                       disabled={translate.descLoading}
@@ -600,8 +604,9 @@ export function OnlineModDetailModal({
                       } ${translate.descLoading ? "opacity-50 cursor-wait" : ""}`}
                     >
                       {translate.descLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Languages className="h-3 w-3" />}
-                      <span>{showTranslated.desc ? "显示原文" : translate.descriptionTranslated ? "已翻译" : "翻译"}</span>
+                      <span>{showTranslated.desc ? t("mods.onlineDetail.switchToOriginal") : translate.descriptionTranslated ? t("mods.onlineDetail.translated") : t("mods.onlineDetail.translate")}</span>
                     </button>
+                    )}
                   </div>
                   {translate.error && (
                     <div className="text-[11px] text-amber-500 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-1.5">
@@ -617,8 +622,9 @@ export function OnlineModDetailModal({
                     <div className="space-y-1 pt-0.5">
                       <div className="flex items-center justify-between">
                         <h5 className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
-                          补充说明
+                          {t("mods.onlineDetail.condensedDesc")}
                         </h5>
+                        {isChineseLang && (
                         <button
                           onClick={handleTranslateCondensedDesc}
                           disabled={translate.condensedDescLoading}
@@ -629,8 +635,9 @@ export function OnlineModDetailModal({
                           } ${translate.condensedDescLoading ? "opacity-50 cursor-wait" : ""}`}
                         >
                           {translate.condensedDescLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Languages className="h-3 w-3" />}
-                          <span>{showTranslated.condensedDesc ? "显示原文" : translate.condensedDescriptionTranslated ? "已翻译" : "翻译"}</span>
+                          <span>{showTranslated.condensedDesc ? t("mods.onlineDetail.switchToOriginal") : translate.condensedDescriptionTranslated ? t("mods.onlineDetail.translated") : t("mods.onlineDetail.translate")}</span>
                         </button>
+                        )}
                       </div>
                       <div
                         className="prose dark:prose-invert max-w-none text-xs leading-tight text-muted-foreground nexus-description"
@@ -653,7 +660,7 @@ export function OnlineModDetailModal({
         {/* Footer Actions */}
         <div className="p-4 border-t border-border/60 bg-accent/15 flex justify-end gap-2.5 shrink-0">
           <Button variant="outline" size="sm" onClick={handleClose} className="h-8 text-xs rounded-lg cursor-pointer">
-            关闭
+            {t("mods.onlineDetail.close")}
           </Button>
           
           {nexusUrl && (
@@ -664,7 +671,7 @@ export function OnlineModDetailModal({
               className="h-8 text-xs rounded-lg gap-1 border-border/80 hover:bg-accent cursor-pointer"
             >
               <ExternalLink className="h-3 w-3" />
-              <span>在浏览器中打开 Nexus</span>
+              <span>{t("mods.onlineDetail.openInBrowser")}</span>
             </Button>
           )}
 
@@ -682,13 +689,13 @@ export function OnlineModDetailModal({
             }`}
             title={
               loading || !details
-                ? "模组详情加载完成后才能安装"
+                ? t("mods.onlineDetail.tooltipNeedLoad")
                 : isGameRunning
-                  ? "游戏运行中，不能下载并安装模组"
+                  ? t("mods.onlineDetail.tooltipGameRunning")
                   : installedMod
                     ? installedMod.version !== details?.version
-                      ? `已安装 v${installedMod.version}，最新 v${details?.version}，点击更新`
-                      : `已安装 v${installedMod.version}，版本一致`
+                      ? t("mods.onlineDetail.tooltipUpdate", { current: `v${installedMod.version}`, latest: `v${details?.version}` })
+                      : t("mods.onlineDetail.tooltipUpToDate")
                     : undefined
             }
           >
@@ -704,24 +711,24 @@ export function OnlineModDetailModal({
               <Download className="h-3 w-3" />
             )}
             <span>
-              {loading || !details ? "加载中..."
-                : isGameRunning ? "游戏运行中"
-                : isInstalling ? "安装中..."
+              {loading || !details ? t("mods.onlineDetail.btnLoading")
+                : isGameRunning ? t("mods.onlineDetail.btnGameRunning")
+                : isInstalling ? t("mods.onlineDetail.btnInstalling")
                 : installedMod
                   ? installedMod.version !== details?.version
-                    ? `更新 (v${installedMod.version})`
-                    : "已安装"
-                : "安装"
+                    ? `${t("mods.onlineDetail.btnUpdate")} (v${installedMod.version})`
+                    : t("mods.onlineDetail.btnInstalled")
+                : t("mods.onlineDetail.btnInstall")
               }
             </span>
             <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-popover text-popover-foreground border text-[9px] px-2 py-1 rounded shadow-lg whitespace-nowrap z-50">
-              {loading || !details ? "请等待详情和下载信息加载完成"
-                : isGameRunning ? "退出游戏后可加入下载队列"
+              {loading || !details ? t("mods.onlineDetail.tooltipWaitLoad")
+                : isGameRunning ? t("mods.onlineDetail.tooltipExitGame")
                 : installedMod
                   ? installedMod.version !== details?.version
-                    ? `当前 v${installedMod.version} → 最新 v${details?.version}，点击更新`
-                    : "已是最新版本"
-                : "加入侧边栏的全局下载队列"
+                    ? t("mods.onlineDetail.tooltipUpdate", { current: `v${installedMod.version}`, latest: `v${details?.version}` })
+                    : t("mods.onlineDetail.tooltipUpToDate")
+                : t("mods.onlineDetail.tooltipAddQueue")
               }
             </span>
           </Button>

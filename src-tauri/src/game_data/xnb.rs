@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::calendar::{resolve_localized_text, season_name, CalendarBirthday, CalendarFestival};
+use super::calendar::{resolve_localized_text, season_name_localized, CalendarBirthday, CalendarFestival};
 use super::image_utils::{Pixel, Texture};
 use super::npc::NpcProfile;
 
@@ -264,12 +264,13 @@ impl<'a> XnbPayloadReader<'a> {
     pub fn read_passive_festival_data(
         &mut self,
         localized_tables: &HashMap<String, HashMap<String, String>>,
+        is_zh: bool,
     ) -> Result<Option<Vec<CalendarFestival>>, String> {
         let display_name =
             resolve_localized_text(&self.read_object_string_any()?, localized_tables);
         let _condition = self.read_object_string_any()?;
         let show_on_calendar = self.read_bool()?;
-        let season = season_name(self.read_i32()?);
+        let season = season_name_localized(self.read_i32()?, is_zh);
         let start_day = self.read_i32()?;
         let end_day = self.read_i32()?;
         let _start_time = self.read_i32()?;
@@ -288,10 +289,18 @@ impl<'a> XnbPayloadReader<'a> {
         for day in start_day..=end_day {
             festivals.push(CalendarFestival {
                 name: display_name.clone(),
-                date: if start_day == end_day {
-                    format!("{} {}日", season, day)
+                date: if is_zh {
+                    if start_day == end_day {
+                        format!("{} {}日", season, day)
+                    } else {
+                        format!("{} {}-{}日", season, start_day, end_day)
+                    }
                 } else {
-                    format!("{} {}-{}日", season, start_day, end_day)
+                    if start_day == end_day {
+                        format!("{} {}", season, day)
+                    } else {
+                        format!("{} {}-{}", season, start_day, end_day)
+                    }
                 },
                 day,
                 season: season.to_string(),
@@ -304,6 +313,7 @@ impl<'a> XnbPayloadReader<'a> {
     pub fn read_calendar_birthday(
         &mut self,
         localized_tables: &HashMap<String, HashMap<String, String>>,
+        is_zh: bool,
     ) -> Result<Option<CalendarBirthday>, String> {
         let name = resolve_localized_text(&self.read_object_string_any()?, localized_tables);
         let birth_season = self.read_nullable_i32()?;
@@ -318,16 +328,28 @@ impl<'a> XnbPayloadReader<'a> {
             return Ok(None);
         }
 
-        let season = season_name(birth_season).to_string();
-        if season == "未知" || name.trim().is_empty() {
+        let season = match birth_season {
+            0 => if is_zh { "春季" } else { "Spring" },
+            1 => if is_zh { "夏季" } else { "Summer" },
+            2 => if is_zh { "秋季" } else { "Fall" },
+            3 => if is_zh { "冬季" } else { "Winter" },
+            _ => if is_zh { "未知" } else { "Unknown" },
+        };
+        if season == "未知" || season == "Unknown" || name.trim().is_empty() {
             return Ok(None);
         }
 
+        let date = if is_zh {
+            format!("{} {}日", season, birth_day)
+        } else {
+            format!("{} {}", season, birth_day)
+        };
+
         Ok(Some(CalendarBirthday {
             name,
-            date: format!("{} {}日", season, birth_day),
+            date,
             day: birth_day,
-            season,
+            season: season.to_string(),
         }))
     }
 
@@ -335,6 +357,7 @@ impl<'a> XnbPayloadReader<'a> {
         &mut self,
         id: &str,
         localized_tables: &HashMap<String, HashMap<String, String>>,
+        is_zh: bool,
     ) -> Result<Option<NpcProfile>, String> {
         let name = resolve_localized_text(&self.read_object_string_any()?, localized_tables);
         let birth_season = self.read_nullable_i32()?;
@@ -363,8 +386,22 @@ impl<'a> XnbPayloadReader<'a> {
             if birth_day <= 0 {
                 return None;
             }
-            let season_name = season_name(season);
-            (season_name != "未知").then(|| format!("{} {}日", season_name, birth_day))
+            let season_name = match season {
+                0 => if is_zh { "春季" } else { "Spring" },
+                1 => if is_zh { "夏季" } else { "Summer" },
+                2 => if is_zh { "秋季" } else { "Fall" },
+                3 => if is_zh { "冬季" } else { "Winter" },
+                _ => if is_zh { "未知" } else { "Unknown" },
+            };
+            if season_name != "未知" && season_name != "Unknown" {
+                if is_zh {
+                    Some(format!("{} {}日", season_name, birth_day))
+                } else {
+                    Some(format!("{} {}", season_name, birth_day))
+                }
+            } else {
+                None
+            }
         });
 
         let include = social_tab >= 0 || can_be_romanced || birthday.is_some();
@@ -1280,16 +1317,61 @@ pub fn load_localized_string_tables(
     content_dir: &Path,
     asset_names: &[&str],
 ) -> HashMap<String, HashMap<String, String>> {
+    load_localized_string_tables_with_lang(content_dir, asset_names, Some("zh"))
+}
+
+pub fn get_lang_suffix(lang: Option<&str>) -> &'static str {
+    let lang_str = lang.unwrap_or("zh");
+    match lang_str.to_lowercase().as_str() {
+        "zh" | "zh-cn" => ".zh-CN",
+        "ja" | "ja-jp" => ".ja-JP",
+        "ru" | "ru-ru" => ".ru-RU",
+        "de" | "de-de" => ".de-DE",
+        "es" | "es-es" => ".es-ES",
+        "fr" | "fr-fr" => ".fr-FR",
+        "it" | "it-it" => ".it-IT",
+        "ko" | "ko-kr" => ".ko-KR",
+        "pt" | "pt-br" => ".pt-BR",
+        "tr" | "tr-tr" => ".tr-TR",
+        "hu" | "hu-hu" => ".hu-HU",
+        _ => "",
+    }
+}
+
+pub fn load_localized_string_tables_with_lang(
+    content_dir: &Path,
+    asset_names: &[&str],
+    lang: Option<&str>,
+) -> HashMap<String, HashMap<String, String>> {
+    let lang_str = lang.unwrap_or("zh");
+    let suffix = match lang_str.to_lowercase().as_str() {
+        "zh" | "zh-cn" => ".zh-CN",
+        "ja" | "ja-jp" => ".ja-JP",
+        "ru" | "ru-ru" => ".ru-RU",
+        "de" | "de-de" => ".de-DE",
+        "es" | "es-es" => ".es-ES",
+        "fr" | "fr-fr" => ".fr-FR",
+        "it" | "it-it" => ".it-IT",
+        "ko" | "ko-kr" => ".ko-KR",
+        "pt" | "pt-br" => ".pt-BR",
+        "tr" | "tr-tr" => ".tr-TR",
+        "hu" | "hu-hu" => ".hu-HU",
+        _ => "",
+    };
+
     let mut tables = HashMap::new();
     for asset_name in asset_names {
-        let values = load_string_dictionary_best_effort(&[
-            content_dir
-                .join("Strings")
-                .join(format!("{}.zh-CN.xnb", asset_name)),
-            content_dir
-                .join("Strings")
-                .join(format!("{}.xnb", asset_name)),
-        ]);
+        let mut paths = Vec::new();
+        if !suffix.is_empty() {
+            paths.push(
+                content_dir
+                    .join("Strings")
+                    .join(format!("{}{}.xnb", asset_name, suffix)),
+            );
+        }
+        paths.push(content_dir.join("Strings").join(format!("{}.xnb", asset_name)));
+
+        let values = load_string_dictionary_best_effort(&paths);
         if !values.is_empty() {
             tables.insert((*asset_name).to_string(), values);
         }

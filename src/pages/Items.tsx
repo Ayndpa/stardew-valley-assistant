@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, useRef } from "react"
+import { useTranslation } from "react-i18next"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -21,18 +22,25 @@ interface ItemsProps {
 const PAGE_SIZE = 24
 
 export function Items({ navigationTarget, onNavigationHandled }: ItemsProps) {
+  const { t, i18n } = useTranslation()
   const [items, setItems] = useState<ItemEntry[]>([])
   const [categories, setCategories] = useState<string[]>([])
   const [itemTypes, setItemTypes] = useState<string[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("")
-  const [activeCategory, setActiveCategory] = useState("全部")
-  const [activeType, setActiveType] = useState("全部")
   const [highlightedItemId, setHighlightedItemId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
+
+  const activeLang = i18n.resolvedLanguage || i18n.language || "zh"
+  const allLabel = activeLang.toLowerCase().startsWith("zh") ? "全部" : "All"
+
+  const [activeCategory, setActiveCategory] = useState(allLabel)
+  const [activeType, setActiveType] = useState(allLabel)
+
+  const prevLangRef = useRef(activeLang)
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -44,13 +52,28 @@ export function Items({ navigationTarget, onNavigationHandled }: ItemsProps) {
     }
   }, [searchTerm])
 
+  // Reset activeCategory/activeType filters to localized default ("全部" / "All") when switching languages
+  useEffect(() => {
+    if (prevLangRef.current !== activeLang) {
+      const oldAllLabel = prevLangRef.current.toLowerCase().startsWith("zh") ? "全部" : "All"
+      const newAllLabel = activeLang.toLowerCase().startsWith("zh") ? "全部" : "All"
+      if (activeCategory === oldAllLabel) {
+        setActiveCategory(newAllLabel)
+      }
+      if (activeType === oldAllLabel) {
+        setActiveType(newAllLabel)
+      }
+      prevLangRef.current = activeLang
+    }
+  }, [activeLang, activeCategory, activeType])
+
   useEffect(() => {
     let canceled = false
 
     async function loadOverview() {
       const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__
       const gameDir = localStorage.getItem("stardewGameDirectory") || ""
-      const cacheKey = getItemGameDataCacheKey(gameDir)
+      const cacheKey = getItemGameDataCacheKey(gameDir, activeLang)
       const cached = readCache<ItemGameDataOverview>(cacheKey)
 
       if (cached && !canceled) {
@@ -63,7 +86,7 @@ export function Items({ navigationTarget, onNavigationHandled }: ItemsProps) {
       if (!isTauri) {
         if (!canceled) {
           setLoading(false)
-          setError("当前环境不是 Tauri，无法直接读取游戏目录。")
+          setError(t("items.notTauri", { defaultValue: "当前环境不是 Tauri，无法直接读取游戏目录。" }))
         }
         return
       }
@@ -77,6 +100,7 @@ export function Items({ navigationTarget, onNavigationHandled }: ItemsProps) {
         const { invoke } = await import("@tauri-apps/api/core")
         const data = await invoke<ItemGameDataOverview>("get_item_game_data_overview", {
           gameDir: gameDir.trim() || undefined,
+          lang: activeLang,
         })
         if (!canceled) {
           setCategories(data.categories)
@@ -104,7 +128,7 @@ export function Items({ navigationTarget, onNavigationHandled }: ItemsProps) {
     return () => {
       canceled = true
     }
-  }, [])
+  }, [activeLang, t])
 
   useEffect(() => {
     setPage(1)
@@ -114,11 +138,11 @@ export function Items({ navigationTarget, onNavigationHandled }: ItemsProps) {
     if (!navigationTarget) return
 
     setSearchTerm(navigationTarget)
-    setActiveCategory("全部")
-    setActiveType("全部")
+    setActiveCategory(allLabel)
+    setActiveType(allLabel)
     setPage(1)
     onNavigationHandled?.()
-  }, [navigationTarget, onNavigationHandled])
+  }, [navigationTarget, onNavigationHandled, allLabel])
 
   useEffect(() => {
     let canceled = false
@@ -140,6 +164,7 @@ export function Items({ navigationTarget, onNavigationHandled }: ItemsProps) {
           activeType,
           page,
           pageSize: PAGE_SIZE,
+          lang: activeLang,
         })
 
         if (!canceled) {
@@ -166,7 +191,7 @@ export function Items({ navigationTarget, onNavigationHandled }: ItemsProps) {
     return () => {
       canceled = true
     }
-  }, [activeCategory, activeType, debouncedSearchTerm, page])
+  }, [activeCategory, activeType, debouncedSearchTerm, page, activeLang])
 
   useEffect(() => {
     if (!navigationTarget || items.length === 0) return
@@ -196,9 +221,9 @@ export function Items({ navigationTarget, onNavigationHandled }: ItemsProps) {
   return (
     <div className="p-8 space-y-6">
       <div>
-        <h2 className="text-3xl font-bold tracking-tight">物品百科</h2>
+        <h2 className="text-3xl font-bold tracking-tight">{t("items.title")}</h2>
         <p className="text-muted-foreground mt-1">
-          按需读取当前筛选页的物品名称、描述、分类、售价和图标
+          {t("items.description")}
         </p>
       </div>
 
@@ -207,7 +232,7 @@ export function Items({ navigationTarget, onNavigationHandled }: ItemsProps) {
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             className="pl-10"
-            placeholder="搜索物品名、内部名、ID 或描述..."
+            placeholder={t("items.searchPlaceholder")}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.currentTarget.value)}
           />
@@ -242,7 +267,7 @@ export function Items({ navigationTarget, onNavigationHandled }: ItemsProps) {
 
         <div className="flex flex-col gap-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
           <span>
-            {totalCount === 0 ? "暂无结果" : `第 ${pageStart}-${pageEnd} 项，共 ${totalCount} 项`}
+            {totalCount === 0 ? t("items.noResults") : t("items.itemsCountLabel", { start: pageStart, end: pageEnd, total: totalCount })}
           </span>
           <div className="flex items-center gap-2">
             <Button
@@ -252,7 +277,7 @@ export function Items({ navigationTarget, onNavigationHandled }: ItemsProps) {
               disabled={loading || page <= 1}
             >
               <ChevronLeft className="h-4 w-4" />
-              上一页
+              {t("items.prevPage")}
             </Button>
             <span className="min-w-20 text-center text-xs">
               {page} / {totalPages}
@@ -263,7 +288,7 @@ export function Items({ navigationTarget, onNavigationHandled }: ItemsProps) {
               onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
               disabled={loading || page >= totalPages}
             >
-              下一页
+              {t("items.nextPage")}
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
@@ -273,8 +298,8 @@ export function Items({ navigationTarget, onNavigationHandled }: ItemsProps) {
       {(loading || error) && (
         <div className="text-xs text-muted-foreground">
           {loading
-            ? "正在读取当前筛选页的物品数据..."
-            : `未能读取游戏目录中的物品数据：${error}`}
+            ? t("items.loadingOverview")
+            : t("items.loadError", { error })}
         </div>
       )}
 
@@ -283,12 +308,12 @@ export function Items({ navigationTarget, onNavigationHandled }: ItemsProps) {
           <CardContent className="flex flex-col items-center justify-center py-16 text-center">
             <Package className="mb-4 h-12 w-12 text-muted-foreground/40" />
             <p className="text-lg font-semibold">
-              {totalCount === 0 ? "未读取到物品百科数据" : "没有符合条件的物品"}
+              {totalCount === 0 ? t("items.noData") : t("items.noMatches")}
             </p>
             <p className="mt-1 max-w-sm text-sm text-muted-foreground">
               {totalCount === 0
-                ? "请在设置中确认星露谷安装目录可用，程序会直接从游戏内容目录解析物品信息。"
-                : "调整搜索词、类型或分类筛选后再试。"}
+                ? t("items.noDataDesc")
+                : t("items.noMatchesDesc")}
             </p>
           </CardContent>
         </Card>
@@ -339,7 +364,7 @@ export function Items({ navigationTarget, onNavigationHandled }: ItemsProps) {
                   <div className="space-y-2 rounded-md border border-border/70 bg-accent/20 px-3 py-2">
                     <div className="flex items-center gap-2 text-xs font-medium text-foreground">
                       <BookOpen className="h-3.5 w-3.5" />
-                      <span>配方获取</span>
+                      <span>{t("items.recipeSourcesLabel")}</span>
                     </div>
                     <div className="space-y-1">
                       {item.recipeSources.map((source) => (
@@ -362,11 +387,11 @@ export function Items({ navigationTarget, onNavigationHandled }: ItemsProps) {
                   </div>
                   <div className="flex items-center gap-2 text-muted-foreground">
                     <Soup className="h-3.5 w-3.5" />
-                    <span>{item.edibility == null ? "不可食用" : `${item.edibility} 能量`}</span>
+                    <span>{item.edibility == null ? t("items.inedible") : t("items.edibleLabel", { energy: item.edibility })}</span>
                   </div>
                   <div className="flex items-center gap-2 text-muted-foreground">
                     <Gift className="h-3.5 w-3.5" />
-                    <span>{item.canBeGivenAsGift ? "可送礼" : "不可送礼"}</span>
+                    <span>{item.canBeGivenAsGift ? t("items.giftable") : t("items.ungiftable")}</span>
                   </div>
                 </div>
 
@@ -374,7 +399,7 @@ export function Items({ navigationTarget, onNavigationHandled }: ItemsProps) {
                   <Badge variant="outline">{item.itemType}</Badge>
                   <Badge variant="outline">
                     <Trash2 className="mr-1 h-3 w-3" />
-                    {item.canBeTrashed ? "可丢弃" : "不可丢弃"}
+                    {item.canBeTrashed ? t("items.trashable") : t("items.untrashable")}
                   </Badge>
                 </div>
               </CardContent>

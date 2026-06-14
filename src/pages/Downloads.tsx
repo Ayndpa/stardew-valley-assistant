@@ -9,6 +9,7 @@ import {
   Trash2,
   XCircle,
 } from "lucide-react"
+import { useTranslation } from "react-i18next"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -34,18 +35,19 @@ interface DownloadsProps {
 }
 
 function StatusBadge({ status }: { status: DownloadTaskStatus }) {
+  const { t } = useTranslation()
   const base = "whitespace-nowrap shrink-0 font-semibold px-2 py-0.5 text-[10px] rounded-full border"
   switch (status) {
     case "queued":
-      return <Badge className={`bg-slate-500/10 text-slate-500 border-slate-500/20 ${base}`}>排队中</Badge>
+      return <Badge className={`bg-slate-500/10 text-slate-500 border-slate-500/20 ${base}`}>{t("downloads.status.queued")}</Badge>
     case "running":
-      return <Badge className={`bg-blue-500/10 text-blue-500 border-blue-500/20 ${base}`}>下载中</Badge>
+      return <Badge className={`bg-blue-500/10 text-blue-500 border-blue-500/20 ${base}`}>{t("downloads.status.running")}</Badge>
     case "paused":
-      return <Badge className={`bg-amber-500/10 text-amber-500 border-amber-500/20 ${base}`}>已暂停</Badge>
+      return <Badge className={`bg-amber-500/10 text-amber-500 border-amber-500/20 ${base}`}>{t("downloads.status.paused")}</Badge>
     case "success":
-      return <Badge className={`bg-green-500/10 text-green-500 border-green-500/20 ${base}`}>已完成</Badge>
+      return <Badge className={`bg-green-500/10 text-green-500 border-green-500/20 ${base}`}>{t("downloads.status.success")}</Badge>
     case "error":
-      return <Badge className={`bg-red-500/10 text-red-500 border-red-500/20 ${base}`}>失败</Badge>
+      return <Badge className={`bg-red-500/10 text-red-500 border-red-500/20 ${base}`}>{t("downloads.status.error")}</Badge>
   }
 }
 
@@ -57,9 +59,10 @@ function TaskIcon({ status }: { status: DownloadTaskStatus }) {
   return <Download className="h-4 w-4 text-muted-foreground shrink-0" />
 }
 
-function formatTime(value?: number) {
+function formatTime(value: number | undefined, locale: string) {
   if (!value) return "-"
-  return new Date(value).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })
+  const loc = locale === "zh" ? "zh-CN" : "en-US"
+  return new Date(value).toLocaleTimeString(loc, { hour: "2-digit", minute: "2-digit" })
 }
 
 export function Downloads({
@@ -72,6 +75,7 @@ export function Downloads({
   onRemove,
   onClearCompleted,
 }: DownloadsProps) {
+  const { t, i18n } = useTranslation()
   const hasCompleted = tasks.some(task => task.status === "success" || task.status === "error")
 
   return (
@@ -79,10 +83,10 @@ export function Downloads({
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
         <div>
           <h2 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-primary to-green-600 bg-clip-text text-transparent">
-            下载管理
+            {t("downloads.title")}
           </h2>
           <p className="text-muted-foreground mt-2 text-sm max-w-xl">
-            统一管理 NexusMods 模组和 SMAPI 的下载与安装任务。
+            {t("downloads.description")}
           </p>
         </div>
         <Button
@@ -92,25 +96,25 @@ export function Downloads({
           className="h-9 text-xs rounded-lg gap-1.5 self-start lg:self-auto"
         >
           <Trash2 className="h-4 w-4" />
-          清除完成项
+          {t("downloads.clearCompleted")}
         </Button>
       </div>
 
       {isGameRunning && (
         <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-xs text-amber-700 dark:text-amber-300 flex items-center gap-2">
           <AlertTriangle className="h-4 w-4 shrink-0" />
-          游戏运行中，下载与安装任务会暂停，退出游戏后自动继续。
+          {t("downloads.gameRunningWarning")}
         </div>
       )}
 
       <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
         {[
-          { label: "全部任务", value: stats.total },
-          { label: "下载中", value: stats.running },
-          { label: "排队中", value: stats.queued },
-          { label: "已暂停", value: stats.paused },
-          { label: "已完成", value: stats.finished },
-          { label: "失败", value: stats.failed },
+          { label: t("downloads.stats.total"), value: stats.total },
+          { label: t("downloads.stats.running"), value: stats.running },
+          { label: t("downloads.stats.queued"), value: stats.queued },
+          { label: t("downloads.stats.paused"), value: stats.paused },
+          { label: t("downloads.stats.finished"), value: stats.finished },
+          { label: t("downloads.stats.failed"), value: stats.failed },
         ].map(item => (
           <Card key={item.label} className="border border-border/80 bg-card shadow-sm">
             <CardContent className="p-4">
@@ -127,10 +131,10 @@ export function Downloads({
             <div>
               <CardTitle className="text-sm font-bold flex items-center gap-2">
                 <Download className="h-4 w-4 text-primary" />
-                任务队列
+                {t("downloads.queue.title")}
               </CardTitle>
               <CardDescription className="text-[11px] mt-1">
-                当前并发 {stats.running}/{stats.maxConcurrent}
+                {t("downloads.queue.concurrent", { running: stats.running, max: stats.maxConcurrent })}
               </CardDescription>
             </div>
           </div>
@@ -139,9 +143,9 @@ export function Downloads({
           {tasks.length === 0 ? (
             <div className="border border-dashed border-border rounded-xl px-4 py-12 text-center">
               <Download className="h-8 w-8 text-muted-foreground/60 mx-auto mb-3" />
-              <p className="text-sm font-semibold text-foreground">暂无下载任务</p>
+              <p className="text-sm font-semibold text-foreground">{t("downloads.empty.title")}</p>
               <p className="text-xs text-muted-foreground mt-1">
-                在获取模组页面加入 NexusMods 下载，或在模组管理中安装 SMAPI 后会显示在这里。
+                {t("downloads.empty.description")}
               </p>
             </div>
           ) : (
@@ -162,7 +166,7 @@ export function Downloads({
                     </p>
                     <div className="space-y-1">
                       <div className="flex items-center justify-between gap-3 text-[10px] text-muted-foreground/80">
-                        <span>{task.phase === "extracting" ? "解压中" : task.phase === "installing" ? "安装中" : task.phase === "paused" ? "已暂停" : "下载进度"}</span>
+                        <span>{task.phase === "extracting" ? t("downloads.phase.extracting") : task.phase === "installing" ? t("downloads.phase.installing") : task.phase === "paused" ? t("downloads.phase.paused") : t("downloads.phase.downloading")}</span>
                         <span>{task.progress}%</span>
                       </div>
                       <div className="h-2 overflow-hidden rounded-full bg-muted/70">
@@ -181,8 +185,8 @@ export function Downloads({
                       </div>
                     </div>
                     <p className="text-[10px] text-muted-foreground/80">
-                      创建 {formatTime(task.createdAt)}
-                      {task.completedAt ? ` · 完成 ${formatTime(task.completedAt)}` : ""}
+                      {t("downloads.time.created")} {formatTime(task.createdAt, i18n.language)}
+                      {task.completedAt ? ` · ${t("downloads.time.completed")} ${formatTime(task.completedAt, i18n.language)}` : ""}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
@@ -194,7 +198,7 @@ export function Downloads({
                         className="h-8 text-[11px] rounded-lg gap-1"
                       >
                         <Pause className="h-3.5 w-3.5" />
-                        暂停
+                        {t("downloads.actions.pause")}
                       </Button>
                     )}
                     {task.status === "paused" && (
@@ -203,11 +207,11 @@ export function Downloads({
                         size="sm"
                         onClick={() => onResume(task.id)}
                         disabled={isGameRunning && !!task.startedAt}
-                        title={isGameRunning && !!task.startedAt ? "游戏运行中，不能继续下载" : undefined}
+                        title={isGameRunning && !!task.startedAt ? t("downloads.gameRunningCannotResume") : undefined}
                         className="h-8 text-[11px] rounded-lg gap-1"
                       >
                         <Play className="h-3.5 w-3.5" />
-                        继续
+                        {t("downloads.actions.resume")}
                       </Button>
                     )}
                     {task.status === "error" && (
@@ -216,11 +220,11 @@ export function Downloads({
                         size="sm"
                         onClick={() => onRetry(task.id)}
                         disabled={isGameRunning}
-                        title={isGameRunning ? "游戏运行中，不能重试安装" : undefined}
+                        title={isGameRunning ? t("downloads.gameRunningCannotRetry") : undefined}
                         className="h-8 text-[11px] rounded-lg gap-1"
                       >
                         <RotateCcw className="h-3.5 w-3.5" />
-                        重试
+                        {t("downloads.actions.retry")}
                       </Button>
                     )}
                     {(task.status === "success" || task.status === "error") && (
@@ -229,7 +233,7 @@ export function Downloads({
                         size="icon"
                         onClick={() => onRemove(task.id)}
                         className="h-8 w-8 rounded-lg"
-                        title="移除任务"
+                        title={t("downloads.actions.removeTask")}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>

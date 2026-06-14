@@ -1,8 +1,10 @@
-import { useState, useEffect } from "react"
+
+import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { useTranslation } from "react-i18next"
 import {
   CalendarDays,
   PartyPopper,
@@ -13,9 +15,6 @@ import {
   Info,
   FileQuestion,
 } from "lucide-react"
-
-// Dynamic imports will be done inline inside useEffect/handlers for reliability
-
 
 interface SaveSummary {
   id: string
@@ -57,8 +56,6 @@ interface LocalCacheEntry<T> {
   fetchedAt: number
 }
 
-const SEASONS_LIST = ["春季", "夏季", "秋季", "冬季"]
-const WEEKDAYS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
 
 const CALENDAR_GAME_DATA_CACHE_KEY = "stardew_calendar_game_data_cache"
 const CALENDAR_SAVE_DETAIL_CACHE_KEY = "stardew_calendar_save_detail_cache"
@@ -94,8 +91,8 @@ function writeCache<T>(key: string, data: T) {
   }
 }
 
-function getCalendarGameDataCacheKey(gameDir: string) {
-  return `${CALENDAR_GAME_DATA_CACHE_KEY}:${normalizeGameDir(gameDir) || "default"}`
+function getCalendarGameDataCacheKey(gameDir: string, lang: string) {
+  return `${CALENDAR_GAME_DATA_CACHE_KEY}:${normalizeGameDir(gameDir) || "default"}:${lang}`
 }
 
 function getCalendarSaveDetailCacheKey(saveId: string) {
@@ -107,6 +104,9 @@ interface CalendarProps {
 }
 
 export function Calendar({ selectedSaveId }: CalendarProps) {
+  const { t, i18n } = useTranslation()
+  const activeLang = i18n.resolvedLanguage || i18n.language || "zh"
+
   const [detail, setDetail] = useState<SaveDetail | null>(null)
   const [festivals, setFestivals] = useState<Festival[]>([])
   const [birthdays, setBirthdays] = useState<Birthday[]>([])
@@ -121,7 +121,7 @@ export function Calendar({ selectedSaveId }: CalendarProps) {
     async function loadCalendarGameData() {
       const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__
       const gameDir = localStorage.getItem("stardewGameDirectory") || ""
-      const cacheKey = getCalendarGameDataCacheKey(gameDir)
+      const cacheKey = getCalendarGameDataCacheKey(gameDir, activeLang)
       const cached = readCache<CalendarGameData>(cacheKey)
 
       if (cached && !canceled) {
@@ -133,7 +133,7 @@ export function Calendar({ selectedSaveId }: CalendarProps) {
 
       if (!isTauri) {
         if (!canceled) {
-          setCalendarDataError("当前环境不是 Tauri，无法直接读取游戏目录。")
+          setCalendarDataError(t("calendar.loadError", { error: "Not in Tauri environment", defaultValue: "当前环境不是 Tauri，无法直接读取游戏目录。" }))
         }
         return
       }
@@ -147,6 +147,7 @@ export function Calendar({ selectedSaveId }: CalendarProps) {
         const { invoke } = await import("@tauri-apps/api/core")
         const data = await invoke("get_calendar_game_data", {
           gameDir: gameDir.trim() || undefined,
+          lang: activeLang,
         }) as CalendarGameData
         if (!canceled) {
           setFestivals(data.festivals)
@@ -175,7 +176,7 @@ export function Calendar({ selectedSaveId }: CalendarProps) {
     return () => {
       canceled = true
     }
-  }, [])
+  }, [activeLang, t])
 
   // Fetch save details
   useEffect(() => {
@@ -227,10 +228,27 @@ export function Calendar({ selectedSaveId }: CalendarProps) {
   const hasSaveData = !!selectedSaveId && !!detail
   const summary = detail?.summary
 
+  const seasonsList = useMemo(() => [
+    t("calendar.seasons.spring", { defaultValue: "春季" }),
+    t("calendar.seasons.summer", { defaultValue: "夏季" }),
+    t("calendar.seasons.fall", { defaultValue: "秋季" }),
+    t("calendar.seasons.winter", { defaultValue: "冬季" }),
+  ], [t])
+
+  const weekdays = useMemo(() => [
+    t("calendar.weekdays.mon", { defaultValue: "周一" }),
+    t("calendar.weekdays.tue", { defaultValue: "周二" }),
+    t("calendar.weekdays.wed", { defaultValue: "周三" }),
+    t("calendar.weekdays.thu", { defaultValue: "周四" }),
+    t("calendar.weekdays.fri", { defaultValue: "周五" }),
+    t("calendar.weekdays.sat", { defaultValue: "周六" }),
+    t("calendar.weekdays.sun", { defaultValue: "周日" }),
+  ], [t])
+
   // Dynamic bookseller days
   const booksellerDays = summary ? getBooksellerDays(summary.year, summary.id, viewSeason) : []
 
-  const activeSeasonName = SEASONS_LIST[viewSeason]
+  const activeSeasonName = seasonsList[viewSeason]
 
   // Get events on a specific day
   const getDayEvents = (day: number) => {
@@ -261,26 +279,26 @@ export function Calendar({ selectedSaveId }: CalendarProps) {
     <div className="p-8 space-y-6">
       {/* Header */}
       <div>
-        <h2 className="text-3xl font-bold tracking-tight">节日日历</h2>
+        <h2 className="text-3xl font-bold tracking-tight">{t("calendar.title", { defaultValue: "节日日历" })}</h2>
         <p className="text-muted-foreground mt-1">
           {summary
-            ? `当前进度：第 ${summary.year} 年 · ${SEASONS_LIST[summary.season]} 第 ${summary.dayOfMonth} 天`
-            : "浏览星露谷全年的节日、生日和特殊事件"}
+            ? t("calendar.progress", { year: summary.year, season: seasonsList[summary.season], day: summary.dayOfMonth, defaultValue: `当前进度：第 ${summary.year} 年 · ${seasonsList[summary.season]} 第 ${summary.dayOfMonth} 天` })
+            : t("calendar.descriptionDefault", { defaultValue: "浏览星露谷全年的节日、生日和特殊事件" })}
         </p>
       </div>
 
       {(loadingCalendarData || calendarDataError) && (
         <div className="text-xs text-muted-foreground">
           {loadingCalendarData
-            ? "正在从游戏内容解析节日与生日数据..."
-            : `未能读取游戏目录中的日历数据：${calendarDataError}`}
+            ? t("calendar.loading", { defaultValue: "正在从游戏内容解析节日与生日数据..." })
+            : t("calendar.loadError", { error: calendarDataError, defaultValue: `未能读取游戏目录中的日历数据：${calendarDataError}` })}
         </div>
       )}
 
       <Tabs defaultValue="grid-view" className="space-y-6">
         <TabsList>
-          <TabsTrigger value="grid-view">日历视图</TabsTrigger>
-          <TabsTrigger value="list-view">节日与生日表</TabsTrigger>
+          <TabsTrigger value="grid-view">{t("calendar.gridView", { defaultValue: "日历视图" })}</TabsTrigger>
+          <TabsTrigger value="list-view">{t("calendar.listView", { defaultValue: "节日与生日表" })}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="grid-view" className="space-y-6">
@@ -288,44 +306,44 @@ export function Calendar({ selectedSaveId }: CalendarProps) {
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-20 text-center">
                 <FileQuestion className="h-12 w-12 text-muted-foreground/30 mb-4" />
-                <p className="font-semibold text-lg">未选择游戏存档</p>
+                <p className="font-semibold text-lg">{t("calendar.noSave", { defaultValue: "未选择游戏存档" })}</p>
                 <p className="text-sm text-muted-foreground mt-1 max-w-sm">
-                  请先通过侧边栏选择一个游戏存档文件，日历视图将根据您的游戏进度显示当天的高亮标记和书商来访日期。
+                  {t("calendar.noSaveDesc", { defaultValue: "请先通过侧边栏选择一个游戏存档文件，日历视图将根据您的游戏进度显示当天的高亮标记和书商来访日期。" })}
                 </p>
                 <p className="text-xs text-muted-foreground/70 mt-3">
-                  您也可以切换到“节日与生日表”查看完整的静态事件列表。
+                  {t("calendar.noSaveDescList", { defaultValue: "您也可以切换到“节日与生日表”查看完整的静态事件列表。" })}
                 </p>
               </CardContent>
             </Card>
           ) : (
-          <div className="flex flex-col xl:flex-row gap-6">
-            {/* Interactive Calendar Grid */}
-            <Card className="flex-1">
-              <CardHeader className="flex flex-row items-center justify-between pb-4 border-b">
-                <div>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <CalendarDays className="h-5 w-5 text-primary" />
-                    {activeSeasonName} 日历
-                  </CardTitle>
-                  <CardDescription>28天的季节循环</CardDescription>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button variant="outline" size="icon" onClick={prevSeason}>
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  <span className="font-bold text-sm min-w-[50px] text-center">{activeSeasonName}</span>
-                  <Button variant="outline" size="icon" onClick={nextSeason}>
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent className="pt-4">
-                {/* Weekday Labels */}
-                <div className="grid grid-cols-7 gap-2 mb-2 text-center text-xs font-bold text-muted-foreground bg-accent/40 py-1.5 rounded-md">
-                  {WEEKDAYS.map(w => (
-                    <div key={w}>{w}</div>
-                  ))}
-                </div>
+            <div className="flex flex-col xl:flex-row gap-6">
+              {/* Interactive Calendar Grid */}
+              <Card className="flex-1">
+                <CardHeader className="flex flex-row items-center justify-between pb-4 border-b">
+                  <div>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <CalendarDays className="h-5 w-5 text-primary" />
+                      {t("calendar.calendarTitle", { season: activeSeasonName, defaultValue: `${activeSeasonName} 日历` })}
+                    </CardTitle>
+                    <CardDescription>{t("calendar.calendarDesc", { defaultValue: "28天的季节循环" })}</CardDescription>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="icon" onClick={prevSeason}>
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <span className="font-bold text-sm min-w-[50px] text-center">{activeSeasonName}</span>
+                    <Button variant="outline" size="icon" onClick={nextSeason}>
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="pt-4">
+                  {/* Weekday Labels */}
+                  <div className="grid grid-cols-7 gap-2 mb-2 text-center text-xs font-bold text-muted-foreground bg-accent/40 py-1.5 rounded-md">
+                    {weekdays.map(w => (
+                      <div key={w}>{w}</div>
+                    ))}
+                  </div>
 
                 {/* Grid Cells */}
                 <div className="grid grid-cols-7 gap-2">
@@ -346,13 +364,14 @@ export function Calendar({ selectedSaveId }: CalendarProps) {
                             ? "border-foreground bg-accent"
                             : "hover:bg-accent/40 bg-background"
                         }`}
+
                       >
                         <div className="flex justify-between items-center w-full">
                           <span className={`text-sm font-bold ${isToday ? "text-primary font-extrabold" : ""}`}>
                             {day}
                           </span>
                           {isToday && (
-                            <Badge className="text-[9px] px-1 py-0 h-4 font-semibold">今天</Badge>
+                            <Badge className="text-[9px] px-1 py-0 h-4 font-semibold">{t("calendar.today", { defaultValue: "今天" })}</Badge>
                           )}
                         </div>
 
@@ -373,7 +392,7 @@ export function Calendar({ selectedSaveId }: CalendarProps) {
                           {events.isBookseller && (
                             <div className="text-[10px] truncate bg-blue-500/10 text-blue-500 dark:text-blue-400 px-1 rounded flex items-center gap-0.5 font-medium">
                               <BookOpen className="h-2.5 w-2.5 shrink-0" />
-                              <span>图书交易</span>
+                              <span>{t("calendar.bookseller", { defaultValue: "图书交易" })}</span>
                             </div>
                           )}
                         </div>
@@ -389,12 +408,12 @@ export function Calendar({ selectedSaveId }: CalendarProps) {
               <CardHeader className="pb-4 border-b">
                 <CardTitle className="text-base flex items-center gap-2">
                   <Info className="h-4 w-4 text-primary" />
-                  日历详情
+                  {t("calendar.detailsTitle", { defaultValue: "日历详情" })}
                 </CardTitle>
                 <CardDescription>
                   {selectedDay
-                    ? `${activeSeasonName} 第 ${selectedDay} 天 (${WEEKDAYS[(selectedDay - 1) % 7]})`
-                    : "点击日历单元格查看当天事件"}
+                    ? t("calendar.detailsDescDay", { season: activeSeasonName, day: selectedDay, weekday: weekdays[(selectedDay - 1) % 7], defaultValue: `${activeSeasonName} 第 ${selectedDay} 天 (${weekdays[(selectedDay - 1) % 7]})` })
+                    : t("calendar.detailsDescDefault", { defaultValue: "点击日历单元格查看当天事件" })}
                 </CardDescription>
               </CardHeader>
               <CardContent className="pt-4 space-y-4">
@@ -404,7 +423,7 @@ export function Calendar({ selectedSaveId }: CalendarProps) {
                     {currentDayEvents.festivals.length > 0 && (
                       <div className="space-y-2">
                         <h4 className="text-xs font-bold uppercase tracking-wider text-rose-500 flex items-center gap-1.5">
-                          <PartyPopper className="h-3.5 w-3.5" /> 节日活动
+                          <PartyPopper className="h-3.5 w-3.5" /> {t("calendar.festivalsTitle", { defaultValue: "节日活动" })}
                         </h4>
                         {currentDayEvents.festivals.map((f, idx) => (
                           <div key={idx} className="bg-rose-500/5 border border-rose-500/10 p-3 rounded-lg space-y-1">
@@ -421,12 +440,12 @@ export function Calendar({ selectedSaveId }: CalendarProps) {
                     {currentDayEvents.birthdays.length > 0 && (
                       <div className="space-y-2">
                         <h4 className="text-xs font-bold uppercase tracking-wider text-green-500 flex items-center gap-1.5">
-                          <Cake className="h-3.5 w-3.5" /> 角色生日
+                          <Cake className="h-3.5 w-3.5" /> {t("calendar.birthdaysTitle", { defaultValue: "角色生日" })}
                         </h4>
                         {currentDayEvents.birthdays.map((b, idx) => (
                           <div key={idx} className="bg-green-500/5 border border-green-500/10 p-3 rounded-lg space-y-1">
-                            <p className="font-bold text-sm text-green-500">{b.name} 生日</p>
-                            <p className="text-xs text-muted-foreground">送给他最爱或喜欢的物品，会获得 8 倍的好感度加成！</p>
+                            <p className="font-bold text-sm text-green-500">{t("calendar.birthdayCardTitle", { name: b.name, defaultValue: `${b.name} 生日` })}</p>
+                            <p className="text-xs text-muted-foreground">{t("calendar.birthdayTips", { defaultValue: "送给他最爱或喜欢的物品，会获得 8 倍的好感度加成！" })}</p>
                           </div>
                         ))}
                       </div>
@@ -436,12 +455,12 @@ export function Calendar({ selectedSaveId }: CalendarProps) {
                     {currentDayEvents.isBookseller && (
                       <div className="space-y-2">
                         <h4 className="text-xs font-bold uppercase tracking-wider text-blue-500 flex items-center gap-1.5">
-                          <BookOpen className="h-3.5 w-3.5" /> 书商来访
+                          <BookOpen className="h-3.5 w-3.5" /> {t("calendar.booksellerTitle", { defaultValue: "书商来访" })}
                         </h4>
                         <div className="bg-blue-500/5 border border-blue-500/10 p-3 rounded-lg space-y-1">
-                          <p className="font-bold text-sm text-blue-500">图书交易员</p>
+                          <p className="font-bold text-sm text-blue-500">{t("calendar.booksellerDetailName", { defaultValue: "图书交易员" })}</p>
                           <p className="text-xs text-muted-foreground">
-                            在小镇东北边（Joja超市后面）售卖技能书及配方。营业一整天，请注意带足金币！
+                            {t("calendar.booksellerDesc", { defaultValue: "在小镇东北边（Joja超市后面）售卖技能书及配方。营业一整天，请注意带足金币！" })}
                           </p>
                         </div>
                       </div>
@@ -453,16 +472,16 @@ export function Calendar({ selectedSaveId }: CalendarProps) {
                       !currentDayEvents.isBookseller && (
                         <div className="flex flex-col items-center justify-center py-10 text-center text-muted-foreground">
                           <CalendarDays className="h-8 w-8 text-muted-foreground/35 mb-2" />
-                          <p className="text-sm">这一天没有任何节日或生日事件</p>
-                          <p className="text-xs text-muted-foreground/75 mt-1">是个专注农活或下矿的好日子！</p>
+                          <p className="text-sm">{t("calendar.noEventsTitle", { defaultValue: "这一天没有任何节日或生日事件" })}</p>
+                          <p className="text-xs text-muted-foreground/75 mt-1">{t("calendar.noEventsDesc", { defaultValue: "是个专注农活或下矿的好日子！" })}</p>
                         </div>
                       )}
                   </>
                 ) : (
                   <div className="flex flex-col items-center justify-center py-20 text-center text-muted-foreground">
                     <CalendarDays className="h-8 w-8 text-muted-foreground/30 mb-2 animate-pulse" />
-                    <p className="text-sm font-medium">请选择一个日期</p>
-                    <p className="text-xs text-muted-foreground/80 mt-1">以查看星露谷每日事件的详细信息</p>
+                    <p className="text-sm font-medium">{t("calendar.pleaseSelectDayTitle", { defaultValue: "请选择一个日期" })}</p>
+                    <p className="text-xs text-muted-foreground/80 mt-1">{t("calendar.pleaseSelectDayDesc", { defaultValue: "以查看星露谷每日事件的详细信息" })}</p>
                   </div>
                 )}
               </CardContent>
@@ -476,8 +495,8 @@ export function Calendar({ selectedSaveId }: CalendarProps) {
             {/* Festivals List */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">节日活动清单</CardTitle>
-                <CardDescription>星露谷全年的节日与特殊天气</CardDescription>
+                <CardTitle className="text-base">{t("calendar.festivalsListTitle", { defaultValue: "节日活动清单" })}</CardTitle>
+                <CardDescription>{t("calendar.festivalsListDesc", { defaultValue: "星露谷全年的节日与特殊天气" })}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3 max-h-[60vh] overflow-y-auto">
                 {festivals.map((f, i) => (
@@ -497,8 +516,8 @@ export function Calendar({ selectedSaveId }: CalendarProps) {
             {/* Birthdays List */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">村民生日表</CardTitle>
-                <CardDescription>所有鹈鹕镇居民的生日汇总</CardDescription>
+                <CardTitle className="text-base">{t("calendar.birthdaysListTitle", { defaultValue: "村民生日表" })}</CardTitle>
+                <CardDescription>{t("calendar.birthdaysListDesc", { defaultValue: "所有鹈鹕镇居民的生日汇总" })}</CardDescription>
               </CardHeader>
               <CardContent className="grid grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto">
                 {birthdays.map((b, i) => (

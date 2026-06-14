@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { useTheme } from "@/lib/theme-provider"
 import { useNexus } from "@/lib/nexus-provider"
+import { useTranslation } from "react-i18next"
 import {
   Bell,
   Database,
@@ -38,6 +39,7 @@ import { SaveInfoCard, SaveDetail } from "@/components/settings/SaveInfoCard"
 import { GamePathCard } from "@/components/settings/GamePathCard"
 import { NexusAccountCard } from "@/components/settings/NexusAccountCard"
 import { AppearanceCard } from "@/components/settings/AppearanceCard"
+import { LanguageCard } from "@/components/settings/LanguageCard"
 import { AboutCard } from "@/components/settings/AboutCard"
 
 const MOCK_SAVE_DETAIL: SaveDetail = {
@@ -68,8 +70,6 @@ const MOCK_SAVE_DETAIL: SaveDetail = {
   farmerAvatarError: null,
 }
 
-const SEASONS = ["春季", "夏季", "秋季", "冬季"]
-
 export function Settings({
   selectedSaveId,
   onRestartOnboarding,
@@ -77,6 +77,7 @@ export function Settings({
   selectedSaveId: string
   onRestartOnboarding?: () => void
 }) {
+  const { t } = useTranslation()
   const { themeMode, themeSeason, setThemeMode, setThemeSeason } = useTheme()
   const {
     nexusLoggedIn,
@@ -154,7 +155,7 @@ export function Settings({
         const selected = await dialog({
           directory: true,
           multiple: false,
-          title: "选择星露谷物语 (Stardew Valley) 安装目录",
+          title: t("settings.gamePath.dialogTitle"),
           defaultPath: gameDir || "C:\\Program Files (x86)\\Steam\\steamapps\\common",
         })
         if (selected) {
@@ -170,7 +171,7 @@ export function Settings({
       const mockPath = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Stardew Valley"
       setGameDir(mockPath)
       localStorage.setItem("stardewGameDirectory", mockPath)
-      alert("（Web 模式模拟）自动填充默认安装路径成功！")
+      alert(t("settings.gamePath.mockBrowseSuccess"))
     }
   }
 
@@ -182,20 +183,20 @@ export function Settings({
         if (detectedPath) {
           setGameDir(detectedPath)
           localStorage.setItem("stardewGameDirectory", detectedPath)
-          alert(`自动检测成功！已找到游戏目录：\n${detectedPath}`)
+          alert(t("settings.gamePath.autoDetectSuccess", { path: detectedPath }))
         } else {
-          alert("未能在 Steam 库中找到安装的星露谷物语，请手动选择目录。")
+          alert(t("settings.gamePath.autoDetectFail"))
         }
       } catch (err) {
         console.error("Tauri auto detect error:", err)
-        alert("自动检测发生错误，请手动选择目录。")
+        alert(t("settings.gamePath.autoDetectError"))
       }
     } else {
       // Browser Mock behavior
       const mockPath = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Stardew Valley"
       setGameDir(mockPath)
       localStorage.setItem("stardewGameDirectory", mockPath)
-      alert("（Web 模式模拟）自动检测成功！已填充默认 Steam 路径。")
+      alert(t("settings.gamePath.mockAutoDetectSuccess"))
     }
   }
 
@@ -208,9 +209,9 @@ export function Settings({
     <div className="p-8 space-y-6">
       {/* Header */}
       <div>
-        <h2 className="text-3xl font-bold tracking-tight">设置</h2>
+        <h2 className="text-3xl font-bold tracking-tight">{t("settings.title")}</h2>
         <p className="text-muted-foreground mt-1">
-          自定义你的超级星露谷体验
+          {t("settings.description")}
         </p>
       </div>
 
@@ -218,7 +219,6 @@ export function Settings({
         <SaveInfoCard
           loading={loading}
           detail={detail}
-          seasons={SEASONS}
         />
 
         <GamePathCard
@@ -243,36 +243,35 @@ export function Settings({
           onRefreshApiKey={onRefreshApiKey}
         />
 
-        {/* Notification Settings */}
         <Card>
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
               <Bell className="h-5 w-5" />
-              提醒设置
+              {t("settings.notifications.title")}
             </CardTitle>
-            <CardDescription>配置节日和生日提醒</CardDescription>
+            <CardDescription>{t("settings.notifications.description")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between p-3 rounded-lg bg-accent/50">
               <div>
-                <p className="text-sm font-medium">节日提前提醒</p>
-                <p className="text-xs text-muted-foreground">在节日前一天提醒你</p>
+                <p className="text-sm font-medium">{t("settings.notifications.festival")}</p>
+                <p className="text-xs text-muted-foreground">{t("settings.notifications.festivalDesc")}</p>
               </div>
-              <Button variant="outline" size="sm">开启</Button>
+              <Button variant="outline" size="sm">{t("settings.notifications.enable")}</Button>
             </div>
             <div className="flex items-center justify-between p-3 rounded-lg bg-accent/50">
               <div>
-                <p className="text-sm font-medium">生日提醒</p>
-                <p className="text-xs text-muted-foreground">在村民生日当天提醒送礼</p>
+                <p className="text-sm font-medium">{t("settings.notifications.birthday")}</p>
+                <p className="text-xs text-muted-foreground">{t("settings.notifications.birthdayDesc")}</p>
               </div>
-              <Button variant="outline" size="sm">开启</Button>
+              <Button variant="outline" size="sm">{t("settings.notifications.enable")}</Button>
             </div>
             <div className="flex items-center justify-between p-3 rounded-lg bg-accent/50">
               <div>
-                <p className="text-sm font-medium">作物成熟提醒</p>
-                <p className="text-xs text-muted-foreground">当作物成熟时提醒你收获</p>
+                <p className="text-sm font-medium">{t("settings.notifications.crops")}</p>
+                <p className="text-xs text-muted-foreground">{t("settings.notifications.cropsDesc")}</p>
               </div>
-              <Button variant="outline" size="sm">开启</Button>
+              <Button variant="outline" size="sm">{t("settings.notifications.enable")}</Button>
             </div>
           </CardContent>
         </Card>
@@ -284,46 +283,47 @@ export function Settings({
           setThemeSeason={setThemeSeason}
         />
 
-        {/* Data Settings */}
+        <LanguageCard />
+
         <Card>
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
               <Database className="h-5 w-5" />
-              数据管理
+              {t("settings.data.title")}
             </CardTitle>
-            <CardDescription>管理应用数据</CardDescription>
+            <CardDescription>{t("settings.data.description")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium">重新新手引导</p>
-                <p className="text-xs text-muted-foreground">重新配置游戏路径与首选项</p>
+                <p className="text-sm font-medium">{t("settings.data.onboarding")}</p>
+                <p className="text-xs text-muted-foreground">{t("settings.data.onboardingDesc")}</p>
               </div>
-              <Button variant="outline" size="sm" onClick={onRestartOnboarding}>重新开始</Button>
+              <Button variant="outline" size="sm" onClick={onRestartOnboarding}>{t("settings.data.restart")}</Button>
             </div>
             <Separator />
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium">导出数据</p>
-                <p className="text-xs text-muted-foreground">导出你的所有数据为 JSON 文件</p>
+                <p className="text-sm font-medium">{t("settings.data.export")}</p>
+                <p className="text-xs text-muted-foreground">{t("settings.data.exportDesc")}</p>
               </div>
-              <Button variant="outline" size="sm">导出</Button>
+              <Button variant="outline" size="sm">{t("settings.data.exportBtn")}</Button>
             </div>
             <Separator />
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium">导入数据</p>
-                <p className="text-xs text-muted-foreground">从 JSON 文件导入数据</p>
+                <p className="text-sm font-medium">{t("settings.data.import")}</p>
+                <p className="text-xs text-muted-foreground">{t("settings.data.importDesc")}</p>
               </div>
-              <Button variant="outline" size="sm">导入</Button>
+              <Button variant="outline" size="sm">{t("settings.data.importBtn")}</Button>
             </div>
             <Separator />
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-destructive">重置数据</p>
-                <p className="text-xs text-muted-foreground">清除所有本地数据</p>
+                <p className="text-sm font-medium text-destructive">{t("settings.data.reset")}</p>
+                <p className="text-xs text-muted-foreground">{t("settings.data.resetDesc")}</p>
               </div>
-              <Button variant="destructive" size="sm">重置</Button>
+              <Button variant="destructive" size="sm">{t("settings.data.resetBtn")}</Button>
             </div>
           </CardContent>
         </Card>

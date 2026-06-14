@@ -93,8 +93,8 @@ export function writeCache<T>(key: string, data: T) {
   }
 }
 
-export function getCropGameDataCacheKey(gameDir: string) {
-  return `${CROP_GAME_DATA_CACHE_KEY}:${normalizeGameDir(gameDir) || "default"}`
+export function getCropGameDataCacheKey(gameDir: string, lang: string) {
+  return `${CROP_GAME_DATA_CACHE_KEY}:${normalizeGameDir(gameDir) || "default"}:${lang}`
 }
 
 export function getPlantedCropsCacheKey(saveId: string) {

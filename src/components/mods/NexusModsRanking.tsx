@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { openUrl } from "@tauri-apps/plugin-opener"
 import {
   Trophy,
@@ -55,6 +56,7 @@ export interface NexusModsRankingProps {
 }
 
 export function NexusModsRanking({ onOpenDetail }: NexusModsRankingProps = {}) {
+  const { i18n, t } = useTranslation()
   const {
     sortField,
     setSortField,
@@ -80,6 +82,10 @@ export function NexusModsRanking({ onOpenDetail }: NexusModsRankingProps = {}) {
 
   useEffect(() => {
     if (loading || ranking.length === 0) return
+
+    // 非中文语言下不自动翻译
+    const lang = i18n.resolvedLanguage || i18n.language || "zh"
+    if (!lang.startsWith("zh")) return
 
     const pendingMods = ranking.filter((mod) => {
       return !completedTranslationModIdsRef.current.has(mod.nexusId) && !syncingTranslationModIdsRef.current.has(mod.nexusId)
@@ -135,23 +141,23 @@ export function NexusModsRanking({ onOpenDetail }: NexusModsRankingProps = {}) {
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-bold text-foreground flex items-center gap-1.5">
           <TrendingUp className="h-4 w-4 text-primary" />
-          NexusMods 模组浏览
+          {t("mods.nexus.title")}
           {isBackgroundRefreshing && (
             <span className="flex items-center gap-1 text-[10px] text-muted-foreground font-normal ml-2">
               <Loader2 className="h-3 w-3 animate-spin" />
-              后台校验中...
+              {t("mods.nexus.backgroundVerifying")}
             </span>
           )}
           {translationSyncingModIds.size > 0 && !loading && (
             <span className="flex items-center gap-1 text-[10px] text-sky-600 dark:text-sky-400 font-normal ml-2">
               <Loader2 className="h-3 w-3 animate-spin" />
-              翻译库 {translationSyncingModIds.size}
+              {t("mods.translationLibrary")} {translationSyncingModIds.size}
             </span>
           )}
         </h3>
         {totalCount > 0 && (
           <span className="text-[11px] text-muted-foreground">
-            共找到 {totalCount} 个模组
+            {t("mods.nexus.totalFound", { count: totalCount })}
           </span>
         )}
       </div>
@@ -167,7 +173,7 @@ export function NexusModsRanking({ onOpenDetail }: NexusModsRankingProps = {}) {
             onOpenDetail({
               nexusId,
               nexusUrl: `https://www.nexusmods.com/stardewvalley/mods/${nexusId}`,
-              name: `模组 #${nexusId}`,
+              name: `${t("mods.nexus.modPrefix")} #${nexusId}`,
               author: "",
               imageUrl: "",
               downloads: "",
@@ -181,24 +187,24 @@ export function NexusModsRanking({ onOpenDetail }: NexusModsRankingProps = {}) {
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="模组名称 / Nexus ID / Nexus URL..."
+              placeholder={t("mods.nexus.searchPlaceholder")}
               value={searchInputValue}
               onChange={(e) => setSearchInputValue(e.target.value)}
               className="pl-9 bg-accent/10 border-border text-xs rounded-lg h-9"
             />
           </div>
           <Button type="submit" size="sm" className="h-9 px-4 rounded-lg text-xs font-semibold cursor-pointer shrink-0">
-            搜索
+            {t("mods.nexus.searchButton")}
           </Button>
         </form>
 
         {/* Sort triggers */}
         <div className="flex flex-wrap gap-2 w-full md:w-auto">
           {[
-            { field: "downloads", label: "热门下载", icon: <Trophy className="h-3 w-3 text-amber-500" /> },
-            { field: "endorsements", label: "推荐排行", icon: <ThumbsUp className="h-3 w-3 text-red-500" /> },
-            { field: "createdAt", label: "最新发布", icon: <Sparkles className="h-3 w-3 text-blue-500" /> },
-            { field: "updatedAt", label: "最近更新", icon: <Clock className="h-3 w-3 text-green-500" /> },
+            { field: "downloads", label: t("mods.nexus.sortDownloads"), icon: <Trophy className="h-3 w-3 text-amber-500" /> },
+            { field: "endorsements", label: t("mods.nexus.sortEndorsements"), icon: <ThumbsUp className="h-3 w-3 text-red-500" /> },
+            { field: "createdAt", label: t("mods.nexus.sortNewest"), icon: <Sparkles className="h-3 w-3 text-blue-500" /> },
+            { field: "updatedAt", label: t("mods.nexus.sortUpdated"), icon: <Clock className="h-3 w-3 text-green-500" /> },
           ].map((item) => (
             <Button
               key={item.field}
@@ -222,7 +228,7 @@ export function NexusModsRanking({ onOpenDetail }: NexusModsRankingProps = {}) {
       {loading && scrapeStatus === "challenge" && (
         <div className="bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 p-3 rounded-xl text-xs flex items-center gap-2">
           <AlertTriangle className="h-4 w-4 text-amber-500 flex-shrink-0" />
-          <span>Nexus 需要完成 Cloudflare 人机验证，验证窗口已弹出。请在验证窗口中完成验证后等待自动加载。</span>
+          <span>{t("mods.nexus.cloudflareChallenge")}</span>
         </div>
       )}
 
@@ -308,7 +314,7 @@ export function NexusModsRanking({ onOpenDetail }: NexusModsRankingProps = {}) {
                   {isSyncingTranslation && (
                     <span className="inline-flex shrink-0 items-center gap-1 text-[10px] font-semibold text-sky-600 dark:text-sky-400 bg-sky-500/10 border border-sky-500/20 rounded-md px-1.5 py-0.5">
                       <Loader2 className="h-3 w-3 animate-spin" />
-                      翻译库
+                      {t("mods.translationLibrary")}
                     </span>
                   )}
                 </div>
@@ -319,11 +325,11 @@ export function NexusModsRanking({ onOpenDetail }: NexusModsRankingProps = {}) {
 
               {/* Stats */}
               <div className="flex items-center gap-4 shrink-0">
-                <div className="flex items-center gap-1 text-[11px] text-muted-foreground" title="下载量">
+                <div className="flex items-center gap-1 text-[11px] text-muted-foreground" title={t("mods.nexus.downloadsTooltip")}>
                   <Download className="h-3 w-3" />
                   <span className="font-semibold text-foreground">{mod.downloads}</span>
                 </div>
-                <div className="flex items-center gap-1 text-[11px] text-muted-foreground" title="推荐数">
+                <div className="flex items-center gap-1 text-[11px] text-muted-foreground" title={t("mods.nexus.endorsementsTooltip")}>
                   <ThumbsUp className="h-3 w-3" />
                   <span className="font-semibold text-foreground">{mod.endorsements}</span>
                 </div>
@@ -337,7 +343,7 @@ export function NexusModsRanking({ onOpenDetail }: NexusModsRankingProps = {}) {
                     size="icon"
                     className="h-7 w-7 cursor-pointer hover:bg-accent"
                     onClick={() => onOpenDetail(mod)}
-                    title="查看模组详情"
+                    title={t("mods.nexus.viewDetails")}
                   >
                     <Eye className="h-3.5 w-3.5" />
                   </Button>
@@ -347,7 +353,7 @@ export function NexusModsRanking({ onOpenDetail }: NexusModsRankingProps = {}) {
                   size="icon"
                   className="h-7 w-7 cursor-pointer hover:bg-accent"
                   onClick={() => openUrl(mod.nexusUrl)}
-                  title="在浏览器中打开"
+                  title={t("mods.nexus.openInBrowser")}
                 >
                   <ExternalLink className="h-3.5 w-3.5" />
                 </Button>
@@ -362,8 +368,8 @@ export function NexusModsRanking({ onOpenDetail }: NexusModsRankingProps = {}) {
       {!loading && translatedRanking.length === 0 && (
         <div className="flex flex-col items-center justify-center py-12 text-muted-foreground border border-dashed border-border rounded-xl">
           <Trophy className="h-8 w-8 text-muted-foreground/40 mb-2" />
-          <p className="text-xs font-medium">没有找到相关的 NexusMods 模组。</p>
-          <p className="text-[11px] text-muted-foreground/70 mt-1">请更换关键词重试，或者确认是否有可用 network。</p>
+          <p className="text-xs font-medium">{t("mods.nexus.emptyTitle")}</p>
+          <p className="text-[11px] text-muted-foreground/70 mt-1">{t("mods.nexus.emptyDesc")}</p>
         </div>
       )}
 
@@ -371,7 +377,7 @@ export function NexusModsRanking({ onOpenDetail }: NexusModsRankingProps = {}) {
       {!loading && totalPages > 1 && (
         <div className="flex flex-col sm:flex-row justify-between items-center gap-3 bg-card border border-border p-3.5 rounded-xl text-xs shadow-sm mt-4">
           <span className="text-muted-foreground font-medium">
-            当前第 {currentPage} 页 / 共 {totalPages} 页 (共 {totalCount} 项)
+            {t("mods.nexus.paginationInfo", { current: currentPage, total: totalPages, count: totalCount })}
           </span>
           
           <div className="flex items-center gap-1.5">
@@ -383,7 +389,7 @@ export function NexusModsRanking({ onOpenDetail }: NexusModsRankingProps = {}) {
               className="h-8 text-[11px] rounded-lg gap-1 px-2 hover:bg-accent cursor-pointer"
             >
               <ChevronLeft className="h-3.5 w-3.5" />
-              <span>上一页</span>
+              <span>{t("mods.nexus.prevPage")}</span>
             </Button>
 
             <Button
@@ -430,13 +436,13 @@ export function NexusModsRanking({ onOpenDetail }: NexusModsRankingProps = {}) {
               disabled={currentPage === totalPages}
               className="h-8 text-[11px] rounded-lg gap-1 px-2 hover:bg-accent cursor-pointer"
             >
-              <span>下一页</span>
+              <span>{t("mods.nexus.nextPage")}</span>
               <ChevronRight className="h-3.5 w-3.5" />
             </Button>
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-muted-foreground whitespace-nowrap">跳转到</span>
+            <span className="text-muted-foreground whitespace-nowrap">{t("mods.nexus.jumpToLabel")}</span>
             <Input
               type="text"
               inputMode="numeric"
@@ -452,7 +458,7 @@ export function NexusModsRanking({ onOpenDetail }: NexusModsRankingProps = {}) {
                 }
               }}
               className="h-8 w-20 text-center text-[11px] rounded-lg bg-accent/10 border-border"
-              placeholder="页码"
+              placeholder={t("mods.nexus.jumpPlaceholder")}
             />
             <Button
               variant="outline"
@@ -466,7 +472,7 @@ export function NexusModsRanking({ onOpenDetail }: NexusModsRankingProps = {}) {
               }}
               className="h-8 text-[11px] rounded-lg px-3 hover:bg-accent cursor-pointer whitespace-nowrap"
             >
-              跳转
+              {t("mods.nexus.jumpButton")}
             </Button>
           </div>
         </div>

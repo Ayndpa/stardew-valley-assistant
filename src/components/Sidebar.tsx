@@ -5,6 +5,7 @@ import { Separator } from "@/components/ui/separator"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import type { Page, SaveSummary } from "@/App"
 import appIcon from "@/assets/app-icon.png"
+import { useTranslation } from "react-i18next"
 import {
   LayoutDashboard,
   Sprout,
@@ -103,6 +104,7 @@ export function Sidebar({
   isGameRunning,
   downloadStats,
 }: SidebarProps) {
+  const { t } = useTranslation()
   const [isOpen, setIsOpen] = useState(false)
   const [isLaunchMenuOpen, setIsLaunchMenuOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -145,14 +147,23 @@ export function Sidebar({
         <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg border border-sidebar-border/60 bg-card shadow-sm shrink-0">
           <img
             src={appIcon}
-            alt="超级星露谷图标"
+            alt={t("sidebar.version")}
             className="h-full w-full object-cover"
             draggable={false}
           />
         </div>
         {!collapsed && (
-          <div className="overflow-hidden">
-            <h1 className="text-lg font-bold text-sidebar-foreground whitespace-nowrap">超级星露谷</h1>
+          <div className="overflow-hidden min-w-0 flex-1">
+            <div className="flex flex-col">
+              <span className="text-sm font-bold leading-tight text-sidebar-foreground truncate">
+                {t("sidebar.appName")}
+              </span>
+              {t("sidebar.appNameSubtitle") && (
+                <span className="text-xs font-medium leading-tight text-muted-foreground truncate">
+                  {t("sidebar.appNameSubtitle")}
+                </span>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -165,7 +176,7 @@ export function Sidebar({
           <div className={cn("py-3 relative", collapsed ? "px-2" : "px-4")} ref={dropdownRef}>
             {!collapsed && (
               <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block mb-1.5 px-1">
-                当前存档
+                {t("sidebar.currentSave")}
               </label>
             )}
             
@@ -177,7 +188,7 @@ export function Sidebar({
                 collapsed ? "justify-center px-1 py-2" : "justify-between gap-3 px-3 py-2",
                 isOpen && "border-sidebar-border bg-sidebar-accent/40"
               )}
-              title={collapsed ? currentSave?.playerName : undefined}
+              title={collapsed ? (currentSave?.playerName || t("sidebar.noSaveSelected")) : undefined}
             >
               <div className={cn("flex items-center", collapsed ? "" : "gap-2.5 min-w-0")}>
                 {currentSave ? (
@@ -191,10 +202,10 @@ export function Sidebar({
                 {!collapsed && (
                   <div className="flex flex-col min-w-0">
                     <span className="text-xs font-bold text-sidebar-foreground truncate">
-                      {currentSave ? currentSave.playerName : "未选择存档"}
+                      {currentSave ? currentSave.playerName : t("sidebar.noSaveSelected")}
                     </span>
                     <span className="text-[10px] text-muted-foreground truncate">
-                      {currentSave ? `${currentSave.farmName}农场` : "—"}
+                      {currentSave ? t("sidebar.farmNameSuffix", { name: currentSave.farmName }) : "—"}
                     </span>
                   </div>
                 )}
@@ -234,7 +245,7 @@ export function Sidebar({
                               {s.playerName}
                             </span>
                             <span className="text-[9px] text-muted-foreground truncate leading-normal">
-                              {s.farmName}农场 · 第{s.year}年 · {s.money.toLocaleString()}g
+                              {t("sidebar.farmNameSuffix", { name: s.farmName })} · {t("settings.saveInfo.gameDateValue", { season: t("seasons." + ["spring", "summer", "fall", "winter"][s.season]), day: s.dayOfMonth, year: s.year })} · {s.money.toLocaleString()}g
                             </span>
                           </div>
                         </button>
@@ -258,7 +269,7 @@ export function Sidebar({
                 className="h-10 w-full justify-center border border-border/40 px-0 text-sidebar-foreground transition-all duration-200 hover:bg-sidebar-accent/50"
                 onClick={() => handleLaunch()}
                 disabled={isGameRunning}
-                title={isGameRunning ? "游戏运行中" : "一键启动游戏"}
+                title={isGameRunning ? t("sidebar.gameRunning") : t("sidebar.launchGameTooltip")}
               >
                 <Play className="h-4 w-4 text-primary" />
               </Button>
@@ -267,7 +278,7 @@ export function Sidebar({
                 className="h-7 w-full justify-center border border-border/40 px-0 text-sidebar-foreground transition-all duration-200 hover:bg-sidebar-accent/50"
                 onClick={() => setIsLaunchMenuOpen((value) => !value)}
                 disabled={isGameRunning}
-                title={isGameRunning ? "游戏运行中" : "选择启动方式"}
+                title={isGameRunning ? t("sidebar.gameRunning") : t("sidebar.selectLaunchMode")}
               >
                 {collapsed ? (
                   <ChevronRight
@@ -293,19 +304,19 @@ export function Sidebar({
                 className="flex-1 justify-start gap-3 rounded-r-none border border-border/40 px-3 text-sm font-medium text-sidebar-foreground transition-all duration-200 hover:bg-sidebar-accent/50"
                 onClick={() => handleLaunch()}
                 disabled={isGameRunning}
-                title={isGameRunning ? "游戏运行中" : "一键启动游戏"}
+                title={isGameRunning ? t("sidebar.gameRunning") : t("sidebar.launchGameTooltip")}
               >
                 <span className="shrink-0">
                   <Play className="h-4 w-4 text-primary" />
                 </span>
-                {isGameRunning ? "游戏运行中" : "一键启动"}
+                {isGameRunning ? t("sidebar.gameRunning") : t("sidebar.launchGame")}
               </Button>
               <Button
                 variant="ghost"
                 className="h-10 w-8 shrink-0 rounded-l-none border border-l-0 border-border/40 px-2 text-sidebar-foreground hover:bg-sidebar-accent/50"
                 onClick={() => setIsLaunchMenuOpen((value) => !value)}
                 disabled={isGameRunning}
-                title={isGameRunning ? "游戏运行中" : "选择启动方式"}
+                title={isGameRunning ? t("sidebar.gameRunning") : t("sidebar.selectLaunchMode")}
               >
                 <ChevronDown
                   className={cn(
@@ -329,7 +340,7 @@ export function Sidebar({
                 className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-xs font-medium text-sidebar-foreground hover:bg-sidebar-accent/80 transition-all duration-150 cursor-pointer"
               >
                 <Play className="h-3.5 w-3.5 text-primary shrink-0" />
-                <span className="min-w-0 flex-1">启动原版游戏</span>
+                <span className="min-w-0 flex-1">{t("sidebar.launchVanilla")}</span>
               </button>
             </div>
           )}
@@ -353,12 +364,12 @@ export function Sidebar({
                     : "text-sidebar-foreground hover:bg-sidebar-accent/50"
                 )}
                 onClick={() => onNavigate(item.id)}
-                title={collapsed ? item.label : undefined}
+                title={collapsed ? t(`sidebar.${item.id}`) : undefined}
               >
                 <span className="shrink-0">{item.icon}</span>
                 {!collapsed && (
                   <>
-                    <span className="min-w-0 flex-1 text-left">{item.label}</span>
+                    <span className="min-w-0 flex-1 text-left">{t(`sidebar.${item.id}`)}</span>
                     {showDownloadCount && (
                       <span className="ml-auto min-w-5 rounded-full bg-primary px-1.5 text-center text-[10px] font-bold leading-5 text-primary-foreground">
                         {activeDownloadCount}
@@ -383,16 +394,16 @@ export function Sidebar({
             "w-full flex items-center py-2 rounded-lg text-muted-foreground hover:text-sidebar-foreground hover:bg-sidebar-accent/50 transition-all duration-200 cursor-pointer",
             collapsed ? "justify-center px-0" : "justify-start gap-2 px-3"
           )}
-          title={collapsed ? "展开侧边栏" : "收起侧边栏"}
+          title={collapsed ? t("sidebar.expandSidebar") : t("sidebar.collapseSidebar")}
         >
           {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-          {!collapsed && <span className="text-xs">收起侧边栏</span>}
+          {!collapsed && <span className="text-xs">{t("sidebar.collapseSidebar")}</span>}
         </button>
       </div>
 
       {/* Footer */}
       <div className={cn("border-t border-sidebar-border text-xs text-muted-foreground", collapsed ? "px-2 py-3" : "px-6 py-3")}>
-        {!collapsed && <p className="text-center">v0.1.0 · 超级星露谷</p>}
+        {!collapsed && <p className="text-center">v0.1.0 · {t("sidebar.version")}</p>}
       </div>
     </aside>
   )

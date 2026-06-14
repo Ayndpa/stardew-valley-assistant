@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next"
 import { Card } from "@/components/ui/card"
 import { openUrl } from "@tauri-apps/plugin-opener"
 import { Badge } from "@/components/ui/badge"
@@ -46,11 +47,12 @@ export function ModDetail({
   onSelectMod,
   isGameRunning = false,
 }: ModDetailProps) {
+  const { t } = useTranslation()
   if (!selectedMod) {
     return (
       <Card className="border border-border p-8 text-center flex flex-col items-center justify-center h-[400px]">
         <Puzzle className="h-10 w-10 text-muted-foreground/30 mb-2" />
-        <p className="text-muted-foreground">请在左侧选择一个模组查看详细信息与配置项</p>
+        <p className="text-muted-foreground">{t("mods.detail.selectModPrompt")}</p>
       </Card>
     )
   }
@@ -74,7 +76,7 @@ export function ModDetail({
           </div>
           <div className="flex items-center gap-2">
             <Badge variant={selectedMod.isEnabled ? "default" : "secondary"} className={selectedMod.isEnabled ? "bg-green-600 hover:bg-green-600" : ""}>
-              {selectedMod.isEnabled ? "已启用" : "已禁用"}
+              {selectedMod.isEnabled ? t("mods.enabled") : t("mods.disabled")}
             </Badge>
           </div>
         </div>
@@ -82,19 +84,19 @@ export function ModDetail({
         {/* Subinfo Row */}
         <div className="flex items-center gap-x-4 gap-y-2 flex-wrap mt-4 text-xs text-muted-foreground">
           <div>
-            作者: <span className="font-semibold text-foreground">{selectedMod.author}</span>
+            {t("mods.detail.author")}: <span className="font-semibold text-foreground">{selectedMod.author}</span>
           </div>
           <div>
-            当前版本: <span className="font-semibold text-foreground">v{selectedMod.version}</span>
+            {t("mods.detail.currentVersion")}: <span className="font-semibold text-foreground">v{selectedMod.version}</span>
           </div>
           {selectedMod.latestVersion && selectedMod.latestVersion !== selectedMod.version && (
             <div>
-              最新版本: <span className="font-semibold text-amber-600 dark:text-amber-400">v{selectedMod.latestVersion}</span>
+              {t("mods.detail.latestVersion")}: <span className="font-semibold text-amber-600 dark:text-amber-400">v{selectedMod.latestVersion}</span>
             </div>
           )}
           {selectedMod.latestVersion && selectedMod.latestVersion === selectedMod.version && (
             <div>
-              最新版本: <span className="font-semibold text-green-600 dark:text-green-400">v{selectedMod.latestVersion} ✓</span>
+              {t("mods.detail.latestVersion")}: <span className="font-semibold text-green-600 dark:text-green-400">v{selectedMod.latestVersion} ✓</span>
             </div>
           )}
           {selectedMod.nexusId && (
@@ -118,28 +120,28 @@ export function ModDetail({
               className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-1 py-2 text-xs font-semibold text-muted-foreground data-[state=active]:text-foreground"
             >
               <Info className="h-3.5 w-3.5 mr-1" />
-              模组信息
+              {t("mods.detail.tabInfo")}
             </TabsTrigger>
             <TabsTrigger
               value="config"
               className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-1 py-2 text-xs font-semibold text-muted-foreground data-[state=active]:text-foreground"
             >
               <Sliders className="h-3.5 w-3.5 mr-1" />
-              参数配置
+              {t("mods.detail.tabConfig")}
             </TabsTrigger>
             <TabsTrigger
               value="files"
               className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-1 py-2 text-xs font-semibold text-muted-foreground data-[state=active]:text-foreground"
             >
               <FileCode className="h-3.5 w-3.5 mr-1" />
-              配置文件
+              {t("mods.detail.tabFiles")}
             </TabsTrigger>
             <TabsTrigger
               value="logs"
               className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-1 py-2 text-xs font-semibold text-muted-foreground data-[state=active]:text-foreground"
             >
               <Terminal className="h-3.5 w-3.5 mr-1" />
-              运行日志
+              {t("mods.detail.tabLogs")}
             </TabsTrigger>
           </TabsList>
         </div>
@@ -147,7 +149,7 @@ export function ModDetail({
         {/* Tab: Info */}
         <TabsContent value="info" className="p-6 space-y-4 outline-none">
           <div>
-            <h4 className="text-sm font-semibold text-foreground mb-1.5">模组描述</h4>
+            <h4 className="text-sm font-semibold text-foreground mb-1.5">{t("mods.detail.description")}</h4>
             <p className="text-sm text-muted-foreground leading-relaxed">
               {selectedMod.description}
             </p>
@@ -157,7 +159,7 @@ export function ModDetail({
 
           <div className="grid grid-cols-2 gap-4 text-xs">
             <div>
-              <span className="text-muted-foreground block mb-0.5">SMAPI 依赖项</span>
+              <span className="text-muted-foreground block mb-0.5">{t("mods.detail.smapiDependencies")}</span>
               <div className="flex flex-wrap gap-1.5 mt-1.5">
                 {selectedMod.dependencies.length > 0 ? (
                   selectedMod.dependencies.map((dep) => {
@@ -169,7 +171,7 @@ export function ModDetail({
                         key={dep}
                         onClick={() => onSelectMod(installedMod.id)}
                         className="inline-flex items-center gap-1 text-[10px] py-0.5 px-1.5 rounded-md border border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/40 transition-colors cursor-pointer"
-                        title={`已安装: ${installedMod.name} v${installedMod.version}，点击查看`}
+                        title={t("mods.detail.depInstalled", { name: installedMod.name, version: installedMod.version })}
                       >
                         <CheckCircle2 className="h-3 w-3 flex-shrink-0" />
                         {dep}
@@ -178,7 +180,7 @@ export function ModDetail({
                       <span
                         key={dep}
                         className="inline-flex items-center gap-1 text-[10px] py-0.5 px-1.5 rounded-md border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400"
-                        title="该依赖项未安装"
+                        title={t("mods.detail.depNotInstalled")}
                       >
                         <XCircle className="h-3 w-3 flex-shrink-0" />
                         {dep}
@@ -186,12 +188,12 @@ export function ModDetail({
                     )
                   })
                 ) : (
-                  <span className="text-muted-foreground italic">无依赖项</span>
+                  <span className="text-muted-foreground italic">{t("mods.detail.noDependencies")}</span>
                 )}
               </div>
             </div>
             <div>
-              <span className="text-muted-foreground block mb-0.5">本地存放路径</span>
+              <span className="text-muted-foreground block mb-0.5">{t("mods.detail.localPath")}</span>
               <span className="font-mono bg-accent/40 px-1.5 py-0.5 rounded text-[10px] break-all inline-block mt-1 text-foreground">
                 {selectedMod.localPath}
               </span>
@@ -203,10 +205,10 @@ export function ModDetail({
               <AlertTriangle className="h-4.5 w-4.5 text-amber-500 flex-shrink-0 mt-0.5" />
               <div>
                 <p className="text-xs font-semibold text-amber-800 dark:text-amber-200">
-                  发现新版本 v{selectedMod.latestVersion} 可升级
+                  {t("mods.detail.newVersionTitle", { version: selectedMod.latestVersion })}
                 </p>
                 <p className="text-[11px] text-amber-700/90 dark:text-amber-300/80 mt-0.5">
-                  当前安装版本为 v{selectedMod.version}。建议去 Nexus Mods 下载最新包覆盖更新，以保证与游戏最新版本的兼容性。
+                  {t("mods.detail.newVersionDesc", { version: selectedMod.version })}
                 </p>
                 <Button 
                   variant="link" 
@@ -215,7 +217,7 @@ export function ModDetail({
                     openUrl(`https://www.nexusmods.com/stardewvalley/mods/${selectedMod.nexusId}`)
                   }}
                 >
-                  前往 Nexus Mods 下载页面 &rarr;
+                  {t("mods.detail.goNexusDownload")} &rarr;
                 </Button>
               </div>
             </div>
@@ -228,10 +230,10 @@ export function ModDetail({
               className="flex-1 gap-1.5 py-2 rounded-xl text-xs font-semibold"
               onClick={() => onToggleMod(selectedMod.id)}
               disabled={isGameRunning}
-              title={isGameRunning ? "游戏运行中，不能启用或禁用模组" : undefined}
+              title={isGameRunning ? t("mods.detail.cannotToggleRunning") : undefined}
             >
               <Power className="h-3.5 w-3.5" />
-              {selectedMod.isEnabled ? "禁用此模组" : "启用此模组"}
+              {selectedMod.isEnabled ? t("mods.detail.disableMod") : t("mods.detail.enableMod")}
             </Button>
             <Button
               variant="outline"
@@ -240,7 +242,7 @@ export function ModDetail({
               onClick={onOpenFolder}
             >
               <FolderOpen className="h-3.5 w-3.5" />
-              定位文件夹
+              {t("mods.detail.locateFolder")}
             </Button>
           </div>
         </TabsContent>
@@ -249,9 +251,9 @@ export function ModDetail({
         <TabsContent value="config" className="p-6 space-y-4 outline-none">
           <div className="flex items-center justify-between">
             <div>
-              <h4 className="text-sm font-semibold text-foreground">动态参数设置</h4>
+              <h4 className="text-sm font-semibold text-foreground">{t("mods.detail.dynamicConfig")}</h4>
               <p className="text-xs text-muted-foreground mt-0.5">
-                模拟编辑该模组的 <code className="bg-accent/40 px-1 py-0.5 rounded text-[10px]">config.json</code> 参数。
+                {t("mods.detail.configDesc")}
               </p>
             </div>
             {selectedMod.config.length > 0 && (
@@ -260,22 +262,22 @@ export function ModDetail({
                 className="bg-primary hover:bg-primary/95 text-primary-foreground gap-1.5 rounded-lg text-xs"
                 onClick={onSaveConfig}
                 disabled={!canEdit}
-                title={isGameRunning ? "游戏运行中，不能保存配置" : undefined}
+                title={isGameRunning ? t("mods.detail.cannotSaveConfigRunning") : undefined}
               >
                 <Save className="h-3.5 w-3.5" />
-                保存配置
+                {t("mods.detail.saveConfig")}
               </Button>
             )}
           </div>
 
           {!selectedMod.isEnabled && (
             <div className="bg-muted dark:bg-muted/10 border border-border p-3.5 rounded-xl text-center text-xs text-muted-foreground">
-              模组当前处于禁用状态，请在“模组信息”中启用模组后再编辑参数配置。
+              {t("mods.detail.modDisabledHint")}
             </div>
           )}
           {isGameRunning && (
             <div className="bg-amber-500/10 border border-amber-500/20 p-3.5 rounded-xl text-center text-xs text-amber-600 dark:text-amber-400">
-              游戏运行中，暂时不能修改模组配置。
+              {t("mods.detail.gameRunningConfigLocked")}
             </div>
           )}
 
@@ -362,7 +364,7 @@ export function ModDetail({
               ))
             ) : (
               <div className="text-center py-6 text-xs text-muted-foreground italic">
-                该模组无需任何自定义参数配置。
+                {t("mods.detail.noConfigNeeded")}
               </div>
             )}
           </div>
@@ -371,9 +373,9 @@ export function ModDetail({
         {/* Tab: File View Simulation */}
         <TabsContent value="files" className="p-6 space-y-4 outline-none">
           <div>
-            <h4 className="text-sm font-semibold text-foreground">配置文件模拟器</h4>
+            <h4 className="text-sm font-semibold text-foreground">{t("mods.detail.configSimulator")}</h4>
             <p className="text-xs text-muted-foreground mt-0.5">
-              以下是该模组的 <code className="bg-accent/40 px-1 py-0.5 rounded text-[10px]">config.json</code> 在磁盘中的真实序列化状态。
+              {t("mods.detail.configSimulatorDesc")}
             </p>
           </div>
 
@@ -399,34 +401,34 @@ export function ModDetail({
         <TabsContent value="logs" className="p-6 space-y-4 outline-none">
           <div className="flex items-center justify-between">
             <div>
-              <h4 className="text-sm font-semibold text-foreground">SMAPI 启动日志流</h4>
+              <h4 className="text-sm font-semibold text-foreground">{t("mods.detail.smapiLogStream")}</h4>
               <p className="text-xs text-muted-foreground mt-0.5">
-                与此模组相关的加载与生命周期钩子事件监控。
+                {t("mods.detail.smapiLogDesc")}
               </p>
             </div>
             <Badge variant="outline" className="text-[10px] border-green-700/30 text-green-600 bg-green-500/5">
-              正常载入
+              {t("mods.detail.normalLoad")}
             </Badge>
           </div>
 
           <div className="bg-zinc-950 dark:bg-black/90 text-zinc-300 rounded-xl p-4 font-mono text-[10px] leading-normal space-y-1 border border-zinc-800 h-[240px] overflow-y-auto">
-            <p className="text-zinc-500">[06:00:00 INFO  SMAPI] 正在载入模组 {selectedMod.englishName}...</p>
-            <p className="text-zinc-500">[06:00:00 INFO  SMAPI] 读取清单文件 manifest.json...</p>
-            <p className="text-zinc-400">[06:00:01 TRACE SMAPI] 版本: {selectedMod.version} | 作者: {selectedMod.author} | Nexus ID: {selectedMod.nexusId || "无"}</p>
+            <p className="text-zinc-500">[06:00:00 INFO  SMAPI] {t("mods.detail.logLoading")} {selectedMod.englishName}...</p>
+            <p className="text-zinc-500">[06:00:00 INFO  SMAPI] {t("mods.detail.logReadingManifest")}</p>
+            <p className="text-zinc-400">[06:00:01 TRACE SMAPI] {t("mods.detail.logVersionInfo", { version: selectedMod.version, author: selectedMod.author, nexusId: selectedMod.nexusId || t("mods.detail.logNoNexusId") })}</p>
             {selectedMod.dependencies.length > 0 && (
-              <p className="text-zinc-400">[06:00:01 TRACE SMAPI] 检查依赖项: {selectedMod.dependencies.join(", ")} - 全部就绪</p>
+              <p className="text-zinc-400">[06:00:01 TRACE SMAPI] {t("mods.detail.logCheckDeps", { deps: selectedMod.dependencies.join(", ") })}</p>
             )}
-            <p className="text-zinc-500">[06:00:01 INFO  SMAPI] 成功加载模组配置 (config.json)</p>
+            <p className="text-zinc-500">[06:00:01 INFO  SMAPI] {t("mods.detail.logConfigLoaded")}</p>
             {selectedMod.isEnabled ? (
               <>
-                <p className="text-green-500">[06:00:01 INFO  SMAPI] 模组 "{selectedMod.name}" 开始初始化钩子...</p>
-                <p className="text-green-400">[06:00:02 INFO  {selectedMod.englishName}] 成功监听了游戏内置更新事件。</p>
-                <p className="text-zinc-500">[06:00:02 INFO  SMAPI] {selectedMod.englishName} 加载成功，耗时 12ms。</p>
+                <p className="text-green-500">[06:00:01 INFO  SMAPI] {t("mods.detail.logInitHooks", { name: selectedMod.name })}</p>
+                <p className="text-green-400">[06:00:02 INFO  {selectedMod.englishName}] {t("mods.detail.logEventListening")}</p>
+                <p className="text-zinc-500">[06:00:02 INFO  SMAPI] {t("mods.detail.logLoadSuccess", { name: selectedMod.englishName })}</p>
               </>
             ) : (
               <>
-                <p className="text-zinc-500">[06:00:01 INFO  SMAPI] 检测到配置已显式禁用该模组 (Enabled=false)</p>
-                <p className="text-amber-500">[06:00:01 WARN  SMAPI] 模组 "{selectedMod.name}" 已跳过加载。</p>
+                <p className="text-zinc-500">[06:00:01 INFO  SMAPI] {t("mods.detail.logDisabledDetect")}</p>
+                <p className="text-amber-500">[06:00:01 WARN  SMAPI] {t("mods.detail.logSkippedLoad", { name: selectedMod.name })}</p>
               </>
             )}
           </div>

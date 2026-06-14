@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react"
+import { useTranslation } from "react-i18next"
 
 interface UseGameLauncherProps {
   ensureGameDirectoryReady: () => Promise<string | null>
@@ -6,11 +7,12 @@ interface UseGameLauncherProps {
 }
 
 export function useGameLauncher({ ensureGameDirectoryReady, showGlobalToast }: UseGameLauncherProps) {
+  const { t } = useTranslation()
   const [isGameRunning, setIsGameRunning] = useState(false)
 
   const handleLaunchGame = useCallback(async (launchMode?: "default" | "vanilla") => {
     if (isGameRunning) {
-      showGlobalToast("游戏正在运行中，暂时不能重复启动。", "info")
+      showGlobalToast(t("gameLauncher.alreadyRunning"), "info")
       return
     }
 
@@ -20,7 +22,7 @@ export function useGameLauncher({ ensureGameDirectoryReady, showGlobalToast }: U
     }
 
     if (typeof window === "undefined" || !(window as any).__TAURI_INTERNALS__) {
-      showGlobalToast("当前为 Web 模式，暂不支持直接启动游戏。", "warning")
+      showGlobalToast(t("gameLauncher.webModeNotSupported"), "warning")
       return
     }
 
@@ -31,12 +33,12 @@ export function useGameLauncher({ ensureGameDirectoryReady, showGlobalToast }: U
         launchMode: launchMode === "vanilla" ? "vanilla" : undefined,
       })
       setIsGameRunning(true)
-      showGlobalToast(launchMode === "vanilla" ? "原版游戏启动中…" : "游戏启动中…", "success")
+      showGlobalToast(launchMode === "vanilla" ? t("gameLauncher.launchingVanilla") : t("gameLauncher.launching"), "success")
     } catch (err) {
       console.error("launch_game failed:", err)
-      showGlobalToast("启动游戏失败: " + err, "warning")
+      showGlobalToast(t("gameLauncher.launchFailed", { error: String(err) }), "warning")
     }
-  }, [ensureGameDirectoryReady, isGameRunning, showGlobalToast])
+  }, [ensureGameDirectoryReady, isGameRunning, showGlobalToast, t])
 
   useEffect(() => {
     if (typeof window === "undefined" || !(window as any).__TAURI_INTERNALS__) {
@@ -49,7 +51,7 @@ export function useGameLauncher({ ensureGameDirectoryReady, showGlobalToast }: U
         const eventModule = await import("@tauri-apps/api/event")
         unlisten = await eventModule.listen<number>("game-exited", () => {
           setIsGameRunning(false)
-          showGlobalToast("游戏已退出，模组管理已恢复可修改。", "info")
+          showGlobalToast(t("gameLauncher.gameExited"), "info")
         })
       } catch (err) {
         console.debug("Unable to setup game exit listener:", err)
@@ -60,7 +62,7 @@ export function useGameLauncher({ ensureGameDirectoryReady, showGlobalToast }: U
     return () => {
       unlisten?.()
     }
-  }, [showGlobalToast])
+  }, [showGlobalToast, t])
 
   return { isGameRunning, handleLaunchGame }
 }

@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -40,6 +41,7 @@ export function AddModModal({
   setVersion,
   categoryMap,
 }: AddModModalProps) {
+  const { t } = useTranslation()
   if (!isOpen) return null
 
   return (
@@ -49,10 +51,10 @@ export function AddModModal({
           <div>
             <CardTitle className="text-lg flex items-center gap-2">
               <Puzzle className="h-5 w-5 text-primary" />
-              导入外部游戏模组
+              {t("mods.addMod.title")}
             </CardTitle>
             <CardDescription className="text-xs mt-1">
-              手动将非 Nexus 渠道的私有模组或自制模组导入到本地 SMAPI 管理器中。
+              {t("mods.addMod.description")}
             </CardDescription>
           </div>
           <button 
@@ -67,10 +69,10 @@ export function AddModModal({
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-foreground">
-                  模组中文名称 <span className="text-destructive">*</span>
+                  {t("mods.addMod.nameLabel")} <span className="text-destructive">*</span>
                 </label>
                 <Input
-                  placeholder="例: 高级洒水器拓展"
+                  placeholder={t("mods.addMod.namePlaceholder")}
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
@@ -79,10 +81,10 @@ export function AddModModal({
               </div>
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-foreground">
-                  英文唯一识别名
+                  {t("mods.addMod.engNameLabel")}
                 </label>
                 <Input
-                  placeholder="例: AdvancedSprinklers"
+                  placeholder={t("mods.addMod.engNamePlaceholder")}
                   value={engName}
                   onChange={(e) => setEngName(e.target.value)}
                   className="text-xs h-9 bg-card border-border rounded-lg"
@@ -93,10 +95,10 @@ export function AddModModal({
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-foreground">
-                  原作者署名 <span className="text-destructive">*</span>
+                  {t("mods.addMod.authorLabel")} <span className="text-destructive">*</span>
                 </label>
                 <Input
-                  placeholder="例: FarmerJoe"
+                  placeholder={t("mods.addMod.authorPlaceholder")}
                   required
                   value={author}
                   onChange={(e) => setAuthor(e.target.value)}
@@ -105,7 +107,7 @@ export function AddModModal({
               </div>
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-foreground">
-                  初始版本号
+                  {t("mods.addMod.versionLabel")}
                 </label>
                 <Input
                   placeholder="1.0.0"
@@ -118,7 +120,7 @@ export function AddModModal({
 
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-foreground">
-                模组类别分类
+                {t("mods.addMod.categoryLabel")}
               </label>
               <div className="grid grid-cols-4 gap-2">
                 {(["core", "content", "utility", "expansion"] as const).map((cat) => (
@@ -140,10 +142,10 @@ export function AddModModal({
 
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-foreground">
-                模组详细描述说明
+                {t("mods.addMod.descLabel")}
               </label>
               <textarea
-                placeholder="输入该模组的功能介绍，配置项说明等..."
+                placeholder={t("mods.addMod.descPlaceholder")}
                 rows={3}
                 value={desc}
                 onChange={(e) => setDesc(e.target.value)}
@@ -154,8 +156,8 @@ export function AddModModal({
             {/* Simulated File upload area */}
             <div className="border-2 border-dashed border-border/80 hover:border-primary/50 rounded-xl p-6 text-center cursor-pointer transition-all bg-accent/10 hover:bg-accent/20">
               <Download className="h-6 w-6 text-muted-foreground/60 mx-auto mb-2" />
-              <p className="text-xs font-bold text-muted-foreground">拖拽模组压缩包 (.zip) 到这里</p>
-              <p className="text-[10px] text-muted-foreground/60 mt-1">或点击选择电脑中的 SMAPI 文件夹包进行读取</p>
+              <p className="text-xs font-bold text-muted-foreground">{t("mods.addMod.dropZoneTitle")}</p>
+              <p className="text-[10px] text-muted-foreground/60 mt-1">{t("mods.addMod.dropZoneDesc")}</p>
             </div>
           </CardContent>
 
@@ -166,13 +168,13 @@ export function AddModModal({
               onClick={onClose}
               className="rounded-lg text-xs hover:bg-accent"
             >
-              取消
+              {t("mods.addMod.cancel")}
             </Button>
             <Button
               type="submit"
               className="bg-primary hover:bg-primary/95 text-primary-foreground font-semibold rounded-lg text-xs"
             >
-              确认导入
+              {t("mods.addMod.confirmImport")}
             </Button>
           </div>
         </form>

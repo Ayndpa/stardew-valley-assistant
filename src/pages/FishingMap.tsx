@@ -1,5 +1,6 @@
 import type { PointerEvent as ReactPointerEvent, PointerEventHandler, WheelEventHandler } from "react"
 import { useEffect, useMemo, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -94,6 +95,8 @@ function tileColor(depth: number) {
 }
 
 export function FishingMap() {
+  const { t, i18n } = useTranslation()
+  const activeLang = i18n.resolvedLanguage || i18n.language || "zh"
   const viewportRef = useRef<HTMLDivElement | null>(null)
   const dragStateRef = useRef<{ pointerId: number; x: number; y: number } | null>(null)
   const [data, setData] = useState<FishingMapData>({ maps: [], cached: false })
@@ -121,7 +124,7 @@ export function FishingMap() {
     const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__
     if (!isTauri) {
       setData({ maps: [], cached: false })
-      setError("当前 Web 预览无法读取本地游戏地图，请在桌面应用中打开。")
+      setError(t("fishingMap.webPreviewError"))
       setLoading(false)
       return
     }
@@ -132,6 +135,7 @@ export function FishingMap() {
       const result: FishingMapData = await invoke("get_fishing_map_data", {
         gameDir: gameDir.trim() || undefined,
         forceRefresh,
+        lang: activeLang,
       })
       setData(result)
       setSelectedMap(null)
@@ -192,6 +196,7 @@ export function FishingMap() {
           gameDir: gameDir.trim() || undefined,
           mapId: selectedId,
           forceRefresh: false,
+          lang: activeLang,
         })
         if (!canceled) {
           setSelectedMap(detail)
@@ -214,7 +219,7 @@ export function FishingMap() {
     return () => {
       canceled = true
     }
-  }, [selectedId])
+  }, [selectedId, activeLang])
 
   const filteredMaps = useMemo(() => {
     const term = searchTerm.trim().toLowerCase()
@@ -487,11 +492,11 @@ export function FishingMap() {
                   <MapIcon className="h-5 w-5" />
                 </div>
                 <div className="min-w-0">
-                  <div className="truncate text-base font-semibold">游戏地图</div>
+                  <div className="truncate text-base font-semibold">{t("fishingMap.title")}</div>
                   <div className="truncate text-xs text-muted-foreground">
                     {loading
-                      ? "正在解析地图..."
-                      : `${formatCount(data.maps.length)} 张地图 · ${formatCount(totalFishable)} 个可钓鱼格`}
+                      ? t("fishingMap.loadingMaps")
+                      : `${t("fishingMap.mapsCount", { count: formatCount(data.maps.length) })} · ${t("fishingMap.fishableTilesCount", { count: formatCount(totalFishable) })}`}
                   </div>
                 </div>
               </div>
@@ -502,7 +507,7 @@ export function FishingMap() {
                   <Input
                     value={searchTerm}
                     onChange={(event) => setSearchTerm(event.currentTarget.value)}
-                    placeholder="搜索地图"
+                    placeholder={t("fishingMap.searchPlaceholder")}
                     className="h-10 border-border/70 bg-background/80 pl-9 placeholder:text-muted-foreground"
                   />
                 </div>
@@ -513,7 +518,7 @@ export function FishingMap() {
                   className="h-10 min-w-0 rounded-md border border-border/70 bg-background/80 px-3 text-sm text-foreground outline-none"
                 >
                   {filteredMaps.length === 0 ? (
-                    <option value="">没有匹配地图</option>
+                    <option value="">{t("fishingMap.noMatchingMaps")}</option>
                   ) : (
                     filteredMaps.map((map) => (
                       <option key={map.id} value={map.id}>
@@ -530,7 +535,7 @@ export function FishingMap() {
                 >
                   {Array.from({ length: Math.max(1, maxDepth + 1) }, (_, depth) => (
                     <option key={depth} value={depth}>
-                      {`深度 >= ${depth}`}
+                      {t("fishingMap.depthFilter", { depth })}
                     </option>
                   ))}
                 </select>
@@ -576,11 +581,11 @@ export function FishingMap() {
               <label className="flex h-10 items-center gap-2 rounded-md border border-border/70 bg-background/80 px-3 text-sm text-foreground">
                 <Checkbox checked={showFishingOverlay} onCheckedChange={(value) => setShowFishingOverlay(Boolean(value))} className="border-border data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground" />
                 <Layers className="h-4 w-4 text-primary" />
-                叠层
+                {t("fishingMap.overlay")}
               </label>
               <label className="flex h-10 items-center gap-2 rounded-md border border-border/70 bg-background/80 px-3 text-sm text-foreground">
                 <Checkbox checked={showHidden} onCheckedChange={(value) => setShowHidden(Boolean(value))} className="border-border data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground" />
-                隐藏水域
+                {t("fishingMap.hiddenWater")}
               </label>
               <Button
                 variant="outline"
@@ -590,7 +595,7 @@ export function FishingMap() {
                 className="h-10 border-border/70 bg-background/80 px-3"
               >
                 {loading ? <Loader2 className="animate-spin" /> : <RefreshCw />}
-                刷新
+                {t("fishingMap.refresh")}
               </Button>
             </div>
           </div>
@@ -671,7 +676,9 @@ export function FishingMap() {
                         opacity={tile.hidden ? 0.26 : 0.46}
                       >
                         <title>
-                          {`(${tile.x}, ${tile.y}) 深度 ${tile.depth}${tile.hidden ? " · 隐藏水域" : ""}`}
+                          {tile.hidden
+                            ? t("fishingMap.svgTileTitleHidden", { x: tile.x, y: tile.y, depth: tile.depth })
+                            : t("fishingMap.svgTileTitle", { x: tile.x, y: tile.y, depth: tile.depth })}
                         </title>
                       </rect>
                     ))}
@@ -691,14 +698,16 @@ export function FishingMap() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="truncate text-sm font-semibold">
-                      {hoveredFishingInfo.area?.name || "当前水域"}
+                      {hoveredFishingInfo.area?.name || t("fishingMap.currentWaterArea")}
                     </div>
                     <div className="mt-1 text-[11px] text-muted-foreground">
-                      {`(${hoveredFishingInfo.tile.x}, ${hoveredFishingInfo.tile.y}) · 深度 ${hoveredFishingInfo.tile.depth}${hoveredFishingInfo.tile.hidden ? " · 隐藏水域" : ""}`}
+                      {hoveredFishingInfo.tile.hidden
+                        ? t("fishingMap.tileCoordDepthHidden", { x: hoveredFishingInfo.tile.x, y: hoveredFishingInfo.tile.y, depth: hoveredFishingInfo.tile.depth })
+                        : t("fishingMap.tileCoordDepth", { x: hoveredFishingInfo.tile.x, y: hoveredFishingInfo.tile.y, depth: hoveredFishingInfo.tile.depth })}
                     </div>
                   </div>
                   <Badge variant="secondary" className="shrink-0 border border-border/60 bg-secondary/80 text-secondary-foreground">
-                    {`${hoveredFishingInfo.area?.fish.length || 0} 种鱼`}
+                    {t("fishingMap.fishCount", { count: hoveredFishingInfo.area?.fish.length || 0 })}
                   </Badge>
                 </div>
 
@@ -733,7 +742,7 @@ export function FishingMap() {
                     ))}
                   </div>
                 ) : (
-                  <div className="mt-3 text-xs text-muted-foreground">当前区域没有读到可展示的鱼类数据</div>
+                  <div className="mt-3 text-xs text-muted-foreground">{t("fishingMap.noFishData")}</div>
                 )}
               </div>
             )}
@@ -743,7 +752,7 @@ export function FishingMap() {
             <div className="absolute inset-0 flex items-center justify-center bg-background/45 backdrop-blur-[2px]">
               <div className="flex items-center gap-3 rounded-md border border-border/70 bg-popover/92 px-4 py-3 text-sm text-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                正在加载地图
+                {t("fishingMap.loadingMap")}
               </div>
             </div>
           )}
@@ -751,7 +760,7 @@ export function FishingMap() {
           {!loading && !selectedMap && (
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="rounded-md border border-border/70 bg-popover/92 px-4 py-3 text-sm text-muted-foreground">
-                没有可显示的地图
+                {t("fishingMap.noMapToDisplay")}
               </div>
             </div>
           )}
@@ -761,7 +770,7 @@ export function FishingMap() {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="truncate text-lg font-semibold">
-                    {selectedSummary?.name || "未选择地图"}
+                    {selectedSummary?.name || t("fishingMap.noMapSelected")}
                   </div>
                   {selectedSummary && (
                     <div className="mt-1 truncate text-xs text-muted-foreground">
@@ -770,7 +779,7 @@ export function FishingMap() {
                   )}
                 </div>
                 <Badge variant="secondary" className="border border-border/60 bg-secondary/80 text-secondary-foreground">
-                  {selectedSummary ? `${selectedSummary.width} x ${selectedSummary.height}` : "无尺寸"}
+                  {selectedSummary ? `${selectedSummary.width} x ${selectedSummary.height}` : t("fishingMap.noSize")}
                 </Badge>
               </div>
 
@@ -778,21 +787,21 @@ export function FishingMap() {
                 <div className="rounded-md border border-border/60 bg-card/70 px-3 py-2">
                   <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
                     <Waves className="h-3.5 w-3.5 text-primary" />
-                    水域格
+                    {t("fishingMap.waterTiles")}
                   </div>
                   <div className="mt-1 text-lg font-semibold">{formatCount(selectedSummary?.waterTiles || 0)}</div>
                 </div>
                 <div className="rounded-md border border-border/60 bg-card/70 px-3 py-2">
                   <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
                     <Fish className="h-3.5 w-3.5 text-primary" />
-                    可钓鱼格
+                    {t("fishingMap.fishableTiles")}
                   </div>
                   <div className="mt-1 text-lg font-semibold">{formatCount(visibleFishableCount)}</div>
                 </div>
                 <div className="rounded-md border border-border/60 bg-card/70 px-3 py-2">
                   <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
                     <Gauge className="h-3.5 w-3.5 text-primary" />
-                    最深距离
+                    {t("fishingMap.maxDepth")}
                   </div>
                   <div className="mt-1 text-lg font-semibold">{maxDepth}</div>
                 </div>
@@ -801,7 +810,7 @@ export function FishingMap() {
 
             {depthSummary.length > 0 && (
               <div className="pointer-events-auto max-w-full rounded-lg border border-border/70 bg-background/86 px-3 py-3 shadow-xl backdrop-blur-xl">
-                <div className="mb-2 text-xs text-muted-foreground">深度图例</div>
+                <div className="mb-2 text-xs text-muted-foreground">{t("fishingMap.depthLegend")}</div>
                 <div className="flex max-w-full flex-wrap gap-2">
                   {depthSummary.map(([depth, count]) => (
                     <Badge
@@ -835,7 +844,7 @@ export function FishingMap() {
               )}
               {selectedMap?.mapImageError && (
                 <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-200">
-                  游戏底图渲染失败：{selectedMap.mapImageError}
+                  {t("fishingMap.mapImageError", { error: selectedMap.mapImageError })}
                 </div>
               )}
             </div>

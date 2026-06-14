@@ -3,6 +3,7 @@ import { Archive, FolderOpen, HardDriveDownload, LoaderCircle, RefreshCw, Rotate
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { useTranslation } from "react-i18next"
 
 interface SaveBackupEntry {
   timestamp: number
@@ -27,7 +28,7 @@ async function getTauriInvoke() {
 }
 
 const formatDateTime = (timestamp: number) =>
-  new Date(timestamp * 1000).toLocaleString("zh-CN", {
+  new Date(timestamp * 1000).toLocaleString(undefined, {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -57,6 +58,7 @@ export function SaveBackupCard({
   onShowToast: (message: string, type: "success" | "info" | "warning") => void
   onChanged?: () => void | Promise<void>
 }) {
+  const { t } = useTranslation()
   const [catalog, setCatalog] = useState<SaveBackupCatalog | null>(null)
   const [loading, setLoading] = useState(false)
   const [actingKey, setActingKey] = useState<string | null>(null)
@@ -79,20 +81,20 @@ export function SaveBackupCard({
     } catch (err) {
       console.error("Failed to list save backups:", err)
       setCatalog(null)
-      onShowToast("读取存档备份列表失败。", "warning")
+      onShowToast(t("saveBackups.card.toastLoadError"), "warning")
     } finally {
       setLoading(false)
     }
-  }, [isTauri, onShowToast, selectedSaveId])
+  }, [isTauri, onShowToast, selectedSaveId, t])
 
   useEffect(() => {
     loadBackups()
   }, [loadBackups])
 
   const backupCountText = useMemo(() => {
-    if (!catalog) return "未加载"
-    return `${catalog.backups.length} 组备份`
-  }, [catalog])
+    if (!catalog) return t("saveBackups.card.notLoaded")
+    return t("saveBackups.card.countText", { count: catalog.backups.length })
+  }, [catalog, t])
 
   const runAction = async (
     actionKey: string,
@@ -107,7 +109,7 @@ export function SaveBackupCard({
       onShowToast(successMessage, "success")
     } catch (err) {
       console.error(`Backup action failed: ${actionKey}`, err)
-      onShowToast(String(err ?? "操作失败"), "warning")
+      onShowToast(`${t("saveBackups.card.toastActionError")}: ${String(err ?? "")}`, "warning")
     } finally {
       setActingKey(null)
     }
@@ -119,33 +121,33 @@ export function SaveBackupCard({
     await runAction(
       "create",
       () => invoke<SaveBackupCatalog>("create_save_backup", { id: selectedSaveId }),
-      "已创建新的存档备份。"
+      t("saveBackups.card.toastCreated")
     )
   }
 
   const handleRestoreBackup = async (timestamp: number) => {
     if (!selectedSaveId) return
-    const confirmed = window.confirm("恢复备份会覆盖当前存档，并先额外生成一组回滚备份。是否继续？")
+    const confirmed = window.confirm(t("saveBackups.card.confirmRestore"))
     if (!confirmed) return
     const invoke = await getTauriInvoke()
     if (!invoke) return
     await runAction(
       `restore-${timestamp}`,
       () => invoke<SaveBackupCatalog>("restore_save_backup", { id: selectedSaveId, timestamp }),
-      "备份已恢复，当前存档已回滚。"
+      t("saveBackups.card.toastRestored")
     )
   }
 
   const handleDeleteBackup = async (timestamp: number) => {
     if (!selectedSaveId) return
-    const confirmed = window.confirm("确定删除这组备份吗？删除后不能恢复。")
+    const confirmed = window.confirm(t("saveBackups.card.confirmDelete"))
     if (!confirmed) return
     const invoke = await getTauriInvoke()
     if (!invoke) return
     await runAction(
       `delete-${timestamp}`,
       () => invoke<SaveBackupCatalog>("delete_save_backup", { id: selectedSaveId, timestamp }),
-      "备份已删除。"
+      t("saveBackups.card.toastDeleted")
     )
   }
 
@@ -157,7 +159,7 @@ export function SaveBackupCard({
       await invoke("open_in_file_manager", { path: catalog.saveFolderPath })
     } catch (err) {
       console.error("Failed to open save folder:", err)
-      onShowToast("打开存档目录失败。", "warning")
+      onShowToast(t("saveBackups.card.toastOpenFolderError"), "warning")
     }
   }
 
@@ -168,42 +170,42 @@ export function SaveBackupCard({
           <div>
             <CardTitle className="text-lg flex items-center gap-2">
               <Archive className="h-5 w-5" />
-              存档备份管理
+              {t("saveBackups.card.title")}
             </CardTitle>
             <CardDescription>
-              为当前选中的本地存档创建、恢复和删除备份。当前：{backupCountText}
+              {t("saveBackups.card.description", { count: backupCountText })}
             </CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" onClick={loadBackups} disabled={!selectedSaveId || loading || !!actingKey}>
               <RefreshCw className={loading ? "animate-spin" : undefined} />
-              刷新
+              {t("saveBackups.card.refresh")}
             </Button>
             <Button variant="outline" size="sm" onClick={handleOpenFolder} disabled={!catalog?.saveFolderPath}>
               <FolderOpen className="h-4 w-4" />
-              打开目录
+              {t("saveBackups.card.openFolder")}
             </Button>
             <Button size="sm" onClick={handleCreateBackup} disabled={!selectedSaveId || !isTauri || !!actingKey}>
               {actingKey === "create" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <HardDriveDownload className="h-4 w-4" />}
-              立即备份
+              {t("saveBackups.card.backupNow")}
             </Button>
           </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
         {!isTauri ? (
-          <p className="text-sm text-muted-foreground">Web 模式下不能管理本地存档备份，请在桌面应用中使用。</p>
+          <p className="text-sm text-muted-foreground">{t("saveBackups.card.webModeNotice")}</p>
         ) : !selectedSaveId ? (
-          <p className="text-sm text-muted-foreground">请先选择一个本地存档。</p>
+          <p className="text-sm text-muted-foreground">{t("saveBackups.card.noSaveSelected")}</p>
         ) : loading && !catalog ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <LoaderCircle className="h-4 w-4 animate-spin" />
-            正在读取备份列表...
+            {t("saveBackups.card.loading")}
           </div>
         ) : (
           <>
             <div className="rounded-lg border bg-accent/20 px-3 py-2 text-xs text-muted-foreground">
-              <div className="font-medium text-foreground">存档目录</div>
+              <div className="font-medium text-foreground">{t("saveBackups.card.saveDirectory")}</div>
               <div className="truncate">{catalog?.saveFolderPath || "-"}</div>
             </div>
 
@@ -220,11 +222,11 @@ export function SaveBackupCard({
                           <div className="min-w-0">
                             <p className="text-sm font-medium">{formatDateTime(backup.createdAt)}</p>
                             <p className="text-xs text-muted-foreground">
-                              主存档 {formatSize(backup.mainFileSize)} · 信息文件 {formatSize(backup.infoFileSize)}
+                              {t("saveBackups.card.mainFile")} {formatSize(backup.mainFileSize)} · {t("saveBackups.card.infoFile")} {formatSize(backup.infoFileSize)}
                             </p>
                             {incomplete && (
                               <p className="text-xs text-amber-600 dark:text-amber-300">
-                                该备份不完整，缺少：{backup.missingFiles.join("、")}
+                                {t("saveBackups.card.incomplete", { files: backup.missingFiles.join("、") })}
                               </p>
                             )}
                           </div>
@@ -234,10 +236,10 @@ export function SaveBackupCard({
                               size="sm"
                               onClick={() => handleRestoreBackup(backup.timestamp)}
                               disabled={incomplete || !!actingKey}
-                              title={incomplete ? "备份不完整，无法恢复" : "恢复此备份"}
+                              title={incomplete ? t("saveBackups.card.incompleteTooltip") : t("saveBackups.card.restoreTooltip")}
                             >
                               {actingKey === restoreKey ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
-                              恢复
+                              {t("saveBackups.card.restore")}
                             </Button>
                             <Button
                               variant="outline"
@@ -246,7 +248,7 @@ export function SaveBackupCard({
                               disabled={!!actingKey}
                             >
                               {actingKey === deleteKey ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                              删除
+                              {t("saveBackups.card.delete")}
                             </Button>
                           </div>
                         </div>
@@ -257,7 +259,7 @@ export function SaveBackupCard({
               </ScrollArea>
             ) : (
               <div className="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
-                暂无备份。每次通过存档编辑器保存时也会自动生成一组备份。
+                {t("saveBackups.card.noBackups")}
               </div>
             )}
           </>

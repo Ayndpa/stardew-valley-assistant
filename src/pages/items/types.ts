@@ -72,6 +72,6 @@ export function writeCache<T>(key: string, data: T) {
   }
 }
 
-export function getItemGameDataCacheKey(gameDir: string) {
-  return `${ITEM_GAME_DATA_CACHE_KEY}:${normalizeGameDir(gameDir) || "default"}`
+export function getItemGameDataCacheKey(gameDir: string, lang: string) {
+  return `${ITEM_GAME_DATA_CACHE_KEY}:${normalizeGameDir(gameDir) || "default"}:${lang}`
 }

@@ -1,4 +1,5 @@
 import { lazy, Suspense, useState, useEffect, useRef, useCallback } from "react"
+import { useTranslation } from "react-i18next"
 import { Sidebar } from "@/components/Sidebar"
 import { Dashboard } from "@/pages/Dashboard"
 import { Crops } from "@/pages/Crops"
@@ -51,6 +52,7 @@ const NPCs = lazy(async () => {
 
 
 function App() {
+  const { t } = useTranslation()
   const [currentPage, setCurrentPage] = useState<Page>("fishingMap")
   const [itemNavigationTarget, setItemNavigationTarget] = useState<string | null>(null)
   const [showOnboarding, setShowOnboarding] = useState(() => {
@@ -331,9 +333,9 @@ function App() {
         return (
           <div className="p-8 space-y-6">
             <div>
-              <h2 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-primary to-green-600 bg-clip-text text-transparent">获取模组</h2>
+              <h2 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-primary to-green-600 bg-clip-text text-transparent">{t("onlineModsPage.title")}</h2>
               <p className="text-muted-foreground mt-2 text-sm max-w-xl">
-                浏览 SMAPI.io 兼容性数据库和 NexusMods。您可以搜索数千个星露谷物语模组，并了解它们与当前版本的兼容状态。
+                {t("onlineModsPage.description")}
               </p>
             </div>
             <OnlineMods

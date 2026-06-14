@@ -195,8 +195,8 @@ mod tests {
             &content,
             &["Characters", "NPCNames", "UI", "1_6_Strings"],
         );
-        let festivals = calendar::load_calendar_festivals(&content, &localized_tables).unwrap();
-        let birthdays = calendar::load_calendar_birthdays(&content, &localized_tables).unwrap();
+        let festivals = calendar::load_calendar_festivals(&content, &localized_tables, true).unwrap();
+        let birthdays = calendar::load_calendar_birthdays(&content, &localized_tables, true).unwrap();
 
         assert!(festivals.iter().any(|entry| entry.name.contains("复活节")));
         assert!(festivals.iter().any(|entry| entry.name.contains("夜市")));

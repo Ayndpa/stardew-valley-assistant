@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use super::xnb::{
-    load_localized_string_tables, load_string_dictionary_best_effort, load_xnb_payload,
-    require_reader, XnbPayloadReader,
+    get_lang_suffix, load_localized_string_tables_with_lang, load_string_dictionary_best_effort,
+    load_xnb_payload, require_reader, XnbPayloadReader,
 };
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -34,14 +34,22 @@ pub struct CalendarGameData {
 }
 
 #[tauri::command]
-pub fn get_calendar_game_data(game_dir: Option<String>) -> Result<CalendarGameData, String> {
+pub fn get_calendar_game_data(
+    game_dir: Option<String>,
+    lang: Option<String>,
+) -> Result<CalendarGameData, String> {
     let content_dir = super::locate_content_dir(game_dir.as_deref())?;
-    let localized_tables = load_localized_string_tables(
+    let localized_tables = load_localized_string_tables_with_lang(
         &content_dir,
         &["Characters", "NPCNames", "UI", "1_6_Strings"],
+        lang.as_deref(),
     );
 
-    let mut festivals = load_calendar_festivals(&content_dir, &localized_tables)?;
+    let lang_str = lang.as_deref().unwrap_or("zh");
+    let is_zh = lang_str.to_lowercase().starts_with("zh");
+    let lang_suffix = get_lang_suffix(Some(lang_str));
+
+    let mut festivals = load_calendar_festivals(&content_dir, &localized_tables, is_zh, lang_suffix)?;
     festivals.sort_by(|a, b| {
         season_order(&a.season)
             .cmp(&season_order(&b.season))
@@ -49,7 +57,7 @@ pub fn get_calendar_game_data(game_dir: Option<String>) -> Result<CalendarGameDa
             .then(a.name.cmp(&b.name))
     });
 
-    let mut birthdays = load_calendar_birthdays(&content_dir, &localized_tables)?;
+    let mut birthdays = load_calendar_birthdays(&content_dir, &localized_tables, is_zh)?;
     birthdays.sort_by(|a, b| {
         season_order(&a.season)
             .cmp(&season_order(&b.season))
@@ -66,33 +74,30 @@ pub fn get_calendar_game_data(game_dir: Option<String>) -> Result<CalendarGameDa
 pub fn load_calendar_festivals(
     content_dir: &Path,
     localized_tables: &HashMap<String, HashMap<String, String>>,
+    is_zh: bool,
+    lang_suffix: &str,
 ) -> Result<Vec<CalendarFestival>, String> {
-    let festival_dates = load_string_dictionary_best_effort(&[
-        content_dir
-            .join("Data")
-            .join("Festivals")
-            .join("FestivalDates.zh-CN.xnb"),
-        content_dir
-            .join("Data")
-            .join("Festivals")
-            .join("FestivalDates.xnb"),
-    ]);
+    let festivals_dir = content_dir.join("Data").join("Festivals");
+
+    let mut festival_dates_paths = Vec::new();
+    if !lang_suffix.is_empty() {
+        festival_dates_paths.push(festivals_dir.join(format!("FestivalDates{}.xnb", lang_suffix)));
+    }
+    festival_dates_paths.push(festivals_dir.join("FestivalDates.xnb"));
+    let festival_dates = load_string_dictionary_best_effort(&festival_dates_paths);
 
     let mut festivals = Vec::new();
     for festival_id in festival_dates.keys() {
-        let Some((season, day)) = parse_calendar_day_id(festival_id) else {
+        let Some((season, day)) = parse_calendar_day_id(festival_id, is_zh) else {
             continue;
         };
-        let data = load_string_dictionary_best_effort(&[
-            content_dir
-                .join("Data")
-                .join("Festivals")
-                .join(format!("{}.zh-CN.xnb", festival_id)),
-            content_dir
-                .join("Data")
-                .join("Festivals")
-                .join(format!("{}.xnb", festival_id)),
-        ]);
+        let mut festival_data_paths = Vec::new();
+        if !lang_suffix.is_empty() {
+            festival_data_paths
+                .push(festivals_dir.join(format!("{}{}.xnb", festival_id, lang_suffix)));
+        }
+        festival_data_paths.push(festivals_dir.join(format!("{}.xnb", festival_id)));
+        let data = load_string_dictionary_best_effort(&festival_data_paths);
         let Some(name) = data
             .get("name")
             .map(|value| resolve_localized_text(value, localized_tables))
@@ -100,9 +105,14 @@ pub fn load_calendar_festivals(
         else {
             continue;
         };
+        let date = if is_zh {
+            format!("{} {}日", season, day)
+        } else {
+            format!("{} {}", season, day)
+        };
         festivals.push(CalendarFestival {
             name,
-            date: format!("{} {}日", season, day),
+            date,
             day,
             season: season.to_string(),
             description: None,
@@ -112,14 +122,16 @@ pub fn load_calendar_festivals(
     festivals.extend(load_passive_calendar_festivals(
         content_dir,
         localized_tables,
+        is_zh,
     )?);
-    festivals.extend(load_special_calendar_festivals(localized_tables));
+    festivals.extend(load_special_calendar_festivals(localized_tables, is_zh));
     Ok(festivals)
 }
 
 pub fn load_passive_calendar_festivals(
     content_dir: &Path,
     localized_tables: &HashMap<String, HashMap<String, String>>,
+    is_zh: bool,
 ) -> Result<Vec<CalendarFestival>, String> {
     let path = content_dir.join("Data").join("PassiveFestivals.xnb");
     if !path.exists() {
@@ -146,7 +158,7 @@ pub fn load_passive_calendar_festivals(
         require_reader(&type_readers, value_reader, "ReflectiveReader")
             .map_err(|e| format!("Failed to parse passive festival '{}': {}", key, e))?;
         if let Some(festival) = reader
-            .read_passive_festival_data(localized_tables)
+            .read_passive_festival_data(localized_tables, is_zh)
             .map_err(|e| format!("Failed to parse passive festival '{}': {}", key, e))?
         {
             festivals.extend(festival);
@@ -158,6 +170,7 @@ pub fn load_passive_calendar_festivals(
 
 pub fn load_special_calendar_festivals(
     localized_tables: &HashMap<String, HashMap<String, String>>,
+    is_zh: bool,
 ) -> Vec<CalendarFestival> {
     let mut festivals = Vec::new();
     let trout_derby = resolve_localized_text(
@@ -165,12 +178,14 @@ pub fn load_special_calendar_festivals(
         localized_tables,
     );
     if !trout_derby.is_empty() {
+        let season = if is_zh { "夏季" } else { "Summer" };
         for day in [20, 21] {
+            let date = if is_zh { format!("{} {}日", season, day) } else { format!("{} {}", season, day) };
             festivals.push(CalendarFestival {
                 name: trout_derby.clone(),
-                date: format!("夏季 {}日", day),
+                date,
                 day,
-                season: "夏季".to_string(),
+                season: season.to_string(),
                 description: None,
             });
         }
@@ -181,12 +196,14 @@ pub fn load_special_calendar_festivals(
         localized_tables,
     );
     if !squid_fest.is_empty() {
+        let season = if is_zh { "冬季" } else { "Winter" };
         for day in [12, 13] {
+            let date = if is_zh { format!("{} {}日", season, day) } else { format!("{} {}", season, day) };
             festivals.push(CalendarFestival {
                 name: squid_fest.clone(),
-                date: format!("冬季 {}日", day),
+                date,
                 day,
-                season: "冬季".to_string(),
+                season: season.to_string(),
                 description: None,
             });
         }
@@ -198,6 +215,7 @@ pub fn load_special_calendar_festivals(
 pub fn load_calendar_birthdays(
     content_dir: &Path,
     localized_tables: &HashMap<String, HashMap<String, String>>,
+    is_zh: bool,
 ) -> Result<Vec<CalendarBirthday>, String> {
     let path = content_dir.join("Data").join("Characters.xnb");
     let payload = load_xnb_payload(&path)?;
@@ -220,7 +238,7 @@ pub fn load_calendar_birthdays(
         require_reader(&type_readers, value_reader, "ReflectiveReader")
             .map_err(|e| format!("Failed to parse character '{}': {}", key, e))?;
         if let Some(birthday) = reader
-            .read_calendar_birthday(localized_tables)
+            .read_calendar_birthday(localized_tables, is_zh)
             .map_err(|e| format!("Failed to parse character '{}': {}", key, e))?
         {
             birthdays.push(birthday);
@@ -230,16 +248,16 @@ pub fn load_calendar_birthdays(
     Ok(birthdays)
 }
 
-pub fn parse_calendar_day_id(value: &str) -> Option<(&'static str, i32)> {
+pub fn parse_calendar_day_id(value: &str, is_zh: bool) -> Option<(&'static str, i32)> {
     let lower = value.to_ascii_lowercase();
     let (season, digits) = if let Some(rest) = lower.strip_prefix("spring") {
-        ("春季", rest)
+        (if is_zh { "春季" } else { "Spring" }, rest)
     } else if let Some(rest) = lower.strip_prefix("summer") {
-        ("夏季", rest)
+        (if is_zh { "夏季" } else { "Summer" }, rest)
     } else if let Some(rest) = lower.strip_prefix("fall") {
-        ("秋季", rest)
+        (if is_zh { "秋季" } else { "Fall" }, rest)
     } else if let Some(rest) = lower.strip_prefix("winter") {
-        ("冬季", rest)
+        (if is_zh { "冬季" } else { "Winter" }, rest)
     } else {
         return None;
     };
@@ -268,14 +286,15 @@ pub fn resolve_localized_text(
 
 pub fn season_order(season: &str) -> i32 {
     match season {
-        "春季" => 0,
-        "夏季" => 1,
-        "秋季" => 2,
-        "冬季" => 3,
+        "春季" | "Spring" => 0,
+        "夏季" | "Summer" => 1,
+        "秋季" | "Fall" => 2,
+        "冬季" | "Winter" => 3,
         _ => 9,
     }
 }
 
+#[allow(dead_code)]
 pub fn season_name(season: i32) -> &'static str {
     match season {
         0 => "春季",
@@ -283,6 +302,16 @@ pub fn season_name(season: i32) -> &'static str {
         2 => "秋季",
         3 => "冬季",
         _ => "未知",
+    }
+}
+
+pub fn season_name_localized(season: i32, is_zh: bool) -> &'static str {
+    match season {
+        0 => if is_zh { "春季" } else { "Spring" },
+        1 => if is_zh { "夏季" } else { "Summer" },
+        2 => if is_zh { "秋季" } else { "Fall" },
+        3 => if is_zh { "冬季" } else { "Winter" },
+        _ => if is_zh { "未知" } else { "Unknown" },
     }
 }
 

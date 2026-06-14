@@ -1,6 +1,7 @@
 import { type MouseEvent, useEffect, useMemo, useState } from "react"
 import { Minus, Square, SquareStack, X } from "lucide-react"
 import appIcon from "@/assets/app-icon.png"
+import { useTranslation } from "react-i18next"
 
 type WindowApi = {
   minimize: () => Promise<void>
@@ -62,6 +63,7 @@ function useWindowControls() {
 }
 
 export function TitleBar() {
+  const { t } = useTranslation()
   const { windowApi, isMaximized } = useWindowControls()
   const [isWindows, setIsWindows] = useState(false)
 
@@ -108,8 +110,8 @@ export function TitleBar() {
         className="titlebar-control titlebar-close"
         onClick={() => void handleClose()}
         disabled={!controlsEnabled}
-        aria-label="关闭窗口"
-        title="关闭"
+        aria-label={t("titlebar.close")}
+        title={t("titlebar.close")}
       >
         <X className="h-2.5 w-2.5" />
       </button>
@@ -118,8 +120,8 @@ export function TitleBar() {
         className="titlebar-control titlebar-minimize"
         onClick={() => void handleMinimize()}
         disabled={!controlsEnabled}
-        aria-label="最小化窗口"
-        title="最小化"
+        aria-label={t("titlebar.minimize")}
+        title={t("titlebar.minimize")}
       >
         <Minus className="h-2.5 w-2.5" />
       </button>
@@ -128,8 +130,8 @@ export function TitleBar() {
         className="titlebar-control titlebar-maximize"
         onClick={() => void handleToggleMaximize()}
         disabled={!controlsEnabled}
-        aria-label={isMaximized ? "还原窗口" : "最大化窗口"}
-        title={isMaximized ? "还原" : "最大化"}
+        aria-label={isMaximized ? t("titlebar.restore") : t("titlebar.maximize")}
+        title={isMaximized ? t("titlebar.restore") : t("titlebar.maximize")}
       >
         {isMaximized ? <SquareStack className="h-2.5 w-2.5" /> : <Square className="h-2.5 w-2.5" />}
       </button>
@@ -140,11 +142,11 @@ export function TitleBar() {
     <div className="titlebar-brand flex max-w-full items-center gap-2 px-2 py-1">
       <img
         src={appIcon}
-        alt="超级星露谷"
+        alt={t("titlebar.brand")}
         className="h-4.5 w-4.5 rounded-sm object-cover"
         draggable={false}
       />
-      <p className="truncate text-[12px] font-medium text-foreground">超级星露谷</p>
+      <p className="truncate text-[12px] font-medium text-foreground">{t("titlebar.brand")}</p>
     </div>
   )
 

@@ -118,9 +118,10 @@ fn read_realtime_locations(
             schedule_key: None,
             schedule_time: game_time,
             source: "mod".to_string(),
-            confidence: "实时".to_string(),
+            confidence: "realtime".to_string(),
             updated_at: generated_at.clone(),
         })
+
         .collect();
 
     Ok(NpcLocationsResult {
@@ -255,9 +256,10 @@ fn estimate_npc_location(
         schedule_key: Some(key),
         schedule_time: Some(time),
         source: "estimate".to_string(),
-        confidence: "估算".to_string(),
+        confidence: "estimate".to_string(),
         updated_at: None,
     })
+
 }
 
 fn normalize_time(time: i32) -> i32 {

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+import { useTranslation } from "react-i18next"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { CropEncyclopedia } from "./crops/CropEncyclopedia"
 import { CropProfitCalculator } from "./crops/CropProfitCalculator"
@@ -30,6 +31,7 @@ function applyCropGameData(
 }
 
 export function Crops({ selectedSaveId }: CropsProps) {
+  const { t, i18n } = useTranslation()
   const [plantedCrops, setPlantedCrops] = useState<PlantedCrop[]>([])
   const [loadingCrops, setLoadingCrops] = useState(true)
   const [cropLookup, setCropLookup] = useState<Record<string, CropLookup>>({})
@@ -38,13 +40,15 @@ export function Crops({ selectedSaveId }: CropsProps) {
   const [loadingGameData, setLoadingGameData] = useState(false)
   const [gameDataError, setGameDataError] = useState<string | null>(null)
 
+  const activeLang = i18n.resolvedLanguage || i18n.language || "zh"
+
   useEffect(() => {
     let canceled = false
 
     async function loadCropGameData() {
       const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__
       const gameDir = localStorage.getItem("stardewGameDirectory") || ""
-      const cacheKey = getCropGameDataCacheKey(gameDir)
+      const cacheKey = getCropGameDataCacheKey(gameDir, activeLang)
       const cached = readCache<CropGameData>(cacheKey)
 
       if (cached && !canceled) {
@@ -60,7 +64,7 @@ export function Crops({ selectedSaveId }: CropsProps) {
 
       if (!isTauri) {
         if (!canceled) {
-          setGameDataError("当前环境不是 Tauri，无法直接读取游戏目录。")
+          setGameDataError(t("crops.notTauri", { defaultValue: "当前环境不是 Tauri，无法直接读取游戏目录。" }))
         }
         return
       }
@@ -74,6 +78,7 @@ export function Crops({ selectedSaveId }: CropsProps) {
         const { invoke } = await import("@tauri-apps/api/core")
         const data = (await invoke("get_crop_game_data", {
           gameDir: gameDir.trim() || undefined,
+          lang: activeLang,
         })) as CropGameData
 
         if (!canceled) {
@@ -108,7 +113,7 @@ export function Crops({ selectedSaveId }: CropsProps) {
     return () => {
       canceled = true
     }
-  }, [])
+  }, [activeLang])
 
   // Fetch real crops
   useEffect(() => {
@@ -169,18 +174,18 @@ export function Crops({ selectedSaveId }: CropsProps) {
     <div className="p-8 space-y-6">
       {/* Header */}
       <div>
-        <h2 className="text-3xl font-bold tracking-tight">作物管理</h2>
+        <h2 className="text-3xl font-bold tracking-tight">{t("crops.title")}</h2>
         <p className="text-muted-foreground mt-1">
-          实时监测你的农地状态并规划收获方案
+          {t("crops.description")}
         </p>
       </div>
 
       {/* Tabs */}
       <Tabs defaultValue="my-farm" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="my-farm">我的农地</TabsTrigger>
-          <TabsTrigger value="all">作物图鉴</TabsTrigger>
-          <TabsTrigger value="profit">收益计算</TabsTrigger>
+          <TabsTrigger value="my-farm">{t("crops.tabs.myFarm")}</TabsTrigger>
+          <TabsTrigger value="all">{t("crops.tabs.encyclopedia")}</TabsTrigger>
+          <TabsTrigger value="profit">{t("crops.tabs.profitCalculator")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="my-farm" className="space-y-6">

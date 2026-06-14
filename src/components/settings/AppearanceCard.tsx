@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ThemeMode, ThemeSeason } from "@/lib/theme-provider"
+import { useTranslation } from "react-i18next"
 
 interface AppearanceCardProps {
   themeMode: ThemeMode
@@ -18,6 +19,8 @@ export function AppearanceCard({
   setThemeMode,
   setThemeSeason,
 }: AppearanceCardProps) {
+  const { t } = useTranslation()
+
   return (
     <Card className="border border-border/80 overflow-hidden">
       <CardHeader className="bg-gradient-to-r from-primary/10 via-transparent to-transparent pb-4">
@@ -26,20 +29,20 @@ export function AppearanceCard({
             <Palette className="h-5 w-5 text-primary" />
           </div>
           <div>
-            <CardTitle className="text-lg font-bold">外观设置</CardTitle>
-            <CardDescription>自定义应用的主题模式与星露谷季节配色</CardDescription>
+            <CardTitle className="text-lg font-bold">{t("settings.appearance.title")}</CardTitle>
+            <CardDescription>{t("settings.appearance.description")}</CardDescription>
           </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-6 pt-6">
         {/* Theme Mode */}
         <div className="space-y-2">
-          <h4 className="text-sm font-semibold tracking-wide text-foreground">主题模式</h4>
+          <h4 className="text-sm font-semibold tracking-wide text-foreground">{t("settings.appearance.themeMode")}</h4>
           <div className="grid grid-cols-3 gap-3">
             {[
-              { value: "light" as ThemeMode, label: "浅色", icon: Sun },
-              { value: "dark" as ThemeMode, label: "深色", icon: Moon },
-              { value: "system" as ThemeMode, label: "跟随系统", icon: Monitor },
+              { value: "light" as ThemeMode, label: t("settings.appearance.light"), icon: Sun },
+              { value: "dark" as ThemeMode, label: t("settings.appearance.dark"), icon: Moon },
+              { value: "system" as ThemeMode, label: t("settings.appearance.system"), icon: Monitor },
             ].map((item) => {
               const Icon = item.icon
               const isActive = themeMode === item.value
@@ -66,44 +69,44 @@ export function AppearanceCard({
         {/* Season Themes */}
         <div className="space-y-3">
           <div className="flex flex-col gap-1">
-            <h4 className="text-sm font-semibold tracking-wide text-foreground">季节主题色</h4>
-            <p className="text-xs text-muted-foreground">精选星露谷物语四季标志性色彩，让应用与游戏同频共振</p>
+            <h4 className="text-sm font-semibold tracking-wide text-foreground">{t("settings.appearance.seasonColor")}</h4>
+            <p className="text-xs text-muted-foreground">{t("settings.appearance.seasonDesc")}</p>
           </div>
           
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
             {[
               {
                 value: "default" as ThemeSeason,
-                label: "经典绿 (Classic Green)",
-                desc: "星露谷的经典底色，自然生机盎然",
+                label: t("settings.appearance.classic"),
+                desc: t("settings.appearance.classicDesc"),
                 gradient: "from-emerald-500/90 to-green-600/90",
                 color: "bg-emerald-500",
               },
               {
                 value: "spring" as ThemeSeason,
-                label: "春季粉 (Spring Sakura)",
-                desc: "粉色樱花瓣漫天飞舞，浪漫温柔",
+                label: t("settings.appearance.spring"),
+                desc: t("settings.appearance.springDesc"),
                 gradient: "from-pink-400/90 to-rose-500/90",
                 color: "bg-pink-400",
               },
               {
                 value: "summer" as ThemeSeason,
-                label: "夏季黄 (Summer Gold)",
-                desc: "金色向日葵傲然绽放，热情洋溢",
+                label: t("settings.appearance.summer"),
+                desc: t("settings.appearance.summerDesc"),
                 gradient: "from-amber-400/90 to-yellow-500/90",
                 color: "bg-amber-400",
               },
               {
                 value: "fall" as ThemeSeason,
-                label: "秋季橙 (Fall Maple)",
-                desc: "红橙枫叶挂满枝头，丰收的喜悦",
+                label: t("settings.appearance.fall"),
+                desc: t("settings.appearance.fallDesc"),
                 gradient: "from-orange-500/90 to-amber-600/90",
                 color: "bg-orange-500",
               },
               {
                 value: "winter" as ThemeSeason,
-                label: "冬季蓝 (Winter Frost)",
-                desc: "冰雪覆盖的幽静寒蓝，静谧纯洁",
+                label: t("settings.appearance.winter"),
+                desc: t("settings.appearance.winterDesc"),
                 gradient: "from-sky-400/90 to-blue-500/90",
                 color: "bg-sky-400",
               },
@@ -150,3 +153,4 @@ export function AppearanceCard({
     </Card>
   )
 }
+

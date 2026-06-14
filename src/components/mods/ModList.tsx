@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -87,7 +88,8 @@ export function ModList({
   isGameRunning = false,
   translationSyncingModIds = new Set(),
 }: ModListProps) {
-  const lockedTitle = isGameRunning ? "游戏运行中，不能修改模组" : undefined
+  const { t } = useTranslation()
+  const lockedTitle = isGameRunning ? t("mods.toast.gameRunningNoModify") : undefined
 
   return (
     <div className="space-y-4">
@@ -97,7 +99,7 @@ export function ModList({
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4.5 w-4.5 text-muted-foreground" />
           <Input
-            placeholder="搜索模组名称、英文名、作者或描述..."
+            placeholder={t("mods.list.searchPlaceholder")}
             className="pl-11 h-10 bg-card border border-border shadow-sm rounded-xl focus-visible:ring-primary focus-visible:ring-primary transition-all text-xs"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.currentTarget.value)}
@@ -126,7 +128,7 @@ export function ModList({
             ) : (
               <FolderOpen className="h-4 w-4 text-emerald-500" />
             )}
-            {isScanning ? "正在扫描..." : "扫描模组目录"}
+            {isScanning ? t("mods.list.scanning") : t("mods.list.scanDirectory")}
           </Button>
 
           <Button 
@@ -137,7 +139,7 @@ export function ModList({
             disabled={isCheckingUpdates}
           >
             <RefreshCw className={`h-4 w-4 text-sky-500 ${isCheckingUpdates ? "animate-spin" : ""}`} />
-            {isCheckingUpdates ? "正在检测更新..." : "检查更新"}
+            {isCheckingUpdates ? t("mods.list.checkingUpdates") : t("mods.list.checkUpdates")}
           </Button>
 
           <Button 
@@ -147,7 +149,7 @@ export function ModList({
             onClick={onOpenFolder}
           >
             <FolderOpen className="h-4 w-4 text-amber-500" />
-            打开 Mods 目录
+            {t("mods.list.openModsDir")}
           </Button>
 
           <Button 
@@ -159,7 +161,7 @@ export function ModList({
             title={lockedTitle}
           >
             <FileUp className="h-4 w-4" />
-            导入新模组
+            {t("mods.list.importMod")}
           </Button>
 
         </div>
@@ -192,17 +194,17 @@ export function ModList({
         {isLoading ? (
           <Card className="border border-dashed border-border py-16 flex flex-col items-center justify-center text-center">
             <Loader2 className="h-10 w-10 text-primary/50 animate-spin mb-4" />
-            <h3 className="text-lg font-bold text-muted-foreground">正在扫描模组目录...</h3>
+            <h3 className="text-lg font-bold text-muted-foreground">{t("mods.list.scanningTitle")}</h3>
             <p className="text-sm text-muted-foreground/70 max-w-xs mt-1">
-              正在读取本地 Mods 文件夹中的模组信息，请稍候。
+              {t("mods.list.scanningDesc")}
             </p>
           </Card>
         ) : mods.length === 0 ? (
           <Card className="border border-dashed border-border py-16 flex flex-col items-center justify-center text-center">
             <PackageOpen className="h-12 w-12 text-muted-foreground/40 mb-3" />
-            <h3 className="text-lg font-bold text-muted-foreground">尚未安装任何模组</h3>
+            <h3 className="text-lg font-bold text-muted-foreground">{t("mods.list.noModsTitle")}</h3>
             <p className="text-sm text-muted-foreground/70 max-w-xs mt-1">
-              您的 Mods 目录目前是空的。您可以前往 Nexus Mods 浏览并下载热门的星露谷物语模组，或者手动导入本地模组文件。
+              {t("mods.list.noModsDesc")}
             </p>
             <div className="flex gap-2 mt-4">
               {onGoOnline && (
@@ -213,7 +215,7 @@ export function ModList({
                   onClick={onGoOnline}
                 >
                   <Download className="h-4 w-4" />
-                  前往 Nexus 下载模组
+                  {t("mods.list.goNexusDownload")}
                 </Button>
               )}
             </div>
@@ -221,9 +223,9 @@ export function ModList({
         ) : filteredMods.length === 0 ? (
           <Card className="border border-dashed border-border py-16 flex flex-col items-center justify-center text-center">
             <Puzzle className="h-12 w-12 text-muted-foreground/40 mb-3" />
-            <h3 className="text-lg font-bold text-muted-foreground">没有检索到模组</h3>
+            <h3 className="text-lg font-bold text-muted-foreground">{t("mods.list.noResultsTitle")}</h3>
             <p className="text-sm text-muted-foreground/70 max-w-xs mt-1">
-              尝试更改您的搜索词，或者选择其他的分类筛选。
+              {t("mods.list.noResultsDesc")}
             </p>
             <Button 
               variant="outline" 
@@ -231,7 +233,7 @@ export function ModList({
               className="mt-4 rounded-xl"
               onClick={() => { setSearchTerm(""); setSelectedCategory("all"); }}
             >
-              清除所有筛选条件
+              {t("mods.list.clearFilters")}
             </Button>
           </Card>
         ) : (
@@ -293,7 +295,7 @@ export function ModList({
                         {isSyncingTranslation && (
                           <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-sky-600 dark:text-sky-400 bg-sky-500/10 border border-sky-500/20 rounded-md px-1.5 py-0.5">
                             <Loader2 className="h-3 w-3 animate-spin" />
-                            翻译库
+                            {t("mods.translationLibrary")}
                           </span>
                         )}
                         <span className="text-xs text-muted-foreground font-mono truncate max-w-[140px] lg:max-w-xs">
@@ -301,7 +303,7 @@ export function ModList({
                         </span>
                       </div>
                       <p className="text-xs text-muted-foreground mt-1 font-medium">
-                        作者: {mod.author} · 版本: v{mod.version}
+                        {t("mods.list.authorVersion", { author: mod.author, version: mod.version })}
                         {hasUpdate && (
                           <span className="text-amber-600 dark:text-amber-400"> → v{mod.latestVersion}</span>
                         )}
@@ -332,11 +334,11 @@ export function ModList({
                     {/* Has Update Badge */}
                     {hasUpdate ? (
                       <Badge className="bg-amber-500 hover:bg-amber-600 text-white border-none text-[10px] font-bold flex items-center gap-0.5 py-0.5 px-1.5 animate-pulse rounded-md">
-                        可升级 v{mod.latestVersion}
+                        {t("mods.list.upgradable", { version: mod.latestVersion })}
                       </Badge>
                     ) : (
                       <Badge variant="outline" className="text-[10px] text-green-600 dark:text-green-400 border-green-200 dark:border-green-900/40 bg-green-500/5 dark:bg-green-500/2 py-0.5 px-1.5 rounded-md">
-                        {mod.latestVersion ? `最新版 v${mod.latestVersion}` : "最新版"}
+                        {mod.latestVersion ? t("mods.list.latestVersion", { version: mod.latestVersion }) : t("mods.list.latestVersionShort")}
                       </Badge>
                     )}
 
@@ -345,7 +347,7 @@ export function ModList({
                       onClick={(e) => {
                         e.stopPropagation()
                         if (isGameRunning) return
-                        if(confirm(`确定要从列表中移除模组 [${mod.name}] 吗？`)) {
+                        if(confirm(t("mods.list.confirmRemove", { name: mod.name }))) {
                           onDeleteMod(mod.id)
                         }
                       }}
@@ -355,7 +357,7 @@ export function ModList({
                           : "hover:bg-destructive/15 text-muted-foreground hover:text-destructive"
                       }`}
                       disabled={isGameRunning}
-                      title={isGameRunning ? "游戏运行中，不能移除模组" : "移除该模组"}
+                      title={isGameRunning ? t("mods.list.cannotRemoveRunning") : t("mods.list.removeMod")}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>

@@ -11,7 +11,7 @@ use super::image_utils::render_object_icon;
 use super::map_names::map_display_name;
 use super::tbin::{load_tbin_map_from_xnb, render_tbin_map_preview};
 use super::xnb::{
-    load_localized_string_tables, load_location_fishing_xnb, load_objects_xnb,
+    load_localized_string_tables_with_lang, load_location_fishing_xnb, load_objects_xnb,
     load_string_dictionary_xnb, RawLocationFishingData,
 };
 
@@ -117,8 +117,9 @@ static FISHING_MAP_PREVIEW_CACHE: OnceLock<Mutex<HashMap<String, CachedFishingMa
 pub async fn get_fishing_map_data(
     game_dir: Option<String>,
     force_refresh: Option<bool>,
+    lang: Option<String>,
 ) -> Result<FishingMapData, String> {
-    task::spawn_blocking(move || get_fishing_map_data_sync(game_dir, force_refresh))
+    task::spawn_blocking(move || get_fishing_map_data_sync(game_dir, force_refresh, lang))
         .await
         .map_err(|err| format!("钓鱼地图解析任务失败: {}", err))?
 }
@@ -128,8 +129,9 @@ pub async fn get_fishing_map_detail(
     game_dir: Option<String>,
     map_id: String,
     force_refresh: Option<bool>,
+    lang: Option<String>,
 ) -> Result<FishingMapDetail, String> {
-    task::spawn_blocking(move || get_fishing_map_detail_sync(game_dir, map_id, force_refresh))
+    task::spawn_blocking(move || get_fishing_map_detail_sync(game_dir, map_id, force_refresh, lang))
         .await
         .map_err(|err| format!("钓鱼地图详情任务失败: {}", err))?
 }
@@ -137,6 +139,7 @@ pub async fn get_fishing_map_detail(
 fn get_fishing_map_data_sync(
     game_dir: Option<String>,
     force_refresh: Option<bool>,
+    _lang: Option<String>,
 ) -> Result<FishingMapData, String> {
     let content_dir = super::locate_content_dir(game_dir.as_deref())?;
     let (cache, cached) =
@@ -154,6 +157,7 @@ fn get_fishing_map_detail_sync(
     game_dir: Option<String>,
     map_id: String,
     force_refresh: Option<bool>,
+    lang: Option<String>,
 ) -> Result<FishingMapDetail, String> {
     let content_dir = super::locate_content_dir(game_dir.as_deref())?;
     let cache_key = content_cache_key(&content_dir);
@@ -165,7 +169,7 @@ fn get_fishing_map_detail_sync(
         .find(|map| map.id == map_id)
         .cloned()
         .ok_or_else(|| format!("未找到地图 {}", map_id))?;
-    detail.fishing_areas = load_fishing_areas_for_map(&content_dir, &detail.id)?;
+    detail.fishing_areas = load_fishing_areas_for_map(&content_dir, &detail.id, lang.as_deref())?;
     let preview = get_or_render_fishing_map_preview(
         &content_dir,
         &cache_key,
@@ -432,13 +436,15 @@ pub fn parse_fishing_map(
 fn load_fishing_areas_for_map(
     content_dir: &Path,
     map_id: &str,
+    lang: Option<&str>,
 ) -> Result<Vec<FishingArea>, String> {
     let location_data = load_location_fishing_xnb(&content_dir.join("Data").join("Locations.xnb"))?;
     let fish_data = load_string_dictionary_xnb(&content_dir.join("Data").join("Fish.xnb"))?;
     let objects = load_objects_xnb(&content_dir.join("Data").join("Objects.xnb"))?;
-    let localized_tables = load_localized_string_tables(
+    let localized_tables = load_localized_string_tables_with_lang(
         content_dir,
         &["Objects", "1_6_Strings", "StringsFromCSFiles"],
+        lang,
     );
     let mut texture_cache = HashMap::new();
 
@@ -486,7 +492,7 @@ fn load_fishing_areas_for_map(
             "default".to_string(),
             FishingArea {
                 id: "default".to_string(),
-                name: "默认水域".to_string(),
+                name: "Default Area".to_string(),
                 x: None,
                 y: None,
                 width: None,
@@ -529,7 +535,7 @@ fn load_fishing_areas_for_map(
                         name
                     },
                     description: if description.trim().is_empty() {
-                        "游戏内容未提供描述。".to_string()
+                        "No description provided.".to_string()
                     } else {
                         description
                     },

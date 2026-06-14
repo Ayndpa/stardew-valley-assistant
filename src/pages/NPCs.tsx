@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -81,14 +82,6 @@ interface LocalCacheEntry<T> {
   fetchedAt: number
 }
 
-const relationshipStatusMap: Record<string, string> = {
-  Friendly: "友好",
-  Dating: "恋爱中",
-  Engaged: "已订婚",
-  Married: "配偶",
-  Divorced: "离异",
-}
-
 const NPC_PROFILES_CACHE_KEY = "stardew_npc_profiles_cache_v2"
 const NPC_PORTRAITS_CACHE_KEY = "stardew_npc_portraits_cache"
 const NPC_FRIENDSHIPS_CACHE_KEY = "stardew_npc_friendships_cache"
@@ -125,8 +118,8 @@ function writeCache<T>(key: string, data: T) {
   }
 }
 
-function getProfilesCacheKey(gameDir: string) {
-  return `${NPC_PROFILES_CACHE_KEY}:${normalizeGameDir(gameDir) || "default"}`
+function getProfilesCacheKey(gameDir: string, lang: string) {
+  return `${NPC_PROFILES_CACHE_KEY}:${normalizeGameDir(gameDir) || "default"}:${lang}`
 }
 
 function getPortraitsCacheKey(gameDir: string, npcIds: string[]) {
@@ -151,38 +144,6 @@ function HeartBar({ hearts, maxHearts }: { hearts: number; maxHearts: number }) 
     </div>
   )
 }
-
-function formatGameTime(time?: number | null) {
-  if (!time) return "未知时间"
-  const hour = Math.floor(time / 100)
-  const minute = time % 100
-  return `${hour}:${minute.toString().padStart(2, "0")}`
-}
-
-function formatTile(location?: NpcLocationInfo) {
-  if (!location || location.tileX == null || location.tileY == null) return "坐标未知"
-  return `${location.tileX}, ${location.tileY}`
-}
-
-function gameTimeOptions() {
-  const options: number[] = []
-  for (let hour = 6; hour <= 26; hour += 1) {
-    for (let minute = 0; minute <= 50; minute += 10) {
-      const time = hour * 100 + minute
-      if (time >= 600 && time <= 2600) {
-        options.push(time)
-      }
-    }
-  }
-  return options
-}
-
-const seasonOptions = [
-  { value: 0, label: "春季" },
-  { value: 1, label: "夏季" },
-  { value: 2, label: "秋季" },
-  { value: 3, label: "冬季" },
-]
 
 interface NPCsProps {
   selectedSaveId: string
@@ -225,6 +186,7 @@ function NPCPortrait({
 }
 
 export function NPCs({ selectedSaveId, onNavigateToItem, onInstallNpcLocationsMod }: NPCsProps) {
+  const { t, i18n } = useTranslation()
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedNpcId, setSelectedNpcId] = useState<string | null>(null)
   const [friendships, setFriendships] = useState<Record<string, FriendshipInfo>>({})
@@ -244,13 +206,68 @@ export function NPCs({ selectedSaveId, onNavigateToItem, onInstallNpcLocationsMo
   const [estimateDay, setEstimateDay] = useState(1)
   const [estimateTime, setEstimateTime] = useState<number | null>(null)
 
+  const activeLang = i18n.resolvedLanguage || i18n.language || "zh"
+
+  const relationshipStatusLabels: Record<string, string> = {
+    Friendly: t("npcs.relationships.friendly", { defaultValue: "友好" }),
+    Dating: t("npcs.relationships.dating", { defaultValue: "恋爱中" }),
+    Engaged: t("npcs.relationships.engaged", { defaultValue: "已订婚" }),
+    Married: t("npcs.relationships.married", { defaultValue: "配偶" }),
+    Divorced: t("npcs.relationships.divorced", { defaultValue: "离异" }),
+  }
+
+  const seasonOptions = useMemo(() => [
+    { value: 0, label: t("npcs.seasons.spring", { defaultValue: "春季" }) },
+    { value: 1, label: t("npcs.seasons.summer", { defaultValue: "夏季" }) },
+    { value: 2, label: t("npcs.seasons.fall", { defaultValue: "秋季" }) },
+    { value: 3, label: t("npcs.seasons.winter", { defaultValue: "冬季" }) },
+  ], [t])
+
+  function formatGameTime(time?: number | null) {
+    if (!time) return t("npcs.unknownTime", { defaultValue: "未知时间" })
+    const hour = Math.floor(time / 100)
+    const minute = time % 100
+    return `${hour}:${minute.toString().padStart(2, "0")}`
+  }
+
+  function formatTile(location?: NpcLocationInfo) {
+    if (!location || location.tileX == null || location.tileY == null) return t("npcs.unknownCoordinates", { defaultValue: "坐标未知" })
+    return `${location.tileX}, ${location.tileY}`
+  }
+
+  function getLocalizedLocationName(locationInfo?: NpcLocationInfo) {
+    if (!locationInfo) return ""
+    const key = `maps.${locationInfo.location}`
+    const localized = t(key)
+    if (localized !== key) {
+      return localized
+    }
+    if (i18n.language.startsWith("zh")) {
+      return locationInfo.locationDisplayName || locationInfo.location
+    }
+    return locationInfo.location
+  }
+
+  function gameTimeOptions() {
+    const options: number[] = []
+    for (let hour = 6; hour <= 26; hour += 1) {
+      for (let minute = 0; minute <= 50; minute += 10) {
+        const time = hour * 100 + minute
+        if (time >= 600 && time <= 2600) {
+          options.push(time)
+        }
+      }
+    }
+    return options
+  }
+
   useEffect(() => {
     let canceled = false
 
     async function loadNpcProfiles() {
       const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__
       const gameDir = localStorage.getItem("stardewGameDirectory") || ""
-      const cacheKey = getProfilesCacheKey(gameDir)
+      const cacheKey = getProfilesCacheKey(gameDir, activeLang)
       const cached = readCache<NpcProfile[]>(cacheKey)
 
       if (cached && !canceled) {
@@ -273,6 +290,7 @@ export function NPCs({ selectedSaveId, onNavigateToItem, onInstallNpcLocationsMo
         const { invoke } = await import("@tauri-apps/api/core")
         const data = await invoke("get_npc_game_data", {
           gameDir: gameDir.trim() || undefined,
+          lang: activeLang,
         }) as NpcGameData
         if (!canceled) {
           setNpcProfiles(data.npcs)
@@ -295,7 +313,7 @@ export function NPCs({ selectedSaveId, onNavigateToItem, onInstallNpcLocationsMo
     return () => {
       canceled = true
     }
-  }, [])
+  }, [activeLang])
 
   useEffect(() => {
     let canceled = false
@@ -421,7 +439,7 @@ export function NPCs({ selectedSaveId, onNavigateToItem, onInstallNpcLocationsMo
       const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__
       if (!isTauri) {
         setLoadingLocations(false)
-        setLocationError("桌面应用中才能读取 NPC 位置。")
+        setLocationError(t("npcs.desktopAppRequired", { defaultValue: "桌面应用中才能读取 NPC 位置。" }))
         return
       }
 
@@ -467,7 +485,7 @@ export function NPCs({ selectedSaveId, onNavigateToItem, onInstallNpcLocationsMo
     return () => {
       canceled = true
     }
-  }, [estimateDay, estimateSeason, estimateTime, locationSource, selectedSaveId])
+  }, [estimateDay, estimateSeason, estimateTime, locationSource, selectedSaveId, t])
 
   const npcList = useMemo(() => {
     const profileMap = new Map(npcProfiles.map((npc) => [npc.id, npc]))
@@ -547,9 +565,9 @@ export function NPCs({ selectedSaveId, onNavigateToItem, onInstallNpcLocationsMo
   return (
     <div className="p-8 space-y-6">
       <div>
-        <h2 className="text-3xl font-bold tracking-tight">村民关系</h2>
+        <h2 className="text-3xl font-bold tracking-tight">{t("npcs.title")}</h2>
         <p className="text-muted-foreground mt-1">
-          从游戏内容与存档自动解析村民资料、生日、当前好感度和位置
+          {t("npcs.description")}
         </p>
       </div>
 
@@ -557,12 +575,12 @@ export function NPCs({ selectedSaveId, onNavigateToItem, onInstallNpcLocationsMo
         <div className="flex items-center gap-2 min-w-0">
           <Radar className="h-4 w-4 text-primary shrink-0" />
           <div className="min-w-0">
-            <p className="text-sm font-semibold">NPC 位置来源</p>
+            <p className="text-sm font-semibold">{t("npcs.locationSource")}</p>
             <p className="text-xs text-muted-foreground truncate">
               {locationSource === "estimate"
-                ? `游戏日程估算${locationGameTime ? ` · ${formatGameTime(locationGameTime)}` : ""}`
-                : "SMAPI Mod 实时读取"}
-              {loadingLocations ? " · 正在刷新" : ""}
+                ? `${t("npcs.locationSourceEstimate")}${locationGameTime ? ` · ${formatGameTime(locationGameTime)}` : ""}`
+                : t("npcs.locationSourceMod")}
+              {loadingLocations ? ` · ${t("npcs.refreshing")}` : ""}
             </p>
           </div>
         </div>
@@ -573,7 +591,7 @@ export function NPCs({ selectedSaveId, onNavigateToItem, onInstallNpcLocationsMo
             size="sm"
             onClick={() => setLocationSource("estimate")}
           >
-            游戏逻辑估算
+            {t("npcs.gameLogicEstimateButton")}
           </Button>
           <Button
             type="button"
@@ -581,14 +599,14 @@ export function NPCs({ selectedSaveId, onNavigateToItem, onInstallNpcLocationsMo
             size="sm"
             onClick={() => setLocationSource("mod")}
           >
-            Mod 实时读取
+            {t("npcs.modRealtimeButton")}
           </Button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 rounded-lg border bg-background p-3">
         <label className="space-y-1">
-          <span className="text-xs font-semibold text-muted-foreground">估算季节</span>
+          <span className="text-xs font-semibold text-muted-foreground">{t("npcs.estimateSeasonLabel")}</span>
           <select
             className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
             value={estimateSeason}
@@ -603,7 +621,7 @@ export function NPCs({ selectedSaveId, onNavigateToItem, onInstallNpcLocationsMo
         </label>
 
         <label className="space-y-1">
-          <span className="text-xs font-semibold text-muted-foreground">估算日期</span>
+          <span className="text-xs font-semibold text-muted-foreground">{t("npcs.estimateDayLabel")}</span>
           <Input
             type="number"
             min={1}
@@ -619,7 +637,7 @@ export function NPCs({ selectedSaveId, onNavigateToItem, onInstallNpcLocationsMo
         </label>
 
         <label className="space-y-1">
-          <span className="text-xs font-semibold text-muted-foreground">估算时间</span>
+          <span className="text-xs font-semibold text-muted-foreground">{t("npcs.estimateTimeLabel")}</span>
           <select
             className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
             value={estimateTime ?? ""}
@@ -628,7 +646,7 @@ export function NPCs({ selectedSaveId, onNavigateToItem, onInstallNpcLocationsMo
               setEstimateTime(value ? Number(value) : null)
             }}
           >
-            <option value="">存档当前时间</option>
+            <option value="">{t("npcs.saveCurrentTimeOption")}</option>
             {timeOptions.map((time) => (
               <option key={time} value={time}>
                 {formatGameTime(time)}
@@ -650,7 +668,7 @@ export function NPCs({ selectedSaveId, onNavigateToItem, onInstallNpcLocationsMo
               onClick={() => void onInstallNpcLocationsMod()}
             >
               <PackagePlus className="h-4 w-4" />
-              一键安装实时位置 Mod
+              {t("npcs.installLocationsModButton")}
             </Button>
           )}
         </div>
@@ -661,7 +679,7 @@ export function NPCs({ selectedSaveId, onNavigateToItem, onInstallNpcLocationsMo
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="搜索村民姓名或内部 ID..."
+              placeholder={t("npcs.searchPlaceholder")}
               className="pl-10"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.currentTarget.value)}
@@ -672,14 +690,14 @@ export function NPCs({ selectedSaveId, onNavigateToItem, onInstallNpcLocationsMo
             {loadingProfiles ? (
               <div className="flex flex-col items-center justify-center h-full space-y-2">
                 <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
-                <p className="text-xs text-muted-foreground">正在从游戏内容解析村民资料...</p>
+                <p className="text-xs text-muted-foreground">{t("npcs.loadingProfiles")}</p>
               </div>
             ) : filteredNPCs.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full space-y-3 text-center px-4">
                 <Users className="h-10 w-10 text-muted-foreground/30" />
-                <p className="text-sm font-semibold text-muted-foreground">未找到村民资料</p>
+                <p className="text-sm font-semibold text-muted-foreground">{t("npcs.noProfilesFound")}</p>
                 <p className="text-xs text-muted-foreground/70">
-                  请确认游戏目录配置正确，或稍后重新加载当前页面。
+                  {t("npcs.noProfilesFoundDesc")}
                 </p>
               </div>
             ) : filteredNPCs.map((npc) => (
@@ -703,14 +721,14 @@ export function NPCs({ selectedSaveId, onNavigateToItem, onInstallNpcLocationsMo
                     <p className="text-sm font-semibold truncate">{npc.name}</p>
                     {npc.status !== "Friendly" && (
                       <span className={`text-[10px] whitespace-nowrap ${selectedNpcId === npc.id ? "text-primary-foreground/80" : "text-primary"}`}>
-                        {relationshipStatusMap[npc.status] || npc.status}
+                        {relationshipStatusLabels[npc.status] || npc.status}
                       </span>
                     )}
                   </div>
                   <HeartBar hearts={npc.hearts} maxHearts={npc.maxHearts} />
                   <p className={`mt-1 flex items-center gap-1 text-[11px] truncate ${selectedNpcId === npc.id ? "text-primary-foreground/75" : "text-muted-foreground"}`}>
                     <MapPin className="h-3 w-3 shrink-0" />
-                    {npc.locationInfo?.locationDisplayName || "位置未知"}
+                    {getLocalizedLocationName(npc.locationInfo) || t("npcs.unknownLocation")}
                   </p>
                 </div>
               </button>
@@ -734,17 +752,17 @@ export function NPCs({ selectedSaveId, onNavigateToItem, onInstallNpcLocationsMo
                         <CardTitle className="text-2xl font-bold">{activeNPC.name}</CardTitle>
                         {activeNPC.marriageCandidate && (
                           <Badge variant="secondary" className="text-xs font-semibold">
-                            可结婚角色
+                            {t("npcs.marriageCandidate")}
                           </Badge>
                         )}
                         {activeNPC.locationInfo && (
                           <Badge variant="secondary" className="text-xs font-semibold">
-                            {activeNPC.locationInfo.confidence}
+                            {t("npcs.confidence." + activeNPC.locationInfo.confidence, { defaultValue: activeNPC.locationInfo.confidence })}
                           </Badge>
                         )}
                       </div>
                       <p className="text-sm text-muted-foreground mt-0.5">
-                        生日: {activeNPC.birthday || "游戏中未提供"} · 内部标识: {activeNPC.id}
+                        {t("npcs.birthdayLabel", { birthday: activeNPC.birthday || t("npcs.birthdayNotProvided", { defaultValue: "游戏中未提供" }), id: activeNPC.id })}
                       </p>
                     </div>
                   </div>
@@ -754,27 +772,27 @@ export function NPCs({ selectedSaveId, onNavigateToItem, onInstallNpcLocationsMo
                       <>
                         {activeNPC.talkedToToday ? (
                           <Badge className="bg-green-500 hover:bg-green-600 text-xs font-medium py-1 px-2.5">
-                            今天已交谈
+                            {t("npcs.talkedToToday")}
                           </Badge>
                         ) : (
                           <Badge variant="secondary" className="text-xs font-medium py-1 px-2.5">
-                            今天未交谈
+                            {t("npcs.notTalkedToToday")}
                           </Badge>
                         )}
 
                         {activeNPC.giftsToday > 0 ? (
                           <Badge className="bg-amber-500 hover:bg-amber-600 text-xs font-medium py-1 px-2.5">
-                            今天已送礼
+                            {t("npcs.giftedToday")}
                           </Badge>
                         ) : (
                           <Badge variant="secondary" className="text-xs font-medium py-1 px-2.5">
-                            今天未送礼
+                            {t("npcs.notGiftedToday")}
                           </Badge>
                         )}
                       </>
                     ) : (
                       <Badge variant="secondary" className="text-xs font-medium py-1 px-2.5">
-                        选择存档后显示互动状态
+                        {t("npcs.interactionStatusSaveNeeded")}
                       </Badge>
                     )}
                   </div>
@@ -786,23 +804,23 @@ export function NPCs({ selectedSaveId, onNavigateToItem, onInstallNpcLocationsMo
                   <div>
                     <h3 className="text-sm font-semibold mb-2 flex items-center gap-1.5">
                       <Heart className="h-4 w-4 text-red-500 fill-red-500" />
-                      好感度进度
+                      {t("npcs.friendshipProgress")}
                     </h3>
                     <div className="flex items-center gap-2">
                       <HeartBar hearts={activeNPC.hearts} maxHearts={activeNPC.maxHearts} />
                       <span className="text-sm font-bold">
-                        {activeNPC.hearts} / {activeNPC.maxHearts} 心
+                        {t("npcs.heartsCount", { current: activeNPC.hearts, max: activeNPC.maxHearts })}
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      当前点数: {activeNPC.points} 点 / {activeNPC.maxHearts * 250} 点
+                      {t("npcs.heartsPoints", { current: activeNPC.points, max: activeNPC.maxHearts * 250 })}
                     </p>
                   </div>
 
                   <div>
                     <h3 className="text-sm font-semibold mb-2 flex items-center gap-1.5">
                       <Gift className="h-4 w-4 text-amber-500" />
-                      本周送礼限制
+                      {t("npcs.weeklyGiftLimit")}
                     </h3>
                     <div className="flex items-center gap-2">
                       <div className="w-full bg-muted rounded-full h-2 overflow-hidden flex-1">
@@ -811,14 +829,14 @@ export function NPCs({ selectedSaveId, onNavigateToItem, onInstallNpcLocationsMo
                           style={{ width: `${Math.min(activeNPC.giftsThisWeek, 2) / 2 * 100}%` }}
                         />
                       </div>
-                      <span className="text-sm font-bold">{activeNPC.giftsThisWeek} / 2 次</span>
+                      <span className="text-sm font-bold">{t("npcs.giftsCount", { count: activeNPC.giftsThisWeek })}</span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
                       {selectedSaveId
                         ? activeNPC.giftsThisWeek >= 2
-                          ? "本周送礼已达上限，周日后重置。"
-                          : `本周还可送礼 ${Math.max(0, 2 - activeNPC.giftsThisWeek)} 次。`
-                        : "选择存档后显示当前周送礼进度。"}
+                          ? t("npcs.giftsLimitReached")
+                          : t("npcs.giftsLimitRemaining", { count: Math.max(0, 2 - activeNPC.giftsThisWeek) })
+                        : t("npcs.giftProgressSaveNeeded")}
                     </p>
                   </div>
                 </div>
@@ -826,62 +844,62 @@ export function NPCs({ selectedSaveId, onNavigateToItem, onInstallNpcLocationsMo
                 <div className="space-y-4">
                   <div className="flex items-center gap-2">
                     <Sparkles className="h-4 w-4 text-primary" />
-                    <h4 className="text-sm font-bold">村民状态</h4>
+                    <h4 className="text-sm font-bold">{t("npcs.villagerStatus")}</h4>
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
                     <div className="border p-2.5 rounded-md bg-background">
-                      <p className="text-muted-foreground">关系状态</p>
+                      <p className="text-muted-foreground">{t("npcs.relationshipStatus")}</p>
                       <p className="font-semibold text-sm mt-0.5">
-                        {relationshipStatusMap[activeNPC.status] || activeNPC.status}
+                        {relationshipStatusLabels[activeNPC.status] || activeNPC.status}
                       </p>
                     </div>
                     <div className="border p-2.5 rounded-md bg-background">
-                      <p className="text-muted-foreground">是否结识</p>
+                      <p className="text-muted-foreground">{t("npcs.isMetLabel")}</p>
                       <p className="font-semibold text-sm mt-0.5">
-                        {activeNPC.isMet ? "已结识" : "未结识"}
+                        {activeNPC.isMet ? t("npcs.isMet") : t("npcs.notMet")}
                       </p>
                     </div>
                     <div className="border p-2.5 rounded-md bg-background">
-                      <p className="text-muted-foreground">社交类型</p>
+                      <p className="text-muted-foreground">{t("npcs.socialType")}</p>
                       <p className="font-semibold text-sm mt-0.5">
                         {activeNPC.gender === "marriageable_female"
-                          ? "单身女性"
+                          ? t("npcs.gender.marriageableFemale")
                           : activeNPC.gender === "marriageable_male"
-                            ? "单身男性"
-                            : "普通居民"}
+                            ? t("npcs.gender.marriageableMale")
+                            : t("npcs.gender.other")}
                       </p>
                     </div>
                     <div className="border p-2.5 rounded-md bg-background">
-                      <p className="text-muted-foreground">社交成就点</p>
-                      <p className="font-semibold text-sm mt-0.5">{activeNPC.points} 点</p>
+                      <p className="text-muted-foreground">{t("npcs.socialPoints")}</p>
+                      <p className="font-semibold text-sm mt-0.5">{t("npcs.heartsPoints", { current: activeNPC.points, max: activeNPC.maxHearts * 250 })}</p>
                     </div>
                     <div className="border p-2.5 rounded-md bg-background">
-                      <p className="text-muted-foreground">当前位置</p>
+                      <p className="text-muted-foreground">{t("npcs.currentLocation")}</p>
                       <p className="font-semibold text-sm mt-0.5 truncate">
-                        {activeNPC.locationInfo?.locationDisplayName || "未知"}
+                        {getLocalizedLocationName(activeNPC.locationInfo) || t("npcs.unknown")}
                       </p>
-                      {activeNPC.locationInfo && activeNPC.locationInfo.locationDisplayName !== activeNPC.locationInfo.location && (
+                      {activeNPC.locationInfo && i18n.language.startsWith("zh") && activeNPC.locationInfo.locationDisplayName !== activeNPC.locationInfo.location && (
                         <p className="text-[11px] text-muted-foreground truncate">
                           {activeNPC.locationInfo.location}
                         </p>
                       )}
                     </div>
                     <div className="border p-2.5 rounded-md bg-background">
-                      <p className="text-muted-foreground">位置坐标</p>
+                      <p className="text-muted-foreground">{t("npcs.locationCoordinates")}</p>
                       <p className="font-semibold text-sm mt-0.5">
                         {formatTile(activeNPC.locationInfo)}
                       </p>
                     </div>
                     <div className="border p-2.5 rounded-md bg-background">
-                      <p className="text-muted-foreground">日程时间</p>
+                      <p className="text-muted-foreground">{t("npcs.scheduleTime")}</p>
                       <p className="font-semibold text-sm mt-0.5">
                         {formatGameTime(activeNPC.locationInfo?.scheduleTime)}
                       </p>
                     </div>
                     <div className="border p-2.5 rounded-md bg-background">
-                      <p className="text-muted-foreground">日程键</p>
+                      <p className="text-muted-foreground">{t("npcs.scheduleKey")}</p>
                       <p className="font-semibold text-sm mt-0.5 truncate">
-                        {activeNPC.locationInfo?.scheduleKey || (locationSource === "mod" ? "实时" : "未知")}
+                        {activeNPC.locationInfo?.scheduleKey || (locationSource === "mod" ? t("npcs.realTime") : t("npcs.unknown"))}
                       </p>
                     </div>
                   </div>
@@ -893,7 +911,7 @@ export function NPCs({ selectedSaveId, onNavigateToItem, onInstallNpcLocationsMo
                   <div className="rounded-lg border bg-background p-4">
                     <div className="flex items-center gap-2 mb-3">
                       <Gift className="h-4 w-4 text-emerald-600" />
-                      <h3 className="text-sm font-bold">喜爱物品</h3>
+                      <h3 className="text-sm font-bold">{t("npcs.lovedItems")}</h3>
                     </div>
                     {activeNPC.lovedItems.length > 0 ? (
                       <div className="flex flex-wrap gap-2">
@@ -905,21 +923,21 @@ export function NPCs({ selectedSaveId, onNavigateToItem, onInstallNpcLocationsMo
                             size="sm"
                             className="h-7 px-2.5 text-xs"
                             onClick={() => onNavigateToItem(item)}
-                            title={`查看 ${item} 的物品百科`}
+                            title={t("npcs.viewItemEncyclopedia", { item })}
                           >
                             {item}
                           </Button>
                         ))}
                       </div>
                     ) : (
-                      <p className="text-sm text-muted-foreground">游戏内容中未提供该村民的喜爱物品。</p>
+                      <p className="text-sm text-muted-foreground">{t("npcs.noLovedItems")}</p>
                     )}
                   </div>
 
                   <div className="rounded-lg border bg-background p-4">
                     <div className="flex items-center gap-2 mb-3">
                       <Gift className="h-4 w-4 text-rose-600" />
-                      <h3 className="text-sm font-bold">讨厌物品</h3>
+                      <h3 className="text-sm font-bold">{t("npcs.hatedItems")}</h3>
                     </div>
                     {activeNPC.hatedItems.length > 0 ? (
                       <div className="flex flex-wrap gap-2">
@@ -931,14 +949,14 @@ export function NPCs({ selectedSaveId, onNavigateToItem, onInstallNpcLocationsMo
                             size="sm"
                             className="h-7 px-2.5 text-xs"
                             onClick={() => onNavigateToItem(item)}
-                            title={`查看 ${item} 的物品百科`}
+                            title={t("npcs.viewItemEncyclopedia", { item })}
                           >
                             {item}
                           </Button>
                         ))}
                       </div>
                     ) : (
-                      <p className="text-sm text-muted-foreground">游戏内容中未提供该村民的讨厌物品。</p>
+                      <p className="text-sm text-muted-foreground">{t("npcs.noHatedItems")}</p>
                     )}
                   </div>
                 </div>
@@ -950,7 +968,7 @@ export function NPCs({ selectedSaveId, onNavigateToItem, onInstallNpcLocationsMo
               <CardContent className="flex flex-col items-center justify-center py-20">
                 <Info className="h-12 w-12 text-muted-foreground/40 mb-4" />
                 <p className="text-muted-foreground">
-                  {loading ? "正在加载村民关系面板..." : "暂无可显示的村民资料"}
+                  {loading ? t("npcs.loadingPanel") : t("npcs.noNpcSelected")}
                 </p>
               </CardContent>
             </Card>

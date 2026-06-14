@@ -3,6 +3,7 @@ import { Globe, User, LogOut, Loader2, KeyRound, Copy, Check } from "lucide-reac
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { useTranslation } from "react-i18next"
 
 interface NexusAccountCardProps {
   nexusChecking: boolean
@@ -31,7 +32,8 @@ export function NexusAccountCard({
   onCopyApiKey,
   onRefreshApiKey,
 }: NexusAccountCardProps) {
-  const [iconSrc, setIconSrc] = useState<string>("")
+  const [iconSrc, setIconSrc] = useState<string>()
+  const { t } = useTranslation()
 
   useEffect(() => {
     async function loadIcon() {
@@ -60,9 +62,9 @@ export function NexusAccountCard({
             )}
           </div>
           <div>
-            <CardTitle className="text-lg font-bold">NexusMods 账号</CardTitle>
+            <CardTitle className="text-lg font-bold">{t("settings.nexus.title")}</CardTitle>
             <CardDescription>
-              登录 NexusMods 以便下载模组时获取链接
+              {t("settings.nexus.description")}
             </CardDescription>
           </div>
         </div>
@@ -71,7 +73,7 @@ export function NexusAccountCard({
         {nexusChecking ? (
           <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
-            <span>正在检查登录状态...</span>
+            <span>{t("settings.nexus.checking")}</span>
           </div>
         ) : nexusLoggedIn ? (
           <div className="space-y-4">
@@ -82,11 +84,11 @@ export function NexusAccountCard({
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-foreground">
-                    {nexusUsername || "已登录"}
+                    {nexusUsername || t("settings.nexus.loggedIn")}
                   </p>
                   <p className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
                     <User className="h-3 w-3" />
-                    已登录 NexusMods
+                    {t("settings.nexus.loggedInStatus")}
                   </p>
                 </div>
               </div>
@@ -97,7 +99,7 @@ export function NexusAccountCard({
                 className="flex items-center gap-2 text-destructive hover:text-destructive hover:bg-destructive/10"
               >
                 <LogOut className="h-4 w-4" />
-                退出登录
+                {t("settings.nexus.logout")}
               </Button>
             </div>
 
@@ -106,7 +108,7 @@ export function NexusAccountCard({
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <KeyRound className="h-4 w-4 text-orange-500" />
-                  <p className="text-sm font-medium">API Key</p>
+                  <p className="text-sm font-medium">{t("settings.nexus.apiKey")}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   {nexusApiKey && (
@@ -119,12 +121,12 @@ export function NexusAccountCard({
                       {nexusApiKeyCopied ? (
                         <>
                           <Check className="h-3 w-3 text-emerald-500" />
-                          <span className="text-emerald-500">已复制</span>
+                          <span className="text-emerald-500">{t("settings.nexus.copied")}</span>
                         </>
                       ) : (
                         <>
                           <Copy className="h-3 w-3" />
-                          复制
+                          {t("settings.nexus.copy")}
                         </>
                       )}
                     </Button>
@@ -139,14 +141,14 @@ export function NexusAccountCard({
                     {nexusApiKeyLoading ? (
                       <Loader2 className="h-3 w-3 animate-spin" />
                     ) : null}
-                    刷新
+                    {t("settings.nexus.refresh")}
                   </Button>
                 </div>
               </div>
               {nexusApiKeyLoading && !nexusApiKey ? (
                 <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  <span>正在获取 API Key...</span>
+                  <span>{t("settings.nexus.fetchingApiKey")}</span>
                 </div>
               ) : nexusApiKey ? (
                 <div className="relative">
@@ -157,7 +159,7 @@ export function NexusAccountCard({
                   />
                 </div>
               ) : (
-                <p className="text-xs text-muted-foreground">未获取到 API Key，点击刷新重试</p>
+                <p className="text-xs text-muted-foreground">{t("settings.nexus.noApiKey")}</p>
               )}
             </div>
           </div>
@@ -172,9 +174,9 @@ export function NexusAccountCard({
                 )}
               </div>
               <div>
-                <p className="text-sm font-medium">未登录</p>
+                <p className="text-sm font-medium">{t("settings.nexus.notLoggedIn")}</p>
                 <p className="text-xs text-muted-foreground">
-                  登录后可获取模组下载链接
+                  {t("settings.nexus.loginDescription")}
                 </p>
               </div>
             </div>
@@ -192,7 +194,7 @@ export function NexusAccountCard({
               ) : (
                 <Globe className="h-4 w-4" />
               )}
-              {nexusLoggingIn ? "等待登录..." : "登录 NexusMods"}
+              {nexusLoggingIn ? t("settings.nexus.waitingLogin") : t("settings.nexus.loginButton")}
             </Button>
           </div>
         )}
@@ -200,3 +202,4 @@ export function NexusAccountCard({
     </Card>
   )
 }
+

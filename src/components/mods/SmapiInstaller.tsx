@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { AlertTriangle, Download, RefreshCw, Loader2, X, Info } from "lucide-react"
@@ -27,7 +28,7 @@ export function SmapiInstaller({
   gameVersion,
   isGameRunning = false,
 }: SmapiInstallerProps) {
-
+  const { t } = useTranslation()
 
   return (
     <div className="max-w-2xl mx-auto space-y-8 py-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -43,40 +44,40 @@ export function SmapiInstaller({
             </div>
             <div className="space-y-1">
               <h1 className="text-2xl font-extrabold tracking-tight text-foreground">
-                SMAPI 安装
+                {t("mods.smapi.installTitle")}
               </h1>
               <p className="text-sm text-muted-foreground max-w-md mx-auto">
-                您需要安装 Stardew Modding API (SMAPI) 才能在《星露谷物语》中使用各种丰富的模组。
+                {t("mods.smapi.installDesc")}
               </p>
             </div>
           </div>
 
           {/* Status Details */}
           <div className="bg-accent/20 dark:bg-accent/5 rounded-2xl p-6 border border-border/60 space-y-4">
-            <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">系统检测环境</h4>
+            <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{t("mods.smapi.systemDetection")}</h4>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
               <div className="space-y-1">
-                <span className="text-muted-foreground block font-medium">游戏安装目录</span>
+                <span className="text-muted-foreground block font-medium">{t("mods.smapi.gameDirectory")}</span>
                 <span className="font-semibold text-foreground font-mono truncate block max-w-xs" title={localStorage.getItem("stardewGameDirectory") || ""}>
-                  {localStorage.getItem("stardewGameDirectory") || "未配置"}
+                  {localStorage.getItem("stardewGameDirectory") || t("mods.smapi.notConfigured")}
                 </span>
               </div>
               <div className="space-y-1">
-                <span className="text-muted-foreground block font-medium">Stardew Valley 版本</span>
+                <span className="text-muted-foreground block font-medium">{t("mods.smapi.gameVersion")}</span>
                 <span className="font-semibold text-foreground font-mono bg-accent/40 px-2 py-0.5 rounded text-[11px]">
-                  {gameVersion === null ? "检测中..." : gameVersion}
+                  {gameVersion === null ? t("mods.smapi.detecting") : gameVersion}
                 </span>
               </div>
               <div className="space-y-1">
-                <span className="text-muted-foreground block font-medium">SMAPI 状态</span>
+                <span className="text-muted-foreground block font-medium">{t("mods.smapi.smapiStatus")}</span>
                 <span className="font-semibold text-red-500 flex items-center gap-1 font-medium">
-                  <X className="h-3.5 w-3.5" /> 未安装
+                  <X className="h-3.5 w-3.5" /> {t("mods.smapi.notInstalled")}
                 </span>
               </div>
               <div className="space-y-1">
-                <span className="text-muted-foreground block font-medium">最新可用 SMAPI</span>
+                <span className="text-muted-foreground block font-medium">{t("mods.smapi.latestSmapi")}</span>
                 <span className="font-semibold text-emerald-600 dark:text-emerald-400 font-mono bg-emerald-500/10 px-2 py-0.5 rounded text-[11px]">
-                  {smapiLatestVersion === null ? "检查中..." : `v${smapiLatestVersion}`}
+                  {smapiLatestVersion === null ? t("mods.smapi.checking") : `v${smapiLatestVersion}`}
                 </span>
               </div>
             </div>
@@ -87,8 +88,8 @@ export function SmapiInstaller({
             <div className="bg-accent/20 dark:bg-accent/5 rounded-2xl p-5 border border-border/60 space-y-3">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div className="space-y-0.5">
-                  <h4 className="text-xs font-bold text-foreground">GitHub 下载源设置</h4>
-                  <p className="text-[10px] text-muted-foreground">国内网络下载缓慢时，推荐开启加速镜像</p>
+                  <h4 className="text-xs font-bold text-foreground">{t("mods.smapi.downloadSource")}</h4>
+                  <p className="text-[10px] text-muted-foreground">{t("mods.smapi.downloadSourceDesc")}</p>
                 </div>
                 <div className="flex bg-accent/40 rounded-xl p-1 border border-border/30 w-full sm:w-auto">
                   <button
@@ -100,7 +101,7 @@ export function SmapiInstaller({
                         : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
-                    加速镜像 (推荐)
+                    {t("mods.smapi.mirrorRecommended")}
                   </button>
                   <button
                     onClick={() => setSmapiMirror("official")}
@@ -111,7 +112,7 @@ export function SmapiInstaller({
                         : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
-                    GitHub 官方源
+                    {t("mods.smapi.mirrorOfficial")}
                   </button>
                 </div>
               </div>
@@ -125,25 +126,25 @@ export function SmapiInstaller({
                 <Button
                   onClick={onInstall}
                   disabled={smapiLatestVersion === null || isGameRunning}
-                  title={isGameRunning ? "游戏运行中，不能安装 SMAPI" : undefined}
+                  title={isGameRunning ? t("mods.smapi.cannotInstallRunning") : undefined}
                   className="bg-primary hover:bg-primary/95 text-primary-foreground font-bold text-sm px-8 py-6 rounded-2xl shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2"
                 >
                   <Download className="h-5 w-5" />
-                  一键安装 SMAPI {smapiLatestVersion && `v${smapiLatestVersion}`}
+                  {t("mods.smapi.oneClickInstall")} {smapiLatestVersion && `v${smapiLatestVersion}`}
                 </Button>
                 <Button
                   variant="outline"
                   onClick={onOpenOfficialSite}
                   className="border-border text-foreground hover:bg-accent font-semibold text-sm px-6 py-6 rounded-2xl"
                 >
-                  手动去官网下载
+                  {t("mods.smapi.manualDownload")}
                 </Button>
               </div>
             ) : installStatus === "error" ? (
               <div className="space-y-4">
                 <div className="bg-red-500/15 border border-red-500/20 text-red-700 dark:text-red-400 text-xs rounded-xl p-4 font-mono break-all">
                   <p className="font-bold flex items-center gap-1.5 mb-1 text-sm">
-                    <AlertTriangle className="h-4 w-4" /> 安装出错:
+                    <AlertTriangle className="h-4 w-4" /> {t("mods.smapi.installError")}
                   </p>
                   {installError}
                 </div>
@@ -151,10 +152,10 @@ export function SmapiInstaller({
                   <Button
                     onClick={onInstall}
                     disabled={isGameRunning}
-                    title={isGameRunning ? "游戏运行中，不能安装 SMAPI" : undefined}
+                    title={isGameRunning ? t("mods.smapi.cannotInstallRunning") : undefined}
                     className="bg-primary hover:bg-primary/95 text-primary-foreground font-bold text-xs px-6 py-4 rounded-xl"
                   >
-                    <RefreshCw className="h-4 w-4 mr-1.5 animate-spin" style={{ animationDuration: '3s' }} /> 重新尝试安装
+                    <RefreshCw className="h-4 w-4 mr-1.5 animate-spin" style={{ animationDuration: '3s' }} /> {t("mods.smapi.retryInstall")}
                   </Button>
                 </div>
               </div>
@@ -163,11 +164,11 @@ export function SmapiInstaller({
                 <div className="flex justify-between text-xs font-bold text-foreground">
                   <span className="flex items-center gap-1.5">
                     <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-                    {installStatus === "fetching" && "正在准备网络请求..."}
-                    {installStatus === "downloading" && `正在下载 SMAPI 安装包 (从 GitHub Releases)...`}
-                    {installStatus === "extracting" && "正在解压缩安装包文件..."}
-                    {installStatus === "copying" && "正在部署 SMAPI 核心组件到游戏目录..."}
-                    {installStatus === "success" && "SMAPI 安装完成！"}
+                    {installStatus === "fetching" && t("mods.smapi.statusFetching")}
+                    {installStatus === "downloading" && t("mods.smapi.statusDownloading")}
+                    {installStatus === "extracting" && t("mods.smapi.statusExtracting")}
+                    {installStatus === "copying" && t("mods.smapi.statusCopying")}
+                    {installStatus === "success" && t("mods.smapi.statusSuccess")}
                   </span>
                   <span>{installProgress}%</span>
                 </div>
@@ -178,7 +179,7 @@ export function SmapiInstaller({
                   ></div>
                 </div>
                 <p className="text-[10px] text-muted-foreground text-center">
-                  {isGameRunning ? "游戏运行中，安装功能已暂时锁定。" : "正在自动为您下载平台特定的运行库并完成目录重定向，请勿关闭程序。"}
+                  {isGameRunning ? t("mods.smapi.gameRunningLocked") : t("mods.smapi.autoInstalling")}
                 </p>
               </div>
             )}
@@ -190,12 +191,12 @@ export function SmapiInstaller({
       <Card className="border border-border bg-card rounded-2xl p-6">
         <CardHeader className="p-0 pb-3 flex flex-row items-center gap-2">
           <Info className="h-5 w-5 text-primary" />
-          <CardTitle className="text-sm font-bold text-foreground">关于 SMAPI 的一键安装</CardTitle>
+          <CardTitle className="text-sm font-bold text-foreground">{t("mods.smapi.aboutTitle")}</CardTitle>
         </CardHeader>
         <CardContent className="p-0 text-xs text-muted-foreground/90 space-y-2 leading-relaxed font-medium">
-          <p>1. 超级星露谷会从 GitHub 下载对应您游戏平台的最新版 SMAPI 安装包。</p>
-          <p>2. 程序将执行静默手动解压，并将安装包中 <code className="bg-accent/40 px-1 py-0.5 rounded text-[10px]">internal</code> 的对应文件递归移动部署至您的游戏主目录，与官方脚本安装效果完全一致。</p>
-          <p>3. 卸载十分方便：若将来您希望清除 SMAPI，可以在右上角的管理面板中点击一键卸载，游戏文件会重回官方无模组的纯净版，且您的个人 Mods 目录不受任何损伤。</p>
+          <p>{t("mods.smapi.aboutStep1")}</p>
+          <p>{t("mods.smapi.aboutStep2")}</p>
+          <p>{t("mods.smapi.aboutStep3")}</p>
         </CardContent>
       </Card>
     </div>

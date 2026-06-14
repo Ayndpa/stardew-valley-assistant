@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { Coins, Flame, MapPin, Sprout, Waves } from "lucide-react"
-import { CropLookup, locationMap, PlantedCrop } from "./types"
+import { CropLookup, PlantedCrop } from "./types"
 
 interface PlantedCropsDashboardProps {
   selectedSaveId: string
@@ -47,10 +48,14 @@ interface StatusGroup {
   crops: CropSummary[]
 }
 
-function getCropStatus(crop: PlantedCrop, cropLookup: Record<string, CropLookup>): CropStatusInfo {
+function getCropStatus(
+  crop: PlantedCrop,
+  cropLookup: Record<string, CropLookup>,
+  t: any,
+): CropStatusInfo {
   const lookup = cropLookup[crop.seedId] || cropLookup[crop.harvestId]
   const key = crop.seedId || crop.harvestId || `${crop.location}-${crop.x}-${crop.y}`
-  const name = lookup?.name || `未知作物 (${crop.seedId || crop.harvestId})`
+  const name = lookup?.name || t("crops.unknownCrop", { id: crop.seedId || crop.harvestId || "" })
   const sellPrice = lookup?.sellPrice || 0
   const regrows = lookup?.regrows || false
   const icon = lookup?.icon || null
@@ -63,8 +68,8 @@ function getCropStatus(crop: PlantedCrop, cropLookup: Record<string, CropLookup>
       progress: 0,
       daysRemaining: 0,
       totalDays: 0,
-      statusText: "已枯萎，需清理",
-      shortStatusText: "已枯萎",
+      statusText: t("crops.status.dead"),
+      shortStatusText: t("crops.status.deadShort"),
       statusType: "dead",
       sellPrice,
       regrows,
@@ -79,8 +84,8 @@ function getCropStatus(crop: PlantedCrop, cropLookup: Record<string, CropLookup>
       progress: 100,
       daysRemaining: 0,
       totalDays: 0,
-      statusText: regrows ? "已成熟，可循环收获" : "已成熟，可立即收获",
-      shortStatusText: "已成熟",
+      statusText: regrows ? t("crops.status.readyRegrow") : t("crops.status.readyOnce"),
+      shortStatusText: t("crops.status.readyShort"),
       statusType: "ready",
       sellPrice,
       regrows,
@@ -112,8 +117,8 @@ function getCropStatus(crop: PlantedCrop, cropLookup: Record<string, CropLookup>
       progress,
       daysRemaining,
       totalDays,
-      statusText: `成长中，第 ${daysGrown}/${totalDays} 天，剩余 ${daysRemaining} 天`,
-      shortStatusText: `成长中 · ${daysRemaining} 天后收获`,
+      statusText: t("crops.status.growingDetail", { grown: daysGrown, total: totalDays, remaining: daysRemaining }),
+      shortStatusText: t("crops.status.growingShort", { remaining: daysRemaining }),
       statusType: "growing",
       sellPrice,
       regrows,
@@ -127,8 +132,8 @@ function getCropStatus(crop: PlantedCrop, cropLookup: Record<string, CropLookup>
     progress: 50,
     daysRemaining: 1,
     totalDays: 2,
-    statusText: "成长中",
-    shortStatusText: "成长中",
+    statusText: t("crops.status.growing"),
+    shortStatusText: t("crops.status.growing"),
     statusType: "growing",
     sellPrice,
     regrows,
@@ -168,6 +173,7 @@ export function PlantedCropsDashboard({
   plantedCrops,
   cropLookup,
 }: PlantedCropsDashboardProps) {
+  const { t } = useTranslation()
   const [activeLocation, setActiveLocation] = useState<string>("all")
 
   const locationSections = useMemo(() => {
@@ -188,7 +194,7 @@ export function PlantedCropsDashboard({
       const statusGroups = new Map<string, StatusGroup>()
 
       crops.forEach((crop) => {
-        const info = getCropStatus(crop, cropLookup)
+        const info = getCropStatus(crop, cropLookup, t)
 
         const existingSummary = cropTotals.get(info.key)
         if (existingSummary) {
@@ -252,7 +258,7 @@ export function PlantedCropsDashboard({
 
       return {
         locationKey,
-        locationName: locationMap[locationKey] || locationKey,
+        locationName: t("crops.locations." + locationKey, { defaultValue: locationKey }),
         totalCount: crops.length,
         wateredCount: crops.filter((crop) => crop.isWatered).length,
         matureCount: crops.filter((crop) => crop.fullyGrown).length,
@@ -273,11 +279,11 @@ export function PlantedCropsDashboard({
           }),
       }
     })
-  }, [cropLookup, plantedCrops])
+  }, [cropLookup, plantedCrops, t])
 
   const locationFilters = useMemo(
     () => [
-      { key: "all", label: "全部" },
+      { key: "all", label: t("crops.filterAll") },
       ...locationSections.map((section) => ({
         key: section.locationKey,
         label: section.locationName,
@@ -298,9 +304,9 @@ export function PlantedCropsDashboard({
       <Card>
         <CardContent className="flex flex-col items-center justify-center py-16 text-center">
           <Sprout className="mb-4 h-12 w-12 text-muted-foreground/40" />
-          <p className="text-lg font-semibold">未选择游戏存档</p>
+          <p className="text-lg font-semibold">{t("crops.saveNotSelected")}</p>
           <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-            请先通过侧边栏选择一个游戏存档文件，系统将读取您农场中种植的作物信息并在此处实时显示。
+            {t("crops.saveNotSelectedDesc")}
           </p>
         </CardContent>
       </Card>
@@ -311,7 +317,7 @@ export function PlantedCropsDashboard({
     return (
       <div className="flex flex-col items-center justify-center space-y-2 py-20">
         <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-        <p className="text-sm text-muted-foreground">正在加载农田作物...</p>
+        <p className="text-sm text-muted-foreground">{t("crops.loadingPlantedCrops")}</p>
       </div>
     )
   }
@@ -321,9 +327,9 @@ export function PlantedCropsDashboard({
       <Card>
         <CardContent className="flex flex-col items-center justify-center py-16 text-center">
           <Sprout className="mb-4 h-12 w-12 text-muted-foreground/40" />
-          <p className="text-lg font-semibold">当前存档中未找到生长的作物</p>
+          <p className="text-lg font-semibold">{t("crops.noCropsPlanted")}</p>
           <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-            在你的农场、温室或姜岛上播种并浇水后，作物状态将在此处实时显示。
+            {t("crops.noCropsPlantedDesc")}
           </p>
         </CardContent>
       </Card>
@@ -354,21 +360,21 @@ export function PlantedCropsDashboard({
               <MapPin className="h-5 w-5 text-primary" />
               <h3 className="text-lg font-bold">{section.locationName}</h3>
               <Badge variant="secondary" className="ml-1 text-xs font-semibold">
-                共 {section.totalCount} 株
+                {t("crops.totalCountBadge", { count: section.totalCount })}
               </Badge>
             </div>
             <div className="flex flex-wrap gap-2">
               <Badge variant="outline" className="border-blue-500/20 bg-blue-500/5 font-medium text-blue-500">
-                已浇水 {section.wateredCount}/{section.totalCount}
+                {t("crops.wateredCountBadge", { watered: section.wateredCount, total: section.totalCount })}
               </Badge>
               {section.matureCount > 0 && (
                 <Badge variant="outline" className="border-green-500/20 bg-green-500/5 font-medium text-green-600">
-                  已成熟 {section.matureCount}
+                  {t("crops.matureCountBadge", { count: section.matureCount })}
                 </Badge>
               )}
               {section.deadCount > 0 && (
                 <Badge variant="outline" className="border-red-500/20 bg-red-500/5 font-medium text-red-500">
-                  已枯萎 {section.deadCount}
+                  {t("crops.deadCountBadge", { count: section.deadCount })}
                 </Badge>
               )}
             </div>
@@ -376,7 +382,7 @@ export function PlantedCropsDashboard({
 
           <Card>
             <CardHeader className="pb-4">
-              <CardTitle className="text-base">区域作物统计</CardTitle>
+              <CardTitle className="text-base">{t("crops.locationSummaryTitle")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -399,7 +405,7 @@ export function PlantedCropsDashboard({
                       <span className="truncate text-sm font-medium">{crop.name}</span>
                     </div>
                     <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                      <span className="font-semibold text-foreground">{crop.count} 株</span>
+                      <span className="font-semibold text-foreground">{t("crops.plantCount", { count: crop.count })}</span>
                       {crop.sellPrice > 0 && (
                         <span className="flex items-center gap-1">
                           <Coins className="h-3.5 w-3.5" />
@@ -427,31 +433,31 @@ export function PlantedCropsDashboard({
                             {group.statusText}
                           </Badge>
                           <Badge variant="secondary" className="text-xs font-semibold">
-                            {group.count} 株
+                            {t("crops.plantCount", { count: group.count })}
                           </Badge>
                           {group.regrows && (
                             <Badge variant="outline" className="border-indigo-400/20 text-indigo-500">
-                              可再生
+                              {t("crops.regrowable")}
                             </Badge>
                           )}
                         </div>
                         <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
                           <span className="flex items-center gap-1">
                             <Waves className="h-3.5 w-3.5" />
-                            已浇水 {group.wateredCount}/{group.count}
+                            {t("crops.wateredCountBadge", { watered: group.wateredCount, total: group.count })}
                           </span>
-                          {group.statusType === "ready" && <span className={styles.textClassName}>可立即安排收获</span>}
+                          {group.statusType === "ready" && <span className={styles.textClassName}>{t("crops.matureHint")}</span>}
                           {group.statusType === "dead" && (
                             <span className={cn("flex items-center gap-1", styles.textClassName)}>
                               <Flame className="h-3.5 w-3.5" />
-                              建议优先清理
+                              {t("crops.deadHint")}
                             </span>
                           )}
                         </div>
                       </div>
                       <div className="w-full max-w-48">
                         <div className="mb-1 flex items-center justify-between text-xs">
-                          <span className="text-muted-foreground">进度</span>
+                          <span className="text-muted-foreground">{t("crops.progressLabel")}</span>
                           <span className={cn("font-medium", styles.textClassName)}>{group.progress}%</span>
                         </div>
                         <div className="h-2 overflow-hidden rounded-full bg-muted">

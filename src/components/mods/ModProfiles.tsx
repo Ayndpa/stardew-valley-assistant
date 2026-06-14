@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+import { useTranslation } from "react-i18next"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -91,6 +92,7 @@ function formatTimestamp(ts: string): string {
 }
 
 export function ModProfiles({ currentMods, onApplyProfile, showToast, isGameRunning = false }: ModProfilesProps) {
+  const { t } = useTranslation()
   const [profiles, setProfiles] = useState<ModProfile[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
@@ -128,12 +130,12 @@ export function ModProfiles({ currentMods, onApplyProfile, showToast, isGameRunn
 
   const handleSaveProfile = async () => {
     if (isGameRunning) {
-      showToast("游戏运行中不能保存模组档案，请退出游戏后再试。", "warning")
+      showToast(t("mods.profiles.cannotSaveRunning"), "warning")
       return
     }
 
     if (!newProfileName.trim()) {
-      showToast("请输入档案名称", "warning")
+      showToast(t("mods.profiles.toastEnterName"), "warning")
       return
     }
 
@@ -151,11 +153,11 @@ export function ModProfiles({ currentMods, onApplyProfile, showToast, isGameRunn
           const filtered = prev.filter((p) => p.id !== profile.id)
           return [profile, ...filtered]
         })
-        showToast(`档案 [${newProfileName.trim()}] 已保存`, "success")
+        showToast(t("mods.profiles.toastSaved", { name: newProfileName.trim() }), "success")
         setNewProfileName("")
         setShowSaveForm(false)
       } catch (err: any) {
-        showToast("保存档案失败: " + err, "warning")
+        showToast(t("mods.profiles.toastSaveFailed", { error: err }), "warning")
       }
     } else {
       // Web mock
@@ -170,7 +172,7 @@ export function ModProfiles({ currentMods, onApplyProfile, showToast, isGameRunn
       const newProfiles = [profile, ...profiles.filter((p) => p.id !== profile.id)]
       setProfiles(newProfiles)
       localStorage.setItem("stardewModProfiles", JSON.stringify(newProfiles))
-      showToast(`（Web 模式）档案 [${newProfileName.trim()}] 已保存`, "success")
+      showToast(t("mods.profiles.toastSaved", { name: newProfileName.trim() }), "success")
       setNewProfileName("")
       setShowSaveForm(false)
     }
@@ -179,42 +181,42 @@ export function ModProfiles({ currentMods, onApplyProfile, showToast, isGameRunn
 
   const handleApplyProfile = async (profile: ModProfile) => {
     if (isGameRunning) {
-      showToast("游戏运行中不能应用模组档案，请退出游戏后再试。", "warning")
+      showToast(t("mods.profiles.cannotApplyRunning"), "warning")
       return
     }
 
     setIsApplyingId(profile.id)
     try {
       await onApplyProfile(profile.modStates)
-      showToast(`已应用档案 [${profile.name}]，共切换 ${profile.modStates.length} 个模组状态`, "success")
+      showToast(t("mods.profiles.toastApplied", { name: profile.name, count: profile.modStates.length }), "success")
     } catch (err: any) {
-      showToast("应用档案失败: " + err, "warning")
+      showToast(t("mods.profiles.toastApplyFailed", { error: err }), "warning")
     }
     setIsApplyingId(null)
   }
 
   const handleDeleteProfile = async (profile: ModProfile) => {
     if (isGameRunning) {
-      showToast("游戏运行中不能删除模组档案，请退出游戏后再试。", "warning")
+      showToast(t("mods.profiles.cannotDeleteRunning"), "warning")
       return
     }
 
-    if (!confirm(`确定要删除档案 [${profile.name}] 吗？`)) return
+    if (!confirm(t("mods.profiles.confirmDelete", { name: profile.name }))) return
 
     const invoke = await getTauriInvoke()
     if (invoke) {
       try {
         await invoke("delete_profile", { profileId: profile.id })
         setProfiles((prev) => prev.filter((p) => p.id !== profile.id))
-        showToast(`档案 [${profile.name}] 已删除`, "info")
+        showToast(t("mods.profiles.toastDeleted", { name: profile.name }), "info")
       } catch (err: any) {
-        showToast("删除档案失败: " + err, "warning")
+        showToast(t("mods.profiles.toastDeleteFailed", { error: err }), "warning")
       }
     } else {
       const newProfiles = profiles.filter((p) => p.id !== profile.id)
       setProfiles(newProfiles)
       localStorage.setItem("stardewModProfiles", JSON.stringify(newProfiles))
-      showToast(`（Web 模式）档案 [${profile.name}] 已删除`, "info")
+      showToast(t("mods.profiles.toastDeleted", { name: profile.name }), "info")
     }
   }
 
@@ -230,10 +232,10 @@ export function ModProfiles({ currentMods, onApplyProfile, showToast, isGameRunn
         })
         if (filePath) {
           await invoke("export_profile_to_file", { profile, filePath })
-          showToast(`档案已导出至: ${filePath}`, "success")
+          showToast(t("mods.profiles.toastExported", { path: filePath }), "success")
         }
       } catch (err: any) {
-        showToast("导出档案失败: " + err, "warning")
+        showToast(t("mods.profiles.toastExportFailed", { error: err }), "warning")
       }
     } else {
       // Web mock: download as file
@@ -245,13 +247,13 @@ export function ModProfiles({ currentMods, onApplyProfile, showToast, isGameRunn
       a.download = `${profile.name}.json`
       a.click()
       URL.revokeObjectURL(url)
-      showToast(`（Web 模式）档案已导出为 ${profile.name}.json`, "success")
+      showToast(t("mods.profiles.toastExported", { path: `${profile.name}.json` }), "success")
     }
   }
 
   const handleImportProfile = async () => {
     if (isGameRunning) {
-      showToast("游戏运行中不能导入模组档案，请退出游戏后再试。", "warning")
+      showToast(t("mods.profiles.cannotImportRunning"), "warning")
       return
     }
 
@@ -272,10 +274,10 @@ export function ModProfiles({ currentMods, onApplyProfile, showToast, isGameRunn
             const filtered = prev.filter((p) => p.id !== profile.id)
             return [profile, ...filtered]
           })
-          showToast(`档案 [${profile.name}] 已成功导入`, "success")
+          showToast(t("mods.profiles.toastImported", { name: profile.name }), "success")
         }
       } catch (err: any) {
-        showToast("导入档案失败: " + err, "warning")
+        showToast(t("mods.profiles.toastImportFailed", { error: err }), "warning")
       }
     } else {
       // Web mock: use file input
@@ -298,9 +300,9 @@ export function ModProfiles({ currentMods, onApplyProfile, showToast, isGameRunn
           const newProfiles = [profile, ...profiles]
           setProfiles(newProfiles)
           localStorage.setItem("stardewModProfiles", JSON.stringify(newProfiles))
-          showToast(`（Web 模式）档案 [${profile.name}] 已导入`, "success")
+          showToast(t("mods.profiles.toastImported", { name: profile.name }), "success")
         } catch (err: any) {
-          showToast("导入档案失败: " + err, "warning")
+          showToast(t("mods.profiles.toastImportFailed", { error: err }), "warning")
         }
       }
       input.click()
@@ -315,7 +317,7 @@ export function ModProfiles({ currentMods, onApplyProfile, showToast, isGameRunn
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <FolderHeart className="h-5 w-5 text-primary" />
-          <h3 className="text-base font-bold text-foreground">模组档案</h3>
+          <h3 className="text-base font-bold text-foreground">{t("mods.profiles.title")}</h3>
           <Badge variant="secondary" className="text-[10px] px-2 py-0 h-5">
             {profiles.length}
           </Badge>
@@ -327,10 +329,10 @@ export function ModProfiles({ currentMods, onApplyProfile, showToast, isGameRunn
             className="gap-1.5 h-8 text-xs rounded-lg border-border"
             onClick={handleImportProfile}
             disabled={isGameRunning}
-            title={isGameRunning ? "游戏运行中，不能导入档案" : undefined}
+            title={isGameRunning ? t("mods.profiles.cannotImportRunning") : undefined}
           >
             <Upload className="h-3.5 w-3.5 text-sky-500" />
-            导入
+            {t("mods.profiles.import")}
           </Button>
           <Button
             variant="default"
@@ -338,10 +340,10 @@ export function ModProfiles({ currentMods, onApplyProfile, showToast, isGameRunn
             className="gap-1.5 h-8 text-xs rounded-lg"
             onClick={() => setShowSaveForm(true)}
             disabled={currentMods.length === 0 || isGameRunning}
-            title={isGameRunning ? "游戏运行中，不能保存档案" : undefined}
+            title={isGameRunning ? t("mods.profiles.cannotSaveRunning") : undefined}
           >
             <Save className="h-3.5 w-3.5" />
-            保存当前状态
+            {t("mods.profiles.saveCurrent")}
           </Button>
         </div>
       </div>
@@ -350,14 +352,14 @@ export function ModProfiles({ currentMods, onApplyProfile, showToast, isGameRunn
       {showSaveForm && (
         <Card className="border border-primary/30 bg-primary/5 p-4 rounded-xl space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
           <div className="flex items-center justify-between">
-            <h4 className="text-sm font-semibold text-foreground">新建档案</h4>
+            <h4 className="text-sm font-semibold text-foreground">{t("mods.profiles.newProfile")}</h4>
             <button onClick={() => { setShowSaveForm(false); setNewProfileName("") }} className="p-1 hover:bg-muted rounded">
               <X className="h-4 w-4 text-muted-foreground" />
             </button>
           </div>
           <div className="flex gap-2">
             <Input
-              placeholder="输入档案名称，例如：纯净原版、大型整合包..."
+              placeholder={t("mods.profiles.namePlaceholder")}
               className="flex-1 h-9 text-sm bg-card border-border rounded-lg"
               value={newProfileName}
               onChange={(e) => setNewProfileName(e.currentTarget.value)}
@@ -372,11 +374,11 @@ export function ModProfiles({ currentMods, onApplyProfile, showToast, isGameRunn
               disabled={isSaving || isGameRunning}
             >
               {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-              {isSaving ? "保存中..." : "确认保存"}
+              {isSaving ? t("mods.profiles.saving") : t("mods.profiles.confirmSave")}
             </Button>
           </div>
           <p className="text-[11px] text-muted-foreground">
-            将记录当前 {currentMods.length} 个模组的启用/禁用状态（共 {currentMods.filter(m => m.isEnabled).length} 个已启用）
+            {t("mods.profiles.saveFormDesc", { total: currentMods.length, enabled: currentMods.filter(m => m.isEnabled).length })}
           </p>
         </Card>
       )}
@@ -385,14 +387,14 @@ export function ModProfiles({ currentMods, onApplyProfile, showToast, isGameRunn
       {isLoading ? (
         <Card className="border border-dashed border-border py-8 flex flex-col items-center justify-center">
           <Loader2 className="h-6 w-6 text-primary/50 animate-spin mb-2" />
-          <p className="text-xs text-muted-foreground">正在加载档案列表...</p>
+          <p className="text-xs text-muted-foreground">{t("mods.profiles.loading")}</p>
         </Card>
       ) : profiles.length === 0 ? (
         <Card className="border border-dashed border-border py-8 flex flex-col items-center justify-center text-center">
           <FolderOpen className="h-8 w-8 text-muted-foreground/30 mb-2" />
-          <p className="text-sm font-semibold text-muted-foreground">暂无保存的档案</p>
+          <p className="text-sm font-semibold text-muted-foreground">{t("mods.profiles.emptyTitle")}</p>
           <p className="text-xs text-muted-foreground/70 mt-1 max-w-xs">
-            保存当前模组的开关状态为档案，方便日后一键切换不同的模组配置方案。
+            {t("mods.profiles.emptyDesc")}
           </p>
         </Card>
       ) : (
@@ -416,11 +418,11 @@ export function ModProfiles({ currentMods, onApplyProfile, showToast, isGameRunn
                     <div className="flex items-center gap-2">
                       <h4 className="text-sm font-bold text-foreground truncate">{profile.name}</h4>
                       <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 shrink-0">
-                        {enabled}/{total} 启用
+                        {t("mods.profiles.enabledCount", { enabled, total })}
                       </Badge>
                     </div>
                     <p className="text-[10px] text-muted-foreground mt-0.5">
-                      更新于 {formatTimestamp(profile.updatedAt)} · {total} 个模组
+                      {t("mods.profiles.updatedAt", { time: formatTimestamp(profile.updatedAt), count: total })}
                     </p>
                   </div>
 
@@ -432,19 +434,19 @@ export function ModProfiles({ currentMods, onApplyProfile, showToast, isGameRunn
                       className="gap-1 h-7 px-3 text-[11px] rounded-lg"
                       onClick={() => handleApplyProfile(profile)}
                       disabled={isApplying || isGameRunning}
-                      title={isGameRunning ? "游戏运行中，不能应用档案" : undefined}
+                      title={isGameRunning ? t("mods.profiles.cannotApplyRunning") : undefined}
                     >
                       {isApplying ? (
                         <Loader2 className="h-3 w-3 animate-spin" />
                       ) : (
                         <Play className="h-3 w-3" />
                       )}
-                      {isApplying ? "应用中..." : "应用"}
+                      {isApplying ? t("mods.profiles.applying") : t("mods.profiles.apply")}
                     </Button>
                     <button
                       onClick={() => handleExportProfile(profile)}
                       className="p-1.5 hover:bg-accent text-muted-foreground hover:text-foreground rounded-lg transition-colors"
-                      title="导出档案"
+                      title={t("mods.profiles.exportProfile")}
                     >
                       <Download className="h-3.5 w-3.5" />
                     </button>
@@ -456,14 +458,14 @@ export function ModProfiles({ currentMods, onApplyProfile, showToast, isGameRunn
                           ? "text-muted-foreground/50 cursor-not-allowed"
                           : "hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
                       }`}
-                      title={isGameRunning ? "游戏运行中，不能删除档案" : "删除档案"}
+                      title={isGameRunning ? t("mods.profiles.cannotDeleteRunning") : t("mods.profiles.deleteProfile")}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                     <button
                       onClick={() => setExpandedProfileId(isExpanded ? null : profile.id)}
                       className="p-1.5 hover:bg-accent text-muted-foreground hover:text-foreground rounded-lg transition-colors"
-                      title="查看详情"
+                      title={t("mods.profiles.viewDetails")}
                     >
                       <FileJson className="h-3.5 w-3.5" />
                     </button>
@@ -473,7 +475,7 @@ export function ModProfiles({ currentMods, onApplyProfile, showToast, isGameRunn
                 {/* Expanded Detail */}
                 {isExpanded && (
                   <div className="border-t border-border/60 px-3.5 py-3 bg-accent/10 dark:bg-accent/5 max-h-[200px] overflow-y-auto">
-                    <p className="text-[10px] text-muted-foreground font-semibold mb-2">模组状态列表：</p>
+                    <p className="text-[10px] text-muted-foreground font-semibold mb-2">{t("mods.profiles.modStatusList")}</p>
                     <div className="grid grid-cols-2 gap-1">
                       {profile.modStates.map((entry) => (
                         <div

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 
 export type DownloadTaskStatus = "queued" | "running" | "paused" | "success" | "error"
 export type DownloadTaskKind = "nexus-mod" | "smapi"
@@ -73,6 +74,7 @@ export function useDownloadManager({
   onModInstalled?: () => void
   onShowToast?: (message: string, type: "success" | "info" | "warning") => void
 }) {
+  const { t } = useTranslation()
   const [tasks, setTasks] = useState<DownloadTask[]>([])
   const startedTaskIdsRef = useRef<Set<string>>(new Set())
   const runnersRef = useRef<Map<string, DownloadRunner>>(new Map())
@@ -99,7 +101,7 @@ export function useDownloadManager({
     startedTaskIdsRef.current.add(task.id)
     updateTask(task.id, {
       status: "running",
-      message: task.kind === "smapi" ? "正在下载并安装 SMAPI..." : "正在下载并安装...",
+      message: task.kind === "smapi" ? t("downloads.hook.downloadingSmapi") : t("downloads.hook.downloadingMod"),
       phase: "downloading",
       error: undefined,
       startedAt: Date.now(),
@@ -111,23 +113,23 @@ export function useDownloadManager({
         status: "success",
         progress: 100,
         phase: "finished",
-        message: task.kind === "smapi" ? "SMAPI 安装完成" : "已安装到 Mods 目录",
+        message: task.kind === "smapi" ? t("downloads.hook.smapiInstallComplete") : t("downloads.hook.modInstallComplete"),
         completedAt: Date.now(),
       })
-      onShowToast?.(task.kind === "smapi" ? "SMAPI 安装成功！" : `${task.title} 已安装到 Mods 目录`, "success")
+      onShowToast?.(task.kind === "smapi" ? t("downloads.hook.smapiInstallSuccess") : t("downloads.hook.modInstallSuccess", { title: task.title }), "success")
     } catch (err: any) {
       const error = String(err?.message || err)
       updateTask(task.id, {
         status: "error",
-        message: "安装失败",
+        message: t("downloads.hook.installFailed"),
         error,
         completedAt: Date.now(),
       })
-      onShowToast?.(`${task.title} 安装失败: ${error}`, "warning")
+      onShowToast?.(t("downloads.hook.installFailedDetail", { title: task.title, error }), "warning")
     } finally {
       startedTaskIdsRef.current.delete(task.id)
     }
-  }, [isGameRunning, onShowToast, updateTask])
+  }, [isGameRunning, onShowToast, updateTask, t])
 
   useEffect(() => {
     if (isGameRunning) return
@@ -193,33 +195,33 @@ export function useDownloadManager({
     )
 
     if (existing) {
-      return { ok: false, message: "该任务已在下载队列中" }
+      return { ok: false, message: t("downloads.hook.taskAlreadyQueued") }
     }
 
     runnersRef.current.set(task.id, runner)
     setTasks(prev => [...prev, task])
-    return { ok: true, message: "已加入下载管理" }
-  }, [tasks])
+    return { ok: true, message: t("downloads.hook.addedToQueue") }
+  }, [tasks, t])
 
   const queueNexusDownload = useCallback(({ modName, author, downloadUrl }: QueueNexusDownloadRequest) => {
     if (isGameRunning) {
-      return { ok: false, message: "游戏运行中不能下载并安装模组，请退出游戏后再试" }
+      return { ok: false, message: t("downloads.hook.gameRunningNoModDownload") }
     }
 
     const normalizedUrl = downloadUrl.trim()
     if (!normalizedUrl) {
-      return { ok: false, message: "未解析到可下载链接" }
+      return { ok: false, message: t("downloads.hook.noDownloadUrl") }
     }
 
     const id = makeTaskId()
     const task: DownloadTask = {
       id,
       kind: "nexus-mod",
-      title: modName || "NexusMods 模组",
-      subtitle: author ? `作者: ${author}` : "NexusMods",
+      title: modName || t("downloads.hook.nexusModDefault"),
+      subtitle: author ? t("downloads.hook.authorPrefix", { author }) : "NexusMods",
       targetKey: `nexus:${normalizedUrl.toLowerCase()}`,
       status: "queued",
-      message: "等待下载",
+      message: t("downloads.hook.waitingDownload"),
       progress: 0,
       downloadedBytes: 0,
       phase: "queued",
@@ -229,44 +231,44 @@ export function useDownloadManager({
     return enqueueTask(task, async () => {
       const gameDir = localStorage.getItem("stardewGameDirectory") || ""
       if (!gameDir) {
-        throw new Error("未配置游戏安装目录，请先在设置中配置")
+        throw new Error(t("downloads.hook.gameDirNotConfigured"))
       }
 
       const invoke = await getTauriInvoke()
       if (!invoke) {
-        throw new Error("当前环境不支持直接安装，请在桌面应用中使用下载管理")
+        throw new Error(t("downloads.hook.tauriOnlyInstall"))
       }
 
       await invoke("install_nexus_mod", { gameDir, downloadUrl: normalizedUrl, taskId: id })
       onModInstalled?.()
     })
-  }, [enqueueTask, isGameRunning, onModInstalled])
+  }, [enqueueTask, isGameRunning, onModInstalled, t])
 
   const queueSmapiDownload = useCallback(({ version, downloadUrl, mirror, onSuccess, onError }: QueueSmapiDownloadRequest) => {
     if (isGameRunning) {
-      return { ok: false, message: "游戏运行中不能安装 SMAPI，请退出游戏后再试" }
+      return { ok: false, message: t("downloads.hook.gameRunningNoSmapi") }
     }
 
     const gameDir = localStorage.getItem("stardewGameDirectory") || ""
     if (!gameDir) {
-      return { ok: false, message: "未配置游戏安装目录，请先在设置中配置" }
+      return { ok: false, message: t("downloads.hook.gameDirNotConfigured") }
     }
 
     const normalizedUrl = downloadUrl.trim()
     if (!normalizedUrl) {
-      return { ok: false, message: "未解析到 SMAPI 下载链接" }
+      return { ok: false, message: t("downloads.hook.noSmapiUrl") }
     }
 
     const id = makeTaskId()
-    const displayVersion = version ? `v${version.replace(/^v/i, "")}` : "最新版"
+    const displayVersion = version ? `v${version.replace(/^v/i, "")}` : t("downloads.hook.latestVersion")
     const task: DownloadTask = {
       id,
       kind: "smapi",
       title: `SMAPI ${displayVersion}`,
-      subtitle: mirror === "ghproxy" ? "GitHub 加速镜像" : "GitHub 官方源",
+      subtitle: mirror === "ghproxy" ? t("downloads.hook.mirrorGhproxy") : t("downloads.hook.mirrorOfficial"),
       targetKey: "smapi:install",
       status: "queued",
-      message: "等待下载",
+      message: t("downloads.hook.waitingDownload"),
       progress: 0,
       downloadedBytes: 0,
       phase: "queued",
@@ -276,7 +278,7 @@ export function useDownloadManager({
     return enqueueTask(task, async () => {
       const invoke = await getTauriInvoke()
       if (!invoke) {
-        throw new Error("当前环境不支持直接安装，请在桌面应用中使用下载管理")
+        throw new Error(t("downloads.hook.tauriOnlyInstall"))
       }
 
       try {
@@ -288,7 +290,7 @@ export function useDownloadManager({
         throw err
       }
     })
-  }, [enqueueTask, isGameRunning])
+  }, [enqueueTask, isGameRunning, t])
 
   const retryTask = useCallback((id: string) => {
     if (isGameRunning) return
@@ -296,7 +298,7 @@ export function useDownloadManager({
     startedTaskIdsRef.current.delete(id)
     updateTask(id, {
       status: "queued",
-      message: "等待重试",
+      message: t("downloads.hook.waitingRetry"),
       progress: 0,
       downloadedBytes: 0,
       totalBytes: undefined,
@@ -305,7 +307,7 @@ export function useDownloadManager({
       startedAt: undefined,
       completedAt: undefined,
     })
-  }, [isGameRunning, updateTask])
+  }, [isGameRunning, updateTask, t])
 
   const removeTask = useCallback((id: string) => {
     setTasks(prev => prev.filter(task => task.id !== id))
@@ -321,7 +323,7 @@ export function useDownloadManager({
       updateTask(id, {
         status: "paused",
         phase: "paused",
-        message: "队列已暂停",
+        message: t("downloads.hook.queuePaused"),
       })
       return
     }
@@ -334,9 +336,9 @@ export function useDownloadManager({
     updateTask(id, {
       status: "paused",
       phase: "paused",
-      message: "正在暂停...",
+      message: t("downloads.hook.pausing"),
     })
-  }, [tasks, updateTask])
+  }, [tasks, updateTask, t])
 
   const resumeTask = useCallback(async (id: string) => {
     const task = tasks.find(item => item.id === id)
@@ -346,7 +348,7 @@ export function useDownloadManager({
       updateTask(id, {
         status: "queued",
         phase: "queued",
-        message: "等待下载",
+        message: t("downloads.hook.waitingDownload"),
       })
       return
     }
@@ -359,9 +361,9 @@ export function useDownloadManager({
     updateTask(id, {
       status: "running",
       phase: "downloading",
-      message: "继续下载中...",
+      message: t("downloads.hook.resuming"),
     })
-  }, [tasks, updateTask])
+  }, [tasks, updateTask, t])
 
   const clearCompletedTasks = useCallback(() => {
     const removable = new Set(

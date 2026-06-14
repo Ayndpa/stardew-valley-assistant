@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react"
+import { useTranslation } from "react-i18next"
 import { 
   Search, 
   Download, 
@@ -170,6 +171,7 @@ async function getTauriInvoke() {
 }
 
 export function OnlineMods({ onNavigate, isGameRunning = false, onQueueDownload }: OnlineModsProps) {
+  const { i18n, t } = useTranslation()
   const [onlineMods, setOnlineMods] = useState<SmapiMod[]>(() => readSmapiModsCache() ?? [])
   const [loading, setLoading] = useState(() => !readSmapiModsCache())
   const [isBackgroundRefreshing, setIsBackgroundRefreshing] = useState(false)
@@ -275,11 +277,11 @@ export function OnlineMods({ onNavigate, isGameRunning = false, onQueueDownload 
           if (cached) {
             setOnlineMods(cached)
             if (!silent) {
-              setError("在线数据为空，已显示上次缓存的模组列表。")
+              setError(t("mods.online.errorEmptyData"))
             }
           } else {
             setOnlineMods([])
-            setError("未获取到任何模组数据，请检查网络连接后重试。")
+            setError(t("mods.online.errorNoData"))
           }
         }
       } catch (err: any) {
@@ -287,11 +289,11 @@ export function OnlineMods({ onNavigate, isGameRunning = false, onQueueDownload 
         if (cached) {
           setOnlineMods(cached)
           if (!silent) {
-            setError("获取在线模组数据失败，已显示上次缓存的数据。原因: " + err)
+            setError(t("mods.online.errorFetchFailed") + " " + err)
           }
         } else {
           setOnlineMods([])
-          setError("获取在线模组数据失败，且无可用缓存。原因: " + err)
+          setError(t("mods.online.errorFetchFailedNoCache") + " " + err)
         }
       } finally {
         setLoading(false)
@@ -359,6 +361,10 @@ export function OnlineMods({ onNavigate, isGameRunning = false, onQueueDownload 
   useEffect(() => {
     if (activeTab !== "smapi" || loading) return
 
+    // 非中文语言下不自动翻译
+    const lang = i18n.resolvedLanguage || i18n.language || "zh"
+    if (!lang.startsWith("zh")) return
+
     const pendingMods = paginatedMods.filter((mod) => {
       const id = getTranslationId(mod)
       return !completedTranslationModIdsRef.current.has(id) && !syncingTranslationModIdsRef.current.has(id)
@@ -410,19 +416,19 @@ export function OnlineMods({ onNavigate, isGameRunning = false, onQueueDownload 
     const base = "whitespace-nowrap shrink-0 font-semibold px-2 py-0.5 text-[10px] rounded-full"
     switch (status) {
       case "ok":
-        return <Badge className={`bg-green-500/10 text-green-500 border border-green-500/20 ${base}`}>完美兼容</Badge>
+        return <Badge className={`bg-green-500/10 text-green-500 border border-green-500/20 ${base}`}>{t("mods.online.statusOk")}</Badge>
       case "workaround":
-        return <Badge className={`bg-amber-500/10 text-amber-500 border border-amber-500/20 ${base}`}>有解决方法</Badge>
+        return <Badge className={`bg-amber-500/10 text-amber-500 border border-amber-500/20 ${base}`}>{t("mods.online.statusWorkaround")}</Badge>
       case "broken":
-        return <Badge className={`bg-red-500/10 text-red-500 border border-red-500/20 ${base}`}>已损坏</Badge>
+        return <Badge className={`bg-red-500/10 text-red-500 border border-red-500/20 ${base}`}>{t("mods.online.statusBroken")}</Badge>
       case "unofficial":
-        return <Badge className={`bg-blue-500/10 text-blue-500 border border-blue-500/20 ${base}`}>非官方更新</Badge>
+        return <Badge className={`bg-blue-500/10 text-blue-500 border border-blue-500/20 ${base}`}>{t("mods.online.statusUnofficial")}</Badge>
       case "abandoned":
-        return <Badge className={`bg-gray-500/10 text-gray-500 border border-gray-500/20 ${base}`}>已弃用</Badge>
+        return <Badge className={`bg-gray-500/10 text-gray-500 border border-gray-500/20 ${base}`}>{t("mods.online.statusAbandoned")}</Badge>
       case "obsolete":
-        return <Badge className={`bg-slate-500/10 text-slate-500 border border-slate-500/20 ${base}`}>已过时</Badge>
+        return <Badge className={`bg-slate-500/10 text-slate-500 border border-slate-500/20 ${base}`}>{t("mods.online.statusObsolete")}</Badge>
       default:
-        return <Badge className={`bg-green-500/10 text-green-500 border border-green-500/20 ${base}`}>兼容</Badge>
+        return <Badge className={`bg-green-500/10 text-green-500 border border-green-500/20 ${base}`}>{t("mods.online.compatDefault")}</Badge>
     }
   }
 
@@ -437,14 +443,14 @@ export function OnlineMods({ onNavigate, isGameRunning = false, onQueueDownload 
               className="rounded-lg text-xs font-bold gap-2 data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-md transition-all duration-300 py-2 cursor-pointer"
             >
               <Trophy className="h-4 w-4 text-amber-500" />
-              NexusMods 排行榜
+              {t("mods.online.tabNexus")}
             </TabsTrigger>
             <TabsTrigger 
               value="smapi" 
               className="rounded-lg text-xs font-bold gap-2 data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-md transition-all duration-300 py-2 cursor-pointer"
             >
               <Database className="h-4 w-4 text-green-500" />
-              SMAPI.io 兼容库
+              {t("mods.online.tabSmapi")}
             </TabsTrigger>
           </TabsList>
         </div>
@@ -459,7 +465,7 @@ export function OnlineMods({ onNavigate, isGameRunning = false, onQueueDownload 
             <div className="relative w-full md:max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="搜索模组名称、唯一ID、作者、Nexus ID..."
+                placeholder={t("mods.online.searchPlaceholder")}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-9 bg-accent/10 border-border text-xs rounded-lg"
@@ -468,11 +474,11 @@ export function OnlineMods({ onNavigate, isGameRunning = false, onQueueDownload 
             
             <div className="flex flex-wrap gap-2 w-full md:w-auto">
               {[
-                { value: "all", label: "全部" },
-                { value: "ok", label: "完美兼容" },
-                { value: "workaround", label: "有替代/方案" },
-                { value: "unofficial", label: "非官方更新" },
-                { value: "broken", label: "已损坏" },
+                { value: "all", label: t("mods.online.filterAll") },
+                { value: "ok", label: t("mods.online.statusOk") },
+                { value: "workaround", label: t("mods.online.statusWorkaround") },
+                { value: "unofficial", label: t("mods.online.statusUnofficial") },
+                { value: "broken", label: t("mods.online.statusBroken") },
               ].map((status) => (
                 <Button
                   key={status.value}
@@ -499,14 +505,14 @@ export function OnlineMods({ onNavigate, isGameRunning = false, onQueueDownload 
           {isBackgroundRefreshing && !loading && (
             <div className="text-[11px] text-muted-foreground flex items-center gap-2">
               <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-              <span>正在后台检查 SMAPI.io 缓存更新...</span>
+              <span>{t("mods.online.backgroundRefreshing")}</span>
             </div>
           )}
 
           {translationSyncingModIds.size > 0 && !loading && (
             <div className="text-[11px] text-sky-600 dark:text-sky-400 flex items-center gap-2">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              <span>正在同步当前页翻译库：{translationSyncingModIds.size} 个模组</span>
+              <span>{t("mods.online.syncingTranslations", { count: translationSyncingModIds.size })}</span>
             </div>
           )}
 
@@ -551,14 +557,14 @@ export function OnlineMods({ onNavigate, isGameRunning = false, onQueueDownload 
                               {isSyncingTranslation && (
                                 <span className="inline-flex shrink-0 items-center gap-1 text-[10px] font-semibold text-sky-600 dark:text-sky-400 bg-sky-500/10 border border-sky-500/20 rounded-md px-1.5 py-0.5">
                                   <Loader2 className="h-3 w-3 animate-spin" />
-                                  翻译库
+                                  {t("mods.translationLibrary")}
                                 </span>
                               )}
                             </div>
                             {renderStatusBadge(mod.Compatibility?.Status || "ok")}
                           </div>
                           <CardDescription className="text-[11px] truncate text-muted-foreground font-medium">
-                            作者: {mod.Author} {mod.AlternateAuthors ? `(aka ${mod.AlternateAuthors})` : ""}
+                            {t("mods.online.authorLabel", { author: mod.Author })} {mod.AlternateAuthors ? `(aka ${mod.AlternateAuthors})` : ""}
                           </CardDescription>
                         </CardHeader>
                         
@@ -573,12 +579,12 @@ export function OnlineMods({ onNavigate, isGameRunning = false, onQueueDownload 
                             ) : (
                               <div className="flex items-center gap-1.5 text-green-600 dark:text-green-400 font-medium text-[11px]">
                                 <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                                <span>完美兼容，目前没有任何已知问题</span>
+                                <span>{t("mods.online.noCompatSummary")}</span>
                               </div>
                             )}
                             {mod.Compatibility?.BrokeIn && (
                               <p className="text-[10px] text-red-500 mt-1.5 font-semibold">
-                                损坏自: {mod.Compatibility.BrokeIn}
+                                {t("mods.online.brokenSince", { version: mod.Compatibility.BrokeIn })}
                               </p>
                             )}
                           </div>
@@ -592,7 +598,7 @@ export function OnlineMods({ onNavigate, isGameRunning = false, onQueueDownload 
                               onClick={() => handleOpenDetail(mod)}
                             >
                               <Eye className="h-3 w-3" />
-                              <span>模组详情</span>
+                              <span>{t("mods.online.viewDetails")}</span>
                             </Button>
 
                             <Button
@@ -602,10 +608,10 @@ export function OnlineMods({ onNavigate, isGameRunning = false, onQueueDownload 
                               disabled
                             >
                               <Download className="h-3 w-3" />
-                              <span>一键安装</span>
+                              <span>{t("mods.online.oneClickInstall")}</span>
                               {/* Tooltip on hover */}
                               <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-popover text-popover-foreground border text-[9px] px-2 py-1 rounded shadow-lg whitespace-nowrap z-50">
-                                一键下载安装功能将在下一阶段启用
+                                {t("mods.online.installComingSoon")}
                               </span>
                             </Button>
                           </div>
@@ -617,7 +623,7 @@ export function OnlineMods({ onNavigate, isGameRunning = false, onQueueDownload 
               ) : (
                 <div className="flex flex-col items-center justify-center py-12 text-muted-foreground border border-dashed border-border rounded-xl">
                   <Info className="h-8 w-8 text-muted-foreground/60 mb-2" />
-                  <p className="text-xs">未找到符合条件的模组，请更换搜索词重新查询。</p>
+                  <p className="text-xs">{t("mods.online.noResults")}</p>
                 </div>
               )}
 
@@ -625,7 +631,7 @@ export function OnlineMods({ onNavigate, isGameRunning = false, onQueueDownload 
               {totalPages > 1 && (
                 <div className="flex flex-col sm:flex-row justify-between items-center gap-3 bg-card border border-border p-3.5 rounded-xl text-xs shadow-sm">
                   <span className="text-muted-foreground font-medium">
-                    当前第 {currentPage} 页 / 共 {totalPages} 页 (共 {filteredMods.length} 项)
+                    {t("mods.online.paginationInfo", { current: currentPage, total: totalPages, count: filteredMods.length })}
                   </span>
                   
                   <div className="flex items-center gap-1.5">
@@ -637,7 +643,7 @@ export function OnlineMods({ onNavigate, isGameRunning = false, onQueueDownload 
                       className="h-8 text-[11px] rounded-lg gap-1 px-2 hover:bg-accent cursor-pointer"
                     >
                       <ChevronLeft className="h-3.5 w-3.5" />
-                      <span>上一页</span>
+                      <span>{t("mods.online.prevPage")}</span>
                     </Button>
 
                     <Button
@@ -684,13 +690,13 @@ export function OnlineMods({ onNavigate, isGameRunning = false, onQueueDownload 
                       disabled={currentPage === totalPages}
                       className="h-8 text-[11px] rounded-lg gap-1 px-2 hover:bg-accent cursor-pointer"
                     >
-                      <span>下一页</span>
+                      <span>{t("mods.online.nextPage")}</span>
                       <ChevronRight className="h-3.5 w-3.5" />
                     </Button>
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground whitespace-nowrap">跳转到</span>
+                    <span className="text-muted-foreground whitespace-nowrap">{t("mods.online.jumpToLabel")}</span>
                     <Input
                       type="text"
                       inputMode="numeric"
@@ -706,7 +712,7 @@ export function OnlineMods({ onNavigate, isGameRunning = false, onQueueDownload 
                         }
                       }}
                       className="h-8 w-20 text-center text-[11px] rounded-lg bg-accent/10 border-border"
-                      placeholder="页码"
+                      placeholder={t("mods.online.jumpPlaceholder")}
                     />
                     <Button
                       variant="outline"
@@ -720,7 +726,7 @@ export function OnlineMods({ onNavigate, isGameRunning = false, onQueueDownload 
                       }}
                       className="h-8 text-[11px] rounded-lg px-3 hover:bg-accent cursor-pointer whitespace-nowrap"
                     >
-                      跳转
+                      {t("mods.online.jumpButton")}
                     </Button>
                   </div>
                 </div>

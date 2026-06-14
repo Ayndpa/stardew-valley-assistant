@@ -1,6 +1,7 @@
 import { User } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { useTranslation } from "react-i18next"
 
 export interface SaveSummary {
   id: string
@@ -69,10 +70,10 @@ export interface SaveDetail {
 interface SaveInfoCardProps {
   loading: boolean
   detail: SaveDetail | null
-  seasons: string[]
 }
 
-export function SaveInfoCard({ loading, detail, seasons }: SaveInfoCardProps) {
+export function SaveInfoCard({ loading, detail }: SaveInfoCardProps) {
+  const { t } = useTranslation()
   const farmerAvatar = detail?.farmerAvatar
 
   return (
@@ -92,9 +93,9 @@ export function SaveInfoCard({ loading, detail, seasons }: SaveInfoCardProps) {
             )}
           </div>
           <div>
-            <CardTitle className="text-lg font-bold">当前存档信息</CardTitle>
+            <CardTitle className="text-lg font-bold">{t("settings.saveInfo.title")}</CardTitle>
             <CardDescription>
-              自动从游戏存档文件中同步
+              {t("settings.saveInfo.description")}
             </CardDescription>
           </div>
         </div>
@@ -103,42 +104,48 @@ export function SaveInfoCard({ loading, detail, seasons }: SaveInfoCardProps) {
         {loading ? (
           <div className="flex flex-col items-center justify-center py-6 space-y-2">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
-            <p className="text-xs text-muted-foreground">正在同步农场存档数据...</p>
+            <p className="text-xs text-muted-foreground">{t("settings.saveInfo.syncing")}</p>
           </div>
         ) : detail ? (
           <>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
               <div className="border p-3 rounded-lg bg-accent/25 space-y-1">
-                <p className="text-muted-foreground font-medium">农场主姓名</p>
+                <p className="text-muted-foreground font-medium">{t("settings.saveInfo.playerName")}</p>
                 <p className="font-bold text-sm text-foreground truncate">{detail.summary.playerName}</p>
               </div>
               <div className="border p-3 rounded-lg bg-accent/25 space-y-1">
-                <p className="text-muted-foreground font-medium">农场名称</p>
-                <p className="font-bold text-sm text-foreground truncate">{detail.summary.farmName}农场</p>
-              </div>
-              <div className="border p-3 rounded-lg bg-accent/25 space-y-1">
-                <p className="text-muted-foreground font-medium">游戏日期</p>
+                <p className="text-muted-foreground font-medium">{t("settings.saveInfo.farmName")}</p>
                 <p className="font-bold text-sm text-foreground truncate">
-                  {seasons[detail.summary.season] || "春季"} {detail.summary.dayOfMonth}日 (第{detail.summary.year}年)
+                  {t("settings.saveInfo.farmNameValue", { name: detail.summary.farmName })}
                 </p>
               </div>
               <div className="border p-3 rounded-lg bg-accent/25 space-y-1">
-                <p className="text-muted-foreground font-medium">持有金币</p>
+                <p className="text-muted-foreground font-medium">{t("settings.saveInfo.gameDate")}</p>
+                <p className="font-bold text-sm text-foreground truncate">
+                  {t("settings.saveInfo.gameDateValue", {
+                    season: t("seasons." + ["spring", "summer", "fall", "winter"][detail.summary.season]),
+                    day: detail.summary.dayOfMonth,
+                    year: detail.summary.year
+                  })}
+                </p>
+              </div>
+              <div className="border p-3 rounded-lg bg-accent/25 space-y-1">
+                <p className="text-muted-foreground font-medium">{t("settings.saveInfo.money")}</p>
                 <p className="font-bold text-sm text-yellow-500 truncate">{detail.summary.money.toLocaleString()}g</p>
               </div>
             </div>
 
             <div className="space-y-3">
               <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                技能等级 (Skills)
+                {t("settings.saveInfo.skills")}
               </h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {[
-                  { name: "耕种 (Farming)", level: detail.summary.farmingLevel, color: "bg-green-500" },
-                  { name: "采矿 (Mining)", level: detail.summary.miningLevel, color: "bg-blue-500" },
-                  { name: "采集 (Foraging)", level: detail.summary.foragingLevel, color: "bg-emerald-500" },
-                  { name: "钓鱼 (Fishing)", level: detail.summary.fishingLevel, color: "bg-cyan-500" },
-                  { name: "战斗 (Combat)", level: detail.summary.combatLevel, color: "bg-red-500" },
+                  { name: t("settings.saveInfo.farming"), level: detail.summary.farmingLevel, color: "bg-green-500" },
+                  { name: t("settings.saveInfo.mining"), level: detail.summary.miningLevel, color: "bg-blue-500" },
+                  { name: t("settings.saveInfo.foraging"), level: detail.summary.foragingLevel, color: "bg-emerald-500" },
+                  { name: t("settings.saveInfo.fishing"), level: detail.summary.fishingLevel, color: "bg-cyan-500" },
+                  { name: t("settings.saveInfo.combat"), level: detail.summary.combatLevel, color: "bg-red-500" },
                 ].map((skill) => (
                   <div key={skill.name} className="space-y-1 text-xs border p-2.5 rounded-lg bg-accent/10">
                     <div className="flex justify-between items-center font-medium">
@@ -157,9 +164,10 @@ export function SaveInfoCard({ loading, detail, seasons }: SaveInfoCardProps) {
             </div>
           </>
         ) : (
-          <p className="text-xs text-muted-foreground py-4 text-center">暂未选定存档文件</p>
+          <p className="text-xs text-muted-foreground py-4 text-center">{t("settings.saveInfo.noSave")}</p>
         )}
       </CardContent>
     </Card>
   )
 }
+

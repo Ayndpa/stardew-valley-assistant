@@ -4,7 +4,7 @@ use std::path::Path;
 
 use super::calendar::resolve_localized_text;
 use super::xnb::{
-    load_localized_string_tables, load_objects_xnb, load_string_dictionary_xnb, load_xnb_payload,
+    load_localized_string_tables_with_lang, load_objects_xnb, load_string_dictionary_xnb, load_xnb_payload,
     require_reader, XnbPayloadReader,
 };
 
@@ -27,9 +27,14 @@ pub struct NpcGameData {
 }
 
 #[tauri::command]
-pub fn get_npc_game_data(game_dir: Option<String>) -> Result<NpcGameData, String> {
+pub fn get_npc_game_data(
+    game_dir: Option<String>,
+    lang: Option<String>,
+) -> Result<NpcGameData, String> {
     let content_dir = super::locate_content_dir(game_dir.as_deref())?;
-    let localized_tables = load_localized_string_tables(
+    let lang_str = lang.as_deref().unwrap_or("zh");
+    let is_zh = lang_str.to_lowercase().starts_with("zh");
+    let localized_tables = load_localized_string_tables_with_lang(
         &content_dir,
         &[
             "Characters",
@@ -39,8 +44,9 @@ pub fn get_npc_game_data(game_dir: Option<String>) -> Result<NpcGameData, String
             "StringsFromCSFiles",
             "Objects",
         ],
+        Some(lang_str),
     );
-    let mut npcs = load_npc_profiles(&content_dir, &localized_tables)?;
+    let mut npcs = load_npc_profiles(&content_dir, &localized_tables, is_zh)?;
 
     npcs.sort_by(|a, b| a.name.cmp(&b.name).then(a.id.cmp(&b.id)));
 
@@ -50,6 +56,7 @@ pub fn get_npc_game_data(game_dir: Option<String>) -> Result<NpcGameData, String
 pub fn load_npc_profiles(
     content_dir: &Path,
     localized_tables: &HashMap<String, HashMap<String, String>>,
+    is_zh: bool,
 ) -> Result<Vec<NpcProfile>, String> {
     let gift_tastes =
         load_string_dictionary_xnb(&content_dir.join("Data").join("NPCGiftTastes.xnb"))?;
@@ -92,7 +99,7 @@ pub fn load_npc_profiles(
         require_reader(&type_readers, value_reader, "ReflectiveReader")
             .map_err(|e| format!("Failed to parse character '{}': {}", key, e))?;
         if let Some(npc) = reader
-            .read_npc_profile(&key, localized_tables)
+            .read_npc_profile(&key, localized_tables, is_zh)
             .map_err(|e| format!("Failed to parse character '{}': {}", key, e))?
         {
             let mut npc = npc;
