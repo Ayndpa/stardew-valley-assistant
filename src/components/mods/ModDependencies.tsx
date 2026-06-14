@@ -4,9 +4,11 @@ import type { NexusDependencyGroup } from "./online-mod-parser"
 
 interface ModDependenciesProps {
   dependencies: NexusDependencyGroup[]
+  /** 点击依赖项名称时的回调，用于在应用内导航到该模组详情。返回 true 表示已处理，否则回退到外部链接。 */
+  onModClick?: (nexusUrl: string) => boolean
 }
 
-export function ModDependencies({ dependencies }: ModDependenciesProps) {
+export function ModDependencies({ dependencies, onModClick }: ModDependenciesProps) {
   if (!dependencies || dependencies.length === 0) return null
 
   // Flatten all dependency files from all groups
@@ -24,7 +26,12 @@ export function ModDependencies({ dependencies }: ModDependenciesProps) {
         {allFiles.map((file) => (
           <div
             key={file.uid}
-            className="flex items-center gap-3 p-2.5 rounded-lg bg-accent/15 border border-border/40 hover:border-primary/30 hover:bg-accent/25 transition-all group"
+            onClick={() => {
+              if (!onModClick?.(file.mod.url)) {
+                openUrl(file.mod.url)
+              }
+            }}
+            className="flex items-center gap-3 p-2.5 rounded-lg bg-accent/15 border border-border/40 hover:border-primary/30 hover:bg-accent/25 transition-all group cursor-pointer"
           >
             {/* Thumbnail */}
             {file.mod.thumbnailUrl ? (
@@ -44,13 +51,12 @@ export function ModDependencies({ dependencies }: ModDependenciesProps) {
 
             {/* Info */}
             <div className="flex-1 min-w-0">
-              <button
-                onClick={() => openUrl(file.mod.url)}
-                className="text-xs font-semibold text-foreground hover:text-primary transition-colors truncate block max-w-full cursor-pointer"
+              <span
+                className="text-xs font-semibold text-foreground hover:text-primary transition-colors truncate block max-w-full"
                 title={file.mod.name}
               >
                 {file.mod.name}
-              </button>
+              </span>
               <div className="flex items-center gap-2 mt-0.5">
                 <span className="text-[10px] text-muted-foreground">
                   需要版本: <span className="font-semibold text-foreground/80">{file.version}</span>
@@ -65,7 +71,7 @@ export function ModDependencies({ dependencies }: ModDependenciesProps) {
 
             {/* Link icon */}
             <button
-              onClick={() => openUrl(file.mod.url)}
+              onClick={(e) => { e.stopPropagation(); openUrl(file.mod.url) }}
               className="p-1.5 rounded-md opacity-0 group-hover:opacity-100 hover:bg-accent text-muted-foreground hover:text-primary transition-all cursor-pointer flex-shrink-0"
               title="在 Nexus Mods 中打开"
             >

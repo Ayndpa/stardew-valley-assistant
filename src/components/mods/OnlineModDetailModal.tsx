@@ -21,6 +21,8 @@ interface OnlineModDetailModalProps {
   onNavigate?: (page: "settings") => void
   onQueueDownload?: (task: { modName: string; author: string; downloadUrl: string }) => { ok: boolean; message: string }
   isGameRunning?: boolean
+  /** 点击依赖项时的回调，用于在应用内导航到该模组详情 */
+  onModClick?: (nexusUrl: string) => boolean
 }
 
 import {
@@ -67,7 +69,8 @@ export function OnlineModDetailModal({
   mod,
   onNavigate,
   onQueueDownload,
-  isGameRunning = false
+  isGameRunning = false,
+  onModClick
 }: OnlineModDetailModalProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -547,7 +550,7 @@ export function OnlineModDetailModal({
 
                 <ModSpecs details={details} mod={mod} />
 
-                <ModDependencies dependencies={details.dependencies} />
+                <ModDependencies dependencies={details.dependencies} onModClick={onModClick} />
 
                 {/* Description Section */}
                 <div className="space-y-3">

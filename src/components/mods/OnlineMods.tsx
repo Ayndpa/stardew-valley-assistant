@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react"
+import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import { 
   Search, 
   Download, 
@@ -212,6 +212,37 @@ export function OnlineMods({ onNavigate, isGameRunning = false, onQueueDownload 
       handleOpenDetail(fallbackMod)
     }
   }
+
+  const handleDependencyModClick = useCallback((nexusUrl: string): boolean => {
+    // Extract mod ID from Nexus URL (e.g. https://www.nexusmods.com/stardewvalley/mods/12345)
+    const match = nexusUrl.match(/nexusmods\.com\/[^/]+\/mods\/(\d+)/)
+    if (!match) return false
+    const nexusId = match[1]
+
+    // Try to find matching mod in the list
+    const matchingSmapiMod = onlineMods.find(m => {
+      const nexusPage = m.ModPages.find(p => p.Text === "Nexus" || p.Url.includes("nexusmods.com"))
+      if (!nexusPage) return false
+      const parts = nexusPage.Url.split("/")
+      const id = parts.pop() || ""
+      return id === nexusId
+    })
+
+    if (matchingSmapiMod) {
+      handleOpenDetail(matchingSmapiMod)
+    } else {
+      // Fallback: open a detail view with basic info derived from the URL
+      const fallbackMod: SmapiMod = {
+        Id: [],
+        Name: `Mod #${nexusId}`,
+        Author: "",
+        ModPages: [{ Url: nexusUrl, Text: "Nexus" }],
+        Slug: `nexus-${nexusId}`,
+      }
+      handleOpenDetail(fallbackMod)
+    }
+    return true
+  }, [onlineMods])
   
   // Filters & Search
   const [search, setSearch] = useState("")
@@ -707,6 +738,7 @@ export function OnlineMods({ onNavigate, isGameRunning = false, onQueueDownload 
         onNavigate={onNavigate}
         onQueueDownload={onQueueDownload}
         isGameRunning={isGameRunning}
+        onModClick={handleDependencyModClick}
       />
     </div>
   )
