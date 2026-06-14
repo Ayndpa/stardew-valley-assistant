@@ -116,9 +116,7 @@ fn map_name_for_key(key: &str) -> Option<&'static str> {
         "Forest-FlowerFestival" | "Forest-FlowerFestival2" => "Cindersap Forest (Flower Dance)",
         "Forest-IceFestival" | "Forest-IceFestival2" => "Cindersap Forest (Festival of Ice)",
         "Forest-SewerClean" => "Cindersap Forest (After Sewer Cleanup)",
-        "Greenhouse" | "Farm_Greenhouse_Dirt" | "Farm_Greenhouse_Dirt_FourCorners" => {
-            "Greenhouse"
-        }
+        "Greenhouse" | "Farm_Greenhouse_Dirt" | "Farm_Greenhouse_Dirt_FourCorners" => "Greenhouse",
         "HaleyHouse" => "Haley and Emily's House",
         "HarveyBalloon" => "Harvey's Balloon",
         "HarveyRoom" => "Harvey's Room",

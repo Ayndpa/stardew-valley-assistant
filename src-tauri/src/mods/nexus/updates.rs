@@ -34,43 +34,38 @@ fn fetch_mod_latest_version(api_key: &str, mod_id: u64) -> Option<String> {
         .set("Accept", "application/json")
         .call()
     {
-        Ok(response) => {
-            match response.into_string() {
-                Ok(body) => match serde_json::from_str::<serde_json::Value>(&body) {
-                    Ok(json) => {
-                        if let Some(version) = json.get("version").and_then(|v| v.as_str()) {
-                            let v = version.trim().to_string();
-                            if !v.is_empty() {
-                                info!(
-                                    "[ModUpdateCheck] Mod {} latest version: {}",
-                                    mod_id, v
-                                );
-                                return Some(v);
-                            }
+        Ok(response) => match response.into_string() {
+            Ok(body) => match serde_json::from_str::<serde_json::Value>(&body) {
+                Ok(json) => {
+                    if let Some(version) = json.get("version").and_then(|v| v.as_str()) {
+                        let v = version.trim().to_string();
+                        if !v.is_empty() {
+                            info!("[ModUpdateCheck] Mod {} latest version: {}", mod_id, v);
+                            return Some(v);
                         }
-                        warn!(
-                            "[ModUpdateCheck] Mod {} response missing 'version' field or empty",
-                            mod_id
-                        );
-                        None
                     }
-                    Err(e) => {
-                        warn!(
-                            "[ModUpdateCheck] Failed to parse JSON for mod {}: {}",
-                            mod_id, e
-                        );
-                        None
-                    }
-                },
+                    warn!(
+                        "[ModUpdateCheck] Mod {} response missing 'version' field or empty",
+                        mod_id
+                    );
+                    None
+                }
                 Err(e) => {
                     warn!(
-                        "[ModUpdateCheck] Failed to read response body for mod {}: {}",
+                        "[ModUpdateCheck] Failed to parse JSON for mod {}: {}",
                         mod_id, e
                     );
                     None
                 }
+            },
+            Err(e) => {
+                warn!(
+                    "[ModUpdateCheck] Failed to read response body for mod {}: {}",
+                    mod_id, e
+                );
+                None
             }
-        }
+        },
         Err(ureq::Error::Status(403, _)) => {
             warn!(
                 "[ModUpdateCheck] Mod {} returned 403 Forbidden (API key may be invalid)",
@@ -211,12 +206,7 @@ pub async fn check_mod_updates(
     } else {
         mod_ids
             .iter()
-            .filter(|&&id| {
-                cache
-                    .get(&id)
-                    .map(|e| !is_cache_valid(e))
-                    .unwrap_or(true)
-            })
+            .filter(|&&id| cache.get(&id).map(|e| !is_cache_valid(e)).unwrap_or(true))
             .copied()
             .collect()
     };

@@ -195,8 +195,10 @@ mod tests {
             &content,
             &["Characters", "NPCNames", "UI", "1_6_Strings"],
         );
-        let festivals = calendar::load_calendar_festivals(&content, &localized_tables, true).unwrap();
-        let birthdays = calendar::load_calendar_birthdays(&content, &localized_tables, true).unwrap();
+        let festivals =
+            calendar::load_calendar_festivals(&content, &localized_tables, true).unwrap();
+        let birthdays =
+            calendar::load_calendar_birthdays(&content, &localized_tables, true).unwrap();
 
         assert!(festivals.iter().any(|entry| entry.name.contains("复活节")));
         assert!(festivals.iter().any(|entry| entry.name.contains("夜市")));
@@ -253,7 +255,10 @@ mod tests {
         let has_tv_recipe = recipe_sources
             .values()
             .any(|sources| sources.iter().any(|s| s.contains("酱料女皇电视节目（第")));
-        assert!(has_tv_recipe, "Should have at least one TV recipe source with schedule");
+        assert!(
+            has_tv_recipe,
+            "Should have at least one TV recipe source with schedule"
+        );
 
         // Check that skill-based recipes are identified
         let has_skill_recipe = recipe_sources
@@ -285,10 +290,6 @@ mod tests {
             .values()
             .filter(|sources| sources.len() > 1)
             .count();
-        eprintln!(
-            "\nRecipes with multiple sources: {}",
-            multi_source_count
-        );
+        eprintln!("\nRecipes with multiple sources: {}", multi_source_count);
     }
-
 }

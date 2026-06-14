@@ -121,7 +121,6 @@ fn read_realtime_locations(
             confidence: "realtime".to_string(),
             updated_at: generated_at.clone(),
         })
-
         .collect();
 
     Ok(NpcLocationsResult {
@@ -259,7 +258,6 @@ fn estimate_npc_location(
         confidence: "estimate".to_string(),
         updated_at: None,
     })
-
 }
 
 fn normalize_time(time: i32) -> i32 {

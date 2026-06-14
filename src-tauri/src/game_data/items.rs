@@ -132,7 +132,11 @@ pub fn query_item_game_data(
     let snapshot = load_item_snapshot(game_dir, lang.clone())?;
     let keyword = search_term.unwrap_or_default().trim().to_lowercase();
     let lang_str = lang.as_deref().unwrap_or("zh");
-    let all_label = if lang_str.to_lowercase().starts_with("zh") { "全部" } else { "All" };
+    let all_label = if lang_str.to_lowercase().starts_with("zh") {
+        "全部"
+    } else {
+        "All"
+    };
 
     let category = active_category.unwrap_or_else(|| all_label.to_string());
     let item_type = active_type.unwrap_or_else(|| all_label.to_string());
@@ -206,10 +210,7 @@ fn load_item_snapshot(
     Ok(snapshot)
 }
 
-fn build_item_snapshot(
-    content_dir: PathBuf,
-    lang: Option<&str>,
-) -> Result<ItemSnapshot, String> {
+fn build_item_snapshot(content_dir: PathBuf, lang: Option<&str>) -> Result<ItemSnapshot, String> {
     let lang_str = lang.unwrap_or("zh").to_lowercase();
     let is_zh = lang_str.starts_with("zh");
 
@@ -219,15 +220,18 @@ fn build_item_snapshot(
         &["Objects", "1_6_Strings", "StringsFromCSFiles", "NPCNames"],
         Some(&lang_str),
     );
-    let recipe_sources = load_cooking_recipe_sources_localized(&content_dir, &localized_tables, is_zh);
+    let recipe_sources =
+        load_cooking_recipe_sources_localized(&content_dir, &localized_tables, is_zh);
 
     let mut encyclopedia = Vec::with_capacity(objects.len());
 
     for (id, object) in objects {
         let name = resolve_localized_text(&object.display_name, &localized_tables);
         let description = resolve_localized_text(&object.description, &localized_tables);
-        let (item_type_key, item_type) = classify_item_type_localized(&object.object_type, object.category, is_zh);
-        let (category_key, category) = classify_category_localized(object.category, &object.object_type, is_zh);
+        let (item_type_key, item_type) =
+            classify_item_type_localized(&object.object_type, object.category, is_zh);
+        let (category_key, category) =
+            classify_category_localized(object.category, &object.object_type, is_zh);
         let edibility = (object.edibility > -300).then_some(object.edibility);
         let item_recipe_sources = recipe_sources.get(&id).cloned().unwrap_or_default();
 
@@ -240,7 +244,11 @@ fn build_item_snapshot(
             },
             internal_name: object.name.clone(),
             description: if description.trim().is_empty() {
-                if is_zh { "游戏内容未提供描述。".to_string() } else { "No description provided by game content.".to_string() }
+                if is_zh {
+                    "游戏内容未提供描述。".to_string()
+                } else {
+                    "No description provided by game content.".to_string()
+                }
             } else {
                 description
             },
@@ -369,7 +377,10 @@ pub fn load_cooking_recipe_sources_localized(
     sources_by_item_id
 }
 
-fn load_tv_recipe_weeks_localized(content_dir: &std::path::Path, is_zh: bool) -> HashMap<String, i32> {
+fn load_tv_recipe_weeks_localized(
+    content_dir: &std::path::Path,
+    is_zh: bool,
+) -> HashMap<String, i32> {
     let tv_dir = content_dir.join("Data").join("TV");
     let tv_data = if is_zh {
         load_string_dictionary_best_effort(&[
@@ -377,9 +388,7 @@ fn load_tv_recipe_weeks_localized(content_dir: &std::path::Path, is_zh: bool) ->
             tv_dir.join("CookingChannel.xnb"),
         ])
     } else {
-        load_string_dictionary_best_effort(&[
-            tv_dir.join("CookingChannel.xnb"),
-        ])
+        load_string_dictionary_best_effort(&[tv_dir.join("CookingChannel.xnb")])
     };
 
     let mut recipe_to_week: HashMap<String, i32> = HashMap::new();
@@ -425,8 +434,16 @@ fn describe_cooking_recipe_sources_localized(
     // Check condition-based source
     let parts = raw_condition.split_whitespace().collect::<Vec<_>>();
     let condition_source = match parts.as_slice() {
-        [] => Some(if is_zh { "未提供获取条件".to_string() } else { "No acquisition conditions provided".to_string() }),
-        ["default"] => Some(if is_zh { "初始已掌握".to_string() } else { "Learned by default".to_string() }),
+        [] => Some(if is_zh {
+            "未提供获取条件".to_string()
+        } else {
+            "No acquisition conditions provided".to_string()
+        }),
+        ["default"] => Some(if is_zh {
+            "初始已掌握".to_string()
+        } else {
+            "Learned by default".to_string()
+        }),
         ["f", npc, hearts, ..] => {
             let npc_name = localized_tables
                 .get("NPCNames")
@@ -439,13 +456,19 @@ fn describe_cooking_recipe_sources_localized(
                 format!("Mail from {} at {} hearts", npc_name, hearts)
             })
         }
-        ["s", skill, level, ..] => {
-            Some(if is_zh {
-                format!("{}等级达到 {} 级解锁", translate_skill_name_localized(skill, is_zh), level)
-            } else {
-                format!("Reach {} Level {} to unlock", translate_skill_name_localized(skill, is_zh), level)
-            })
-        }
+        ["s", skill, level, ..] => Some(if is_zh {
+            format!(
+                "{}等级达到 {} 级解锁",
+                translate_skill_name_localized(skill, is_zh),
+                level
+            )
+        } else {
+            format!(
+                "Reach {} Level {} to unlock",
+                translate_skill_name_localized(skill, is_zh),
+                level
+            )
+        }),
         ["l", ..] => describe_learned_source_localized(recipe_name, recipe_display_name, is_zh),
         _ => Some(if is_zh {
             format!("特殊条件：{}", raw_condition)
@@ -463,12 +486,32 @@ fn describe_cooking_recipe_sources_localized(
     sources
 }
 
-fn describe_learned_source_localized(recipe_name: &str, _recipe_display_name: &str, is_zh: bool) -> Option<String> {
+fn describe_learned_source_localized(
+    recipe_name: &str,
+    _recipe_display_name: &str,
+    is_zh: bool,
+) -> Option<String> {
     let known_source = match recipe_name {
-        "Banana Pudding" => Some(if is_zh { "姜岛度假村获得" } else { "Obtained from Ginger Island Resort" }),
-        "Ginger Ale" => Some(if is_zh { "姜岛度假村购买" } else { "Purchased from Ginger Island Resort" }),
-        "Tropical Curry" => Some(if is_zh { "姜岛度假村获得" } else { "Obtained from Ginger Island Resort" }),
-        "Triple Shot Espresso" => Some(if is_zh { "星之果实餐吧购买" } else { "Purchased from the Stardrop Saloon" }),
+        "Banana Pudding" => Some(if is_zh {
+            "姜岛度假村获得"
+        } else {
+            "Obtained from Ginger Island Resort"
+        }),
+        "Ginger Ale" => Some(if is_zh {
+            "姜岛度假村购买"
+        } else {
+            "Purchased from Ginger Island Resort"
+        }),
+        "Tropical Curry" => Some(if is_zh {
+            "姜岛度假村获得"
+        } else {
+            "Obtained from Ginger Island Resort"
+        }),
+        "Triple Shot Espresso" => Some(if is_zh {
+            "星之果实餐吧购买"
+        } else {
+            "Purchased from the Stardrop Saloon"
+        }),
         _ => None,
     };
 
@@ -483,11 +526,41 @@ fn tv_week_to_schedule_localized(week: i32, is_zh: bool) -> String {
     let day_in_season = (day_in_year - 1) % 28 + 1;
 
     let season_name = match season_index {
-        0 => if is_zh { "春季" } else { "Spring" },
-        1 => if is_zh { "夏季" } else { "Summer" },
-        2 => if is_zh { "秋季" } else { "Fall" },
-        3 => if is_zh { "冬季" } else { "Winter" },
-        _ => if is_zh { "未知" } else { "Unknown" },
+        0 => {
+            if is_zh {
+                "春季"
+            } else {
+                "Spring"
+            }
+        }
+        1 => {
+            if is_zh {
+                "夏季"
+            } else {
+                "Summer"
+            }
+        }
+        2 => {
+            if is_zh {
+                "秋季"
+            } else {
+                "Fall"
+            }
+        }
+        3 => {
+            if is_zh {
+                "冬季"
+            } else {
+                "Winter"
+            }
+        }
+        _ => {
+            if is_zh {
+                "未知"
+            } else {
+                "Unknown"
+            }
+        }
     };
 
     if is_zh {
@@ -519,22 +592,35 @@ fn translate_skill_name_localized(skill: &str, is_zh: bool) -> String {
     }
 }
 
+fn translate_object_type_label(key: &str, is_zh: bool) -> String {
+    match key {
+        "basic" => if is_zh { "基础物品" } else { "Basic Item" }.to_string(),
+        "arch" => if is_zh { "古物" } else { "Artifact" }.to_string(),
+        "fish" => if is_zh { "鱼类" } else { "Fish" }.to_string(),
+        "ring" => if is_zh { "戒指" } else { "Ring" }.to_string(),
+        "minerals" => if is_zh { "矿物" } else { "Mineral" }.to_string(),
+        "cooking" => if is_zh { "料理" } else { "Cooking" }.to_string(),
+        "crafting" => if is_zh { "工艺品" } else { "Crafting" }.to_string(),
+        "seeds" => if is_zh { "种子" } else { "Seeds" }.to_string(),
+        "litter" => if is_zh { "杂物" } else { "Litter" }.to_string(),
+        "interactive" => if is_zh { "互动物品" } else { "Interactive" }.to_string(),
+        "quest" => if is_zh { "任务物品" } else { "Quest Item" }.to_string(),
+        "asdf" => if is_zh {
+            "特殊物品"
+        } else {
+            "Special Item"
+        }
+        .to_string(),
+        _ => key.to_string(),
+    }
+}
+
 fn classify_item_type_localized(object_type: &str, category: i32, is_zh: bool) -> (String, String) {
     let normalized = object_type.trim();
     if !normalized.is_empty() {
         let key = normalized.to_ascii_lowercase();
-        let label = match key.as_str() {
-            "basic" => if is_zh { "基础物品" } else { "Basic Item" },
-            "arch" => if is_zh { "古物" } else { "Artifact" },
-            "fish" => if is_zh { "鱼类" } else { "Fish" },
-            "ring" => if is_zh { "戒指" } else { "Ring" },
-            "minerals" => if is_zh { "矿物" } else { "Mineral" },
-            "cooking" => if is_zh { "料理" } else { "Cooking" },
-            "crafting" => if is_zh { "工艺品" } else { "Crafting" },
-            "asdf" => if is_zh { "特殊物品" } else { "Special Item" },
-            _ => normalized,
-        };
-        return (key, label.to_string());
+        let label = translate_object_type_label(&key, is_zh);
+        return (key, label);
     }
 
     classify_category_localized(category, normalized, is_zh)
@@ -542,44 +628,186 @@ fn classify_item_type_localized(object_type: &str, category: i32, is_zh: bool) -
 
 fn classify_category_localized(category: i32, object_type: &str, is_zh: bool) -> (String, String) {
     match category {
-        -2 => ("gem".to_string(), if is_zh { "宝石" } else { "Gem" }.to_string()),
-        -4 => ("fish".to_string(), if is_zh { "鱼类" } else { "Fish" }.to_string()),
-        -5 => ("egg".to_string(), if is_zh { "蛋类" } else { "Egg" }.to_string()),
-        -6 => ("milk".to_string(), if is_zh { "奶制品" } else { "Milk Product" }.to_string()),
-        -7 => ("cooking".to_string(), if is_zh { "料理" } else { "Cooking" }.to_string()),
-        -8 => ("crafting".to_string(), if is_zh { "工艺品" } else { "Crafting" }.to_string()),
-        -9 => ("big_craftable".to_string(), if is_zh { "大型工艺品" } else { "Big Craftable" }.to_string()),
-        -12 => ("mineral".to_string(), if is_zh { "矿物" } else { "Mineral" }.to_string()),
-        -14 => ("meat".to_string(), if is_zh { "肉类" } else { "Meat" }.to_string()),
-        -15 => ("metal_resource".to_string(), if is_zh { "金属资源" } else { "Metal Resource" }.to_string()),
-        -16 => ("building_resource".to_string(), if is_zh { "建筑资源" } else { "Building Resource" }.to_string()),
-        -17 => ("sell_at_pierre".to_string(), if is_zh { "杂货商品" } else { "General Merchandise" }.to_string()),
-        -18 => ("animal_product".to_string(), if is_zh { "动物产物" } else { "Animal Product" }.to_string()),
-        -19 => ("fertilizer".to_string(), if is_zh { "肥料" } else { "Fertilizer" }.to_string()),
-        -20 => ("junk".to_string(), if is_zh { "垃圾" } else { "Trash" }.to_string()),
-        -21 => ("bait".to_string(), if is_zh { "鱼饵" } else { "Bait" }.to_string()),
-        -22 => ("tackle".to_string(), if is_zh { "渔具" } else { "Tackle" }.to_string()),
-        -24 => ("furniture".to_string(), if is_zh { "家具" } else { "Furniture" }.to_string()),
-        -25 => ("ingredient".to_string(), if is_zh { "食材" } else { "Ingredient" }.to_string()),
-        -26 => ("artisan_goods".to_string(), if is_zh { "工匠物品" } else { "Artisan Good" }.to_string()),
-        -27 => ("syrup".to_string(), if is_zh { "树液制品" } else { "Syrup" }.to_string()),
-        -28 => ("monster_loot".to_string(), if is_zh { "怪物掉落" } else { "Monster Loot" }.to_string()),
-        -74 => ("seed".to_string(), if is_zh { "种子" } else { "Seed" }.to_string()),
-        -75 => ("vegetable".to_string(), if is_zh { "蔬菜" } else { "Vegetable" }.to_string()),
-        -76 => ("flower".to_string(), if is_zh { "花卉" } else { "Flower" }.to_string()),
-        -77 => ("forage".to_string(), if is_zh { "采集物" } else { "Forage" }.to_string()),
-        -78 => ("fruit".to_string(), if is_zh { "水果" } else { "Fruit" }.to_string()),
-        -79 => ("shellfish".to_string(), if is_zh { "贝类" } else { "Shellfish" }.to_string()),
-        -80 => ("festival_reward".to_string(), if is_zh { "节日奖励" } else { "Festival Reward" }.to_string()),
-        -81 => ("fodder".to_string(), if is_zh { "饲料" } else { "Fodder" }.to_string()),
-        -82 => ("clothing".to_string(), if is_zh { "服饰" } else { "Clothing" }.to_string()),
-        -95 => ("hat".to_string(), if is_zh { "帽子" } else { "Hat" }.to_string()),
-        -96 => ("trinket".to_string(), if is_zh { "饰品" } else { "Trinket" }.to_string()),
-        0 if !object_type.trim().is_empty() => (
-            object_type.trim().to_ascii_lowercase(),
-            object_type.trim().to_string(),
+        -2 => (
+            "gem".to_string(),
+            if is_zh { "宝石" } else { "Gem" }.to_string(),
         ),
-        _ => ("other".to_string(), if is_zh { "其他" } else { "Other" }.to_string()),
+        -4 => (
+            "fish".to_string(),
+            if is_zh { "鱼类" } else { "Fish" }.to_string(),
+        ),
+        -5 => (
+            "egg".to_string(),
+            if is_zh { "蛋类" } else { "Egg" }.to_string(),
+        ),
+        -6 => (
+            "milk".to_string(),
+            if is_zh { "奶制品" } else { "Milk Product" }.to_string(),
+        ),
+        -7 => (
+            "cooking".to_string(),
+            if is_zh { "料理" } else { "Cooking" }.to_string(),
+        ),
+        -8 => (
+            "crafting".to_string(),
+            if is_zh { "工艺品" } else { "Crafting" }.to_string(),
+        ),
+        -9 => (
+            "big_craftable".to_string(),
+            if is_zh {
+                "大型工艺品"
+            } else {
+                "Big Craftable"
+            }
+            .to_string(),
+        ),
+        -12 => (
+            "mineral".to_string(),
+            if is_zh { "矿物" } else { "Mineral" }.to_string(),
+        ),
+        -14 => (
+            "meat".to_string(),
+            if is_zh { "肉类" } else { "Meat" }.to_string(),
+        ),
+        -15 => (
+            "metal_resource".to_string(),
+            if is_zh {
+                "金属资源"
+            } else {
+                "Metal Resource"
+            }
+            .to_string(),
+        ),
+        -16 => (
+            "building_resource".to_string(),
+            if is_zh {
+                "建筑资源"
+            } else {
+                "Building Resource"
+            }
+            .to_string(),
+        ),
+        -17 => (
+            "sell_at_pierre".to_string(),
+            if is_zh {
+                "杂货商品"
+            } else {
+                "General Merchandise"
+            }
+            .to_string(),
+        ),
+        -18 => (
+            "animal_product".to_string(),
+            if is_zh {
+                "动物产物"
+            } else {
+                "Animal Product"
+            }
+            .to_string(),
+        ),
+        -19 => (
+            "fertilizer".to_string(),
+            if is_zh { "肥料" } else { "Fertilizer" }.to_string(),
+        ),
+        -20 => (
+            "junk".to_string(),
+            if is_zh { "垃圾" } else { "Trash" }.to_string(),
+        ),
+        -21 => (
+            "bait".to_string(),
+            if is_zh { "鱼饵" } else { "Bait" }.to_string(),
+        ),
+        -22 => (
+            "tackle".to_string(),
+            if is_zh { "渔具" } else { "Tackle" }.to_string(),
+        ),
+        -24 => (
+            "furniture".to_string(),
+            if is_zh { "家具" } else { "Furniture" }.to_string(),
+        ),
+        -25 => (
+            "ingredient".to_string(),
+            if is_zh { "食材" } else { "Ingredient" }.to_string(),
+        ),
+        -26 => (
+            "artisan_goods".to_string(),
+            if is_zh {
+                "工匠物品"
+            } else {
+                "Artisan Good"
+            }
+            .to_string(),
+        ),
+        -27 => (
+            "syrup".to_string(),
+            if is_zh { "树液制品" } else { "Syrup" }.to_string(),
+        ),
+        -28 => (
+            "monster_loot".to_string(),
+            if is_zh {
+                "怪物掉落"
+            } else {
+                "Monster Loot"
+            }
+            .to_string(),
+        ),
+        -74 => (
+            "seed".to_string(),
+            if is_zh { "种子" } else { "Seed" }.to_string(),
+        ),
+        -75 => (
+            "vegetable".to_string(),
+            if is_zh { "蔬菜" } else { "Vegetable" }.to_string(),
+        ),
+        -76 => (
+            "flower".to_string(),
+            if is_zh { "花卉" } else { "Flower" }.to_string(),
+        ),
+        -77 => (
+            "forage".to_string(),
+            if is_zh { "采集物" } else { "Forage" }.to_string(),
+        ),
+        -78 => (
+            "fruit".to_string(),
+            if is_zh { "水果" } else { "Fruit" }.to_string(),
+        ),
+        -79 => (
+            "shellfish".to_string(),
+            if is_zh { "贝类" } else { "Shellfish" }.to_string(),
+        ),
+        -80 => (
+            "festival_reward".to_string(),
+            if is_zh {
+                "节日奖励"
+            } else {
+                "Festival Reward"
+            }
+            .to_string(),
+        ),
+        -81 => (
+            "fodder".to_string(),
+            if is_zh { "饲料" } else { "Fodder" }.to_string(),
+        ),
+        -82 => (
+            "clothing".to_string(),
+            if is_zh { "服饰" } else { "Clothing" }.to_string(),
+        ),
+        -95 => (
+            "hat".to_string(),
+            if is_zh { "帽子" } else { "Hat" }.to_string(),
+        ),
+        -96 => (
+            "trinket".to_string(),
+            if is_zh { "饰品" } else { "Trinket" }.to_string(),
+        ),
+        0 if !object_type.trim().is_empty() => {
+            let key = object_type.trim().to_ascii_lowercase();
+            (key.clone(), translate_object_type_label(&key, is_zh))
+        }
+        _ => (
+            "other".to_string(),
+            if is_zh { "其他" } else { "Other" }.to_string(),
+        ),
     }
 }
 
@@ -592,8 +820,12 @@ fn item_type_order(key: &str) -> i32 {
         "minerals" => 4,
         "arch" => 5,
         "ring" => 6,
-        "asdf" => 7,
-        _ => 9,
+        "seeds" => 7,
+        "litter" => 8,
+        "interactive" => 9,
+        "quest" => 10,
+        "asdf" => 11,
+        _ => 99,
     }
 }
 

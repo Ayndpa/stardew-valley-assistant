@@ -1,5 +1,5 @@
 import type { PointerEvent as ReactPointerEvent, PointerEventHandler, WheelEventHandler } from "react"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -97,6 +97,20 @@ function tileColor(depth: number) {
 export function FishingMap() {
   const { t, i18n } = useTranslation()
   const activeLang = i18n.resolvedLanguage || i18n.language || "zh"
+
+  const getMapDisplayName = useCallback(
+    (map: FishingMapSummary) => {
+      const keys = [`maps.${map.id}`, `fishingMap.locations.${map.id}`]
+      for (const key of keys) {
+        if (i18n.exists(key, { lng: i18n.language })) {
+          return t(key, { lng: i18n.language })
+        }
+      }
+      return map.name
+    },
+    [i18n, i18n.language, t]
+  )
+
   const viewportRef = useRef<HTMLDivElement | null>(null)
   const dragStateRef = useRef<{ pointerId: number; x: number; y: number } | null>(null)
   const [data, setData] = useState<FishingMapData>({ maps: [], cached: false })
@@ -225,13 +239,15 @@ export function FishingMap() {
     const term = searchTerm.trim().toLowerCase()
     if (!term) return data.maps
     return data.maps.filter((map) => {
+      const displayName = getMapDisplayName(map).toLowerCase()
       return (
+        displayName.includes(term) ||
         map.name.toLowerCase().includes(term) ||
         map.id.toLowerCase().includes(term) ||
         map.relativePath.toLowerCase().includes(term)
       )
     })
-  }, [data.maps, searchTerm])
+  }, [data.maps, searchTerm, getMapDisplayName])
 
   const selectedSummary = useMemo(() => {
     return data.maps.find((map) => map.id === selectedId) || filteredMaps[0] || data.maps[0] || null
@@ -522,7 +538,7 @@ export function FishingMap() {
                   ) : (
                     filteredMaps.map((map) => (
                       <option key={map.id} value={map.id}>
-                        {map.name}
+                        {getMapDisplayName(map)}
                       </option>
                     ))
                   )}
@@ -770,7 +786,7 @@ export function FishingMap() {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="truncate text-lg font-semibold">
-                    {selectedSummary?.name || t("fishingMap.noMapSelected")}
+                    {selectedSummary ? getMapDisplayName(selectedSummary) : t("fishingMap.noMapSelected")}
                   </div>
                   {selectedSummary && (
                     <div className="mt-1 truncate text-xs text-muted-foreground">

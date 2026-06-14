@@ -212,9 +212,7 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
                     .unwrap_or_default()
                     .to_string();
 
-                let error_page_type = snapshot
-                    .get("errorPageType")
-                    .and_then(|v| v.as_str());
+                let error_page_type = snapshot.get("errorPageType").and_then(|v| v.as_str());
 
                 // Detect Nexus error pages early and notify frontend
                 if !is_challenge && ready_state == "complete" && error_page_type.is_some() {

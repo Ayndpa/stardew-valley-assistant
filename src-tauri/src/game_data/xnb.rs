@@ -3,7 +3,9 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::calendar::{resolve_localized_text, season_name_localized, CalendarBirthday, CalendarFestival};
+use super::calendar::{
+    resolve_localized_text, season_name_localized, CalendarBirthday, CalendarFestival,
+};
 use super::image_utils::{Pixel, Texture};
 use super::npc::NpcProfile;
 
@@ -329,11 +331,41 @@ impl<'a> XnbPayloadReader<'a> {
         }
 
         let season = match birth_season {
-            0 => if is_zh { "春季" } else { "Spring" },
-            1 => if is_zh { "夏季" } else { "Summer" },
-            2 => if is_zh { "秋季" } else { "Fall" },
-            3 => if is_zh { "冬季" } else { "Winter" },
-            _ => if is_zh { "未知" } else { "Unknown" },
+            0 => {
+                if is_zh {
+                    "春季"
+                } else {
+                    "Spring"
+                }
+            }
+            1 => {
+                if is_zh {
+                    "夏季"
+                } else {
+                    "Summer"
+                }
+            }
+            2 => {
+                if is_zh {
+                    "秋季"
+                } else {
+                    "Fall"
+                }
+            }
+            3 => {
+                if is_zh {
+                    "冬季"
+                } else {
+                    "Winter"
+                }
+            }
+            _ => {
+                if is_zh {
+                    "未知"
+                } else {
+                    "Unknown"
+                }
+            }
         };
         if season == "未知" || season == "Unknown" || name.trim().is_empty() {
             return Ok(None);
@@ -387,11 +419,41 @@ impl<'a> XnbPayloadReader<'a> {
                 return None;
             }
             let season_name = match season {
-                0 => if is_zh { "春季" } else { "Spring" },
-                1 => if is_zh { "夏季" } else { "Summer" },
-                2 => if is_zh { "秋季" } else { "Fall" },
-                3 => if is_zh { "冬季" } else { "Winter" },
-                _ => if is_zh { "未知" } else { "Unknown" },
+                0 => {
+                    if is_zh {
+                        "春季"
+                    } else {
+                        "Spring"
+                    }
+                }
+                1 => {
+                    if is_zh {
+                        "夏季"
+                    } else {
+                        "Summer"
+                    }
+                }
+                2 => {
+                    if is_zh {
+                        "秋季"
+                    } else {
+                        "Fall"
+                    }
+                }
+                3 => {
+                    if is_zh {
+                        "冬季"
+                    } else {
+                        "Winter"
+                    }
+                }
+                _ => {
+                    if is_zh {
+                        "未知"
+                    } else {
+                        "Unknown"
+                    }
+                }
             };
             if season_name != "未知" && season_name != "Unknown" {
                 if is_zh {
@@ -1369,7 +1431,11 @@ pub fn load_localized_string_tables_with_lang(
                     .join(format!("{}{}.xnb", asset_name, suffix)),
             );
         }
-        paths.push(content_dir.join("Strings").join(format!("{}.xnb", asset_name)));
+        paths.push(
+            content_dir
+                .join("Strings")
+                .join(format!("{}.xnb", asset_name)),
+        );
 
         let values = load_string_dictionary_best_effort(&paths);
         if !values.is_empty() {

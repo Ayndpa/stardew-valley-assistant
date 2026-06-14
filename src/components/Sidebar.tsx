@@ -155,9 +155,12 @@ export function Sidebar({
         {!collapsed && (
           <div className="overflow-hidden min-w-0 flex-1">
             <div className="flex flex-col">
-              <span className="text-sm font-bold leading-tight text-sidebar-foreground truncate">
-                {t("sidebar.appName")}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-bold leading-tight text-sidebar-foreground truncate">
+                  {t("sidebar.appName")}
+                </span>
+                <span className="shrink-0 rounded border border-sidebar-border/60 bg-sidebar-accent/40 px-1.5 py-0.5 text-[10px] text-muted-foreground">v0.1.0</span>
+              </div>
               {t("sidebar.appNameSubtitle") && (
                 <span className="text-xs font-medium leading-tight text-muted-foreground truncate">
                   {t("sidebar.appNameSubtitle")}
@@ -401,10 +404,6 @@ export function Sidebar({
         </button>
       </div>
 
-      {/* Footer */}
-      <div className={cn("border-t border-sidebar-border text-xs text-muted-foreground", collapsed ? "px-2 py-3" : "px-6 py-3")}>
-        {!collapsed && <p className="text-center">v0.1.0 · {t("sidebar.version")}</p>}
-      </div>
     </aside>
   )
 }

@@ -102,9 +102,17 @@ pub fn get_crop_game_data(
         let regrows = crop.regrow_days >= 0;
         let regrow_days = regrows.then_some(crop.regrow_days);
         let water_needs = if crop.needs_watering {
-            if is_zh { "每天".to_string() } else { "Daily".to_string() }
+            if is_zh {
+                "每天".to_string()
+            } else {
+                "Daily".to_string()
+            }
         } else {
-            if is_zh { "无需".to_string() } else { "No".to_string() }
+            if is_zh {
+                "无需".to_string()
+            } else {
+                "No".to_string()
+            }
         };
         let icon = render_object_icon(&content_dir, obj, &mut texture_cache).ok();
 
@@ -153,11 +161,41 @@ pub fn get_crop_game_data(
 
 pub fn season_name_localized(season: i32, is_zh: bool) -> &'static str {
     match season {
-        0 => if is_zh { "春季" } else { "Spring" },
-        1 => if is_zh { "夏季" } else { "Summer" },
-        2 => if is_zh { "秋季" } else { "Fall" },
-        3 => if is_zh { "冬季" } else { "Winter" },
-        _ => if is_zh { "未知" } else { "Unknown" },
+        0 => {
+            if is_zh {
+                "春季"
+            } else {
+                "Spring"
+            }
+        }
+        1 => {
+            if is_zh {
+                "夏季"
+            } else {
+                "Summer"
+            }
+        }
+        2 => {
+            if is_zh {
+                "秋季"
+            } else {
+                "Fall"
+            }
+        }
+        3 => {
+            if is_zh {
+                "冬季"
+            } else {
+                "Winter"
+            }
+        }
+        _ => {
+            if is_zh {
+                "未知"
+            } else {
+                "Unknown"
+            }
+        }
     }
 }
 
@@ -166,12 +204,48 @@ pub fn compact_season_label_localized(seasons: &[i32], is_zh: bool) -> String {
     sorted.sort_unstable();
     sorted.dedup();
     match sorted.as_slice() {
-        [0] => if is_zh { "春季".to_string() } else { "Spring".to_string() },
-        [1] => if is_zh { "夏季".to_string() } else { "Summer".to_string() },
-        [2] => if is_zh { "秋季".to_string() } else { "Fall".to_string() },
-        [3] => if is_zh { "冬季".to_string() } else { "Winter".to_string() },
-        [0, 1, 2] => if is_zh { "春夏秋".to_string() } else { "Spring/Summer/Fall".to_string() },
-        [0, 1, 2, 3] => if is_zh { "全季".to_string() } else { "All Seasons".to_string() },
+        [0] => {
+            if is_zh {
+                "春季".to_string()
+            } else {
+                "Spring".to_string()
+            }
+        }
+        [1] => {
+            if is_zh {
+                "夏季".to_string()
+            } else {
+                "Summer".to_string()
+            }
+        }
+        [2] => {
+            if is_zh {
+                "秋季".to_string()
+            } else {
+                "Fall".to_string()
+            }
+        }
+        [3] => {
+            if is_zh {
+                "冬季".to_string()
+            } else {
+                "Winter".to_string()
+            }
+        }
+        [0, 1, 2] => {
+            if is_zh {
+                "春夏秋".to_string()
+            } else {
+                "Spring/Summer/Fall".to_string()
+            }
+        }
+        [0, 1, 2, 3] => {
+            if is_zh {
+                "全季".to_string()
+            } else {
+                "All Seasons".to_string()
+            }
+        }
         _ => sorted
             .iter()
             .map(|season| season_name_localized(*season, is_zh))

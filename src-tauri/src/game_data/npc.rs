@@ -4,8 +4,8 @@ use std::path::Path;
 
 use super::calendar::resolve_localized_text;
 use super::xnb::{
-    load_localized_string_tables_with_lang, load_objects_xnb, load_string_dictionary_xnb, load_xnb_payload,
-    require_reader, XnbPayloadReader,
+    load_localized_string_tables_with_lang, load_objects_xnb, load_string_dictionary_xnb,
+    load_xnb_payload, require_reader, XnbPayloadReader,
 };
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

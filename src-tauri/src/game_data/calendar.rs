@@ -49,7 +49,8 @@ pub fn get_calendar_game_data(
     let is_zh = lang_str.to_lowercase().starts_with("zh");
     let lang_suffix = get_lang_suffix(Some(lang_str));
 
-    let mut festivals = load_calendar_festivals(&content_dir, &localized_tables, is_zh, lang_suffix)?;
+    let mut festivals =
+        load_calendar_festivals(&content_dir, &localized_tables, is_zh, lang_suffix)?;
     festivals.sort_by(|a, b| {
         season_order(&a.season)
             .cmp(&season_order(&b.season))
@@ -180,7 +181,11 @@ pub fn load_special_calendar_festivals(
     if !trout_derby.is_empty() {
         let season = if is_zh { "夏季" } else { "Summer" };
         for day in [20, 21] {
-            let date = if is_zh { format!("{} {}日", season, day) } else { format!("{} {}", season, day) };
+            let date = if is_zh {
+                format!("{} {}日", season, day)
+            } else {
+                format!("{} {}", season, day)
+            };
             festivals.push(CalendarFestival {
                 name: trout_derby.clone(),
                 date,
@@ -198,7 +203,11 @@ pub fn load_special_calendar_festivals(
     if !squid_fest.is_empty() {
         let season = if is_zh { "冬季" } else { "Winter" };
         for day in [12, 13] {
-            let date = if is_zh { format!("{} {}日", season, day) } else { format!("{} {}", season, day) };
+            let date = if is_zh {
+                format!("{} {}日", season, day)
+            } else {
+                format!("{} {}", season, day)
+            };
             festivals.push(CalendarFestival {
                 name: squid_fest.clone(),
                 date,
@@ -307,11 +316,41 @@ pub fn season_name(season: i32) -> &'static str {
 
 pub fn season_name_localized(season: i32, is_zh: bool) -> &'static str {
     match season {
-        0 => if is_zh { "春季" } else { "Spring" },
-        1 => if is_zh { "夏季" } else { "Summer" },
-        2 => if is_zh { "秋季" } else { "Fall" },
-        3 => if is_zh { "冬季" } else { "Winter" },
-        _ => if is_zh { "未知" } else { "Unknown" },
+        0 => {
+            if is_zh {
+                "春季"
+            } else {
+                "Spring"
+            }
+        }
+        1 => {
+            if is_zh {
+                "夏季"
+            } else {
+                "Summer"
+            }
+        }
+        2 => {
+            if is_zh {
+                "秋季"
+            } else {
+                "Fall"
+            }
+        }
+        3 => {
+            if is_zh {
+                "冬季"
+            } else {
+                "Winter"
+            }
+        }
+        _ => {
+            if is_zh {
+                "未知"
+            } else {
+                "Unknown"
+            }
+        }
     }
 }
 

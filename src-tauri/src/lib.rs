@@ -17,12 +17,13 @@ use crate::game_data::{
     get_item_game_data, get_item_game_data_overview, get_npc_game_data, query_item_game_data,
 };
 use crate::mods::{
-    apply_profile, check_mod_updates, check_nexus_login_status, load_cached_mod_updates, close_scraper_window, delete_mod,
+    apply_profile, check_mod_updates, check_nexus_login_status, close_scraper_window, delete_mod,
     delete_profile, export_profile, export_profile_to_file, fetch_nexus_api_key,
     fetch_nexus_download_metadata, fetch_smapi_compatibility_mods, import_profile,
     import_profile_from_file, install_bundled_npc_locations_mod, install_mod_from_zip,
-    install_nexus_mod, list_installed_mods, list_profiles, logout_nexus, open_nexus_login_window,
-    open_nexus_ranking_scraper, open_scraper_window, save_mod_config, save_profile, toggle_mod,
+    install_nexus_mod, list_installed_mods, list_profiles, load_cached_mod_updates, logout_nexus,
+    open_nexus_login_window, open_nexus_ranking_scraper, open_scraper_window, save_mod_config,
+    save_profile, toggle_mod,
 };
 use crate::saves::{
     create_save_backup, delete_save_backup, get_npc_locations, get_planted_crops, get_save_detail,
