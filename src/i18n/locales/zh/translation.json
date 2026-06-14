@@ -37,6 +37,14 @@
     "restore": "还原",
     "brand": "超级星露谷"
   },
+  "errorPage": {
+    "title": "应用出错了",
+    "description": "超级星露谷遇到了无法恢复的错误。你可以尝试重试，或者刷新页面重新开始。",
+    "errorMessage": "错误信息",
+    "stackTrace": "堆栈跟踪",
+    "retry": "重试",
+    "reload": "刷新页面"
+  },
   "settings": {
     "title": "设置",
     "description": "自定义你的超级星露谷体验",

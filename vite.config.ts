@@ -48,7 +48,13 @@ export default defineConfig(async () => ({
           if (id.includes("react-router-dom")) {
             return "router";
           }
-          if (id.includes("react") || id.includes("scheduler")) {
+          // 只把 React 核心包放到 react-vendor，避免 lucide-react 等包被误分入该 chunk
+          // 引起 vendor <-> react-vendor 循环依赖，导致生产构建运行时 TypeError
+          const reactCorePackages = ["react", "react-dom", "scheduler"];
+          const isReactCore = reactCorePackages.some(
+            (pkg) => id === pkg || id.includes(`/${pkg}/`) || id.includes(`node_modules/${pkg}/`),
+          );
+          if (isReactCore) {
             return "react-vendor";
           }
           return "vendor";

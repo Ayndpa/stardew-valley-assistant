@@ -37,6 +37,14 @@
     "restore": "Restore",
     "brand": "Stardew Valley Assistant"
   },
+  "errorPage": {
+    "title": "Something went wrong",
+    "description": "Stardew Valley Assistant encountered an unrecoverable error. You can try again or reload the page to start over.",
+    "errorMessage": "Error Message",
+    "stackTrace": "Stack Trace",
+    "retry": "Try Again",
+    "reload": "Reload Page"
+  },
   "settings": {
     "title": "Settings",
     "description": "Customize your Stardew Valley experience",

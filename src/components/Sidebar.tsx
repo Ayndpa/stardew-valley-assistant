@@ -236,7 +236,7 @@ export function Sidebar({
               <div
                 className={cn(
                   "absolute mt-2 bg-sidebar border border-sidebar-border/80 rounded-lg shadow-xl z-50 py-1 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150 max-h-64 flex flex-col",
-                  collapsed ? "left-full top-0 ml-2 w-64" : "left-4 right-4"
+                  collapsed ? "left-full top-0 ml-2 w-max min-w-64" : "left-4 w-max min-w-[calc(100%-2rem)]"
                 )}
               >
                 <ScrollArea className="flex-1">
