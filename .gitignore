@@ -32,3 +32,7 @@ dist-ssr
 # Rust / Tauri build outputs
 src-tauri/target/
 src-tauri/gen/schemas/
+
+# C# build artifacts
+**/obj/
+**/bin/
