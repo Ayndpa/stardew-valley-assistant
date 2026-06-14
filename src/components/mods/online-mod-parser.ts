@@ -1,5 +1,24 @@
 import type { SmapiMod } from "./OnlineMods"
 
+export interface NexusDependencyFile {
+  uid: number
+  name: string
+  version: string
+  downloadUrl: string
+  vortexDownloadUrl: string
+  dependencyCount: number
+  mod: {
+    name: string
+    url: string
+    thumbnailUrl: string
+    adultContent: boolean
+  }
+}
+
+export interface NexusDependencyGroup {
+  files: NexusDependencyFile[]
+}
+
 export interface ParsedModDetails {
   title: string
   author: string
@@ -13,6 +32,7 @@ export interface ParsedModDetails {
   endorsements: string
   lastUpdated: string
   downloadUrl?: string
+  dependencies: NexusDependencyGroup[]
 }
 
 export interface NexusErrorPage {
@@ -164,6 +184,47 @@ export function extractDownloadUrl(htmlString: string, nexusUrl: string): string
   return fileApi || candidates[0] || ""
 }
 
+function extractDependencies(htmlString: string): NexusDependencyGroup[] {
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(htmlString, "text/html")
+  const allGroups: NexusDependencyGroup[] = []
+
+  // Primary: parse from <main-file-requirements> web component's download-links attribute
+  const requirementEls = doc.querySelectorAll("main-file-requirements[download-links]")
+  requirementEls.forEach(el => {
+    const raw = el.getAttribute("download-links")
+    if (!raw) return
+    try {
+      const data = JSON.parse(raw)
+      if (Array.isArray(data.dependencies)) {
+        for (const group of data.dependencies) {
+          if (Array.isArray(group.files) && group.files.length > 0) {
+            allGroups.push({ files: group.files })
+          }
+        }
+      }
+    } catch {
+      // ignore parse errors
+    }
+  })
+
+  // Deduplicate by file uid across all groups
+  const seenUids = new Set<number>()
+  const dedupedGroups: NexusDependencyGroup[] = []
+  for (const group of allGroups) {
+    const uniqueFiles = group.files.filter(f => {
+      if (seenUids.has(f.uid)) return false
+      seenUids.add(f.uid)
+      return true
+    })
+    if (uniqueFiles.length > 0) {
+      dedupedGroups.push({ files: uniqueFiles })
+    }
+  }
+
+  return dedupedGroups
+}
+
 export function parseHtml(htmlString: string, mod: SmapiMod | null, nexusUrl: string): ParsedModDetails {
   const parser = new DOMParser()
   const doc = parser.parseFromString(htmlString, "text/html")
@@ -283,7 +344,10 @@ export function parseHtml(htmlString: string, mod: SmapiMod | null, nexusUrl: st
   if (!version) version = mod?.Compatibility?.UnofficialVersion?.Text || "1.0.0"
   const downloadUrl = extractDownloadUrl(htmlString, nexusUrl)
 
-  // 6. Extract Last Updated
+  // 6. Extract Dependencies
+  const dependencies = extractDependencies(htmlString)
+
+  // 7. Extract Last Updated
   let lastUpdated = ""
   sideItems.forEach(item => {
     const h3 = item.querySelector("h3")
@@ -305,6 +369,7 @@ export function parseHtml(htmlString: string, mod: SmapiMod | null, nexusUrl: st
     totalDls,
     endorsements,
     lastUpdated,
-    downloadUrl
+    downloadUrl,
+    dependencies
   }
 }

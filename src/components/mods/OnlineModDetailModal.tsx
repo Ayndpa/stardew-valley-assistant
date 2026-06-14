@@ -32,6 +32,7 @@ import { useNexus } from "@/lib/nexus-provider"
 import { ParsedModDetails, parseHtml, getNexusId, detectNexusErrorPage } from "./online-mod-parser"
 import { ModGallery } from "./ModGallery"
 import { ModSpecs, renderStatusBadge } from "./ModSpecs"
+import { ModDependencies } from "./ModDependencies"
 interface CondensedTranslateState extends TranslateState {
   condensedDescriptionTranslated: string | null
   condensedDescLoading: boolean
@@ -303,7 +304,8 @@ export function OnlineModDetailModal({
           uniqueDls: "—",
           totalDls: "—",
         endorsements: "—",
-        lastUpdated: "—"
+        lastUpdated: "—",
+        dependencies: []
       })
       setLoading(false)
       return
@@ -435,7 +437,8 @@ export function OnlineModDetailModal({
           uniqueDls: "4.8M",
           totalDls: "12.1M",
           endorsements: "128,490",
-          lastUpdated: "2024年3月"
+          lastUpdated: "2024年3月",
+          dependencies: []
         })
         setLoading(false)
       }, 1500)
@@ -543,6 +546,8 @@ export function OnlineModDetailModal({
                 <ModGallery key={details.title} galleryImages={details.galleryImages} title={details.title} />
 
                 <ModSpecs details={details} mod={mod} />
+
+                <ModDependencies dependencies={details.dependencies} />
 
                 {/* Description Section */}
                 <div className="space-y-3">
