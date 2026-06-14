@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { useTranslation } from "react-i18next"
 import { ThemeMode, ThemeSeason } from "@/lib/theme-provider"
 import {
   Sun,
@@ -27,26 +28,28 @@ export function OnboardingStep3({
   onPrev,
   onNext,
 }: OnboardingStep3Props) {
+  const { t } = useTranslation()
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="space-y-2 text-center">
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary mb-2">
           <Palette className="h-6 w-6 animate-pulse" />
         </div>
-        <h2 className="text-xl font-bold tracking-tight">个性外观选择</h2>
+        <h2 className="text-xl font-bold tracking-tight">{t("onboarding.appearance.title")}</h2>
         <p className="text-xs text-muted-foreground max-w-sm mx-auto">
-          选择您喜欢的主题模式与星露谷季节配色，随时可以去设置中调整。
+          {t("onboarding.appearance.description")}
         </p>
       </div>
 
       {/* Theme Mode */}
       <div className="space-y-2">
-        <h4 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">主题模式</h4>
+        <h4 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">{t("onboarding.appearance.themeMode")}</h4>
         <div className="grid grid-cols-3 gap-3">
           {[
-            { value: "light" as ThemeMode, label: "浅色", icon: Sun },
-            { value: "dark" as ThemeMode, label: "深色", icon: Moon },
-            { value: "system" as ThemeMode, label: "跟随系统", icon: Monitor },
+            { value: "light" as ThemeMode, key: "onboarding.appearance.themes.light", defaultLabel: "浅色", icon: Sun },
+            { value: "dark" as ThemeMode, key: "onboarding.appearance.themes.dark", defaultLabel: "深色", icon: Moon },
+            { value: "system" as ThemeMode, key: "onboarding.appearance.themes.system", defaultLabel: "跟随系统", icon: Monitor },
           ].map((item) => {
             const Icon = item.icon
             const isActive = themeMode === item.value
@@ -62,7 +65,7 @@ export function OnboardingStep3({
                 )}
               >
                 <Icon className="h-4 w-4 shrink-0" />
-                <span className="text-xs">{item.label}</span>
+                <span className="text-xs">{t(item.key, item.defaultLabel)}</span>
               </Button>
             )
           })}
@@ -71,41 +74,51 @@ export function OnboardingStep3({
 
       {/* Season Themes */}
       <div className="space-y-2">
-        <h4 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">季节主题色</h4>
+        <h4 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">{t("onboarding.appearance.seasonColor")}</h4>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
           {[
             {
               value: "default" as ThemeSeason,
-              label: "经典绿 (Classic Green)",
-              desc: "星露谷的经典底色，自然生机盎然",
+              labelKey: "onboarding.appearance.themes.classic",
+              descKey: "onboarding.appearance.themes.classicDesc",
+              defaultLabel: "经典绿 (Classic Green)",
+              defaultDesc: "星露谷的经典底色，自然生机盎然",
               gradient: "from-emerald-500/90 to-green-600/90",
               color: "bg-emerald-500",
             },
             {
               value: "spring" as ThemeSeason,
-              label: "春季粉 (Spring Sakura)",
-              desc: "粉色樱花瓣漫天飞舞，浪漫温柔",
+              labelKey: "onboarding.appearance.themes.spring",
+              descKey: "onboarding.appearance.themes.springDesc",
+              defaultLabel: "春季粉 (Spring Sakura)",
+              defaultDesc: "粉色樱花瓣漫天飞舞，浪漫温柔",
               gradient: "from-pink-400/90 to-rose-500/90",
               color: "bg-pink-400",
             },
             {
               value: "summer" as ThemeSeason,
-              label: "夏季黄 (Summer Gold)",
-              desc: "金色向日葵傲然绽放，热情洋溢",
+              labelKey: "onboarding.appearance.themes.summer",
+              descKey: "onboarding.appearance.themes.summerDesc",
+              defaultLabel: "夏季黄 (Summer Gold)",
+              defaultDesc: "金色向日葵傲然绽放，热情洋溢",
               gradient: "from-amber-400/90 to-yellow-500/90",
               color: "bg-amber-400",
             },
             {
               value: "fall" as ThemeSeason,
-              label: "秋季橙 (Fall Maple)",
-              desc: "红橙枫叶挂满枝头，丰收的喜悦",
+              labelKey: "onboarding.appearance.themes.fall",
+              descKey: "onboarding.appearance.themes.fallDesc",
+              defaultLabel: "秋季橙 (Fall Maple)",
+              defaultDesc: "红橙枫叶挂满枝头，丰收的喜悦",
               gradient: "from-orange-500/90 to-amber-600/90",
               color: "bg-orange-500",
             },
             {
               value: "winter" as ThemeSeason,
-              label: "冬季蓝 (Winter Frost)",
-              desc: "冰雪覆盖的幽静寒蓝，静谧纯洁",
+              labelKey: "onboarding.appearance.themes.winter",
+              descKey: "onboarding.appearance.themes.winterDesc",
+              defaultLabel: "冬季蓝 (Winter Frost)",
+              defaultDesc: "冰雪覆盖的幽静寒蓝，静谧纯洁",
               gradient: "from-sky-400/90 to-blue-500/90",
               color: "bg-sky-400",
             },
@@ -129,12 +142,12 @@ export function OnboardingStep3({
                 <div className="pl-2 space-y-0.5 flex-1 pr-6">
                   <div className="flex items-center gap-1.5">
                     <span className="font-bold text-xs leading-tight text-foreground group-hover:text-primary transition-colors">
-                      {item.label}
+                      {t(item.labelKey, item.defaultLabel)}
                     </span>
                     <span className={cn("h-1.5 w-1.5 rounded-full", item.color)} />
                   </div>
                   <p className="text-[10px] text-muted-foreground leading-normal pr-4">
-                    {item.desc}
+                    {t(item.descKey, item.defaultDesc)}
                   </p>
                 </div>
 
@@ -153,10 +166,10 @@ export function OnboardingStep3({
       {/* Navigation Action Buttons */}
       <div className="pt-2 flex justify-between gap-4">
         <Button variant="ghost" onClick={onPrev} className="px-5 rounded-xl font-medium">
-          返回
+          {t("onboarding.appearance.prev")}
         </Button>
         <Button onClick={onNext} className="px-6 py-5 rounded-xl flex gap-2 font-semibold">
-          下一步
+          {t("onboarding.appearance.next")}
           <ArrowRight className="h-4 w-4" />
         </Button>
       </div>

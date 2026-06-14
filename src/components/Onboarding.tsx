@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { useTheme } from "@/lib/theme-provider"
+import { useTranslation } from "react-i18next"
 import { Info } from "lucide-react"
+import { OnboardingLanguageStep } from "./onboarding/OnboardingLanguageStep"
 import { OnboardingStep1 } from "./onboarding/OnboardingStep1"
 import { OnboardingStep2 } from "./onboarding/OnboardingStep2"
 import { OnboardingStep3 } from "./onboarding/OnboardingStep3"
@@ -38,7 +40,8 @@ interface OnboardingProps {
 }
 
 export function Onboarding({ onComplete, initialReason }: OnboardingProps) {
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(() => (initialReason ? 3 : 1))
+  const { t } = useTranslation()
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(() => (initialReason ? 4 : 1))
   const { themeMode, themeSeason, setThemeMode, setThemeSeason } = useTheme()
   const [directory, setDirectory] = useState(() => {
     return localStorage.getItem("stardewGameDirectory") || ""
@@ -49,7 +52,7 @@ export function Onboarding({ onComplete, initialReason }: OnboardingProps) {
 
   useEffect(() => {
     if (!initialReason) return
-    setStep(3)
+    setStep(4)
     triggerNotification(initialReason)
   }, [initialReason])
 
@@ -77,18 +80,18 @@ export function Onboarding({ onComplete, initialReason }: OnboardingProps) {
         const selected = await dialog({
           directory: true,
           multiple: false,
-          title: "选择星露谷物语 (Stardew Valley) 安装目录",
+          title: t("settings.gamePath.dialogTitle") || "选择星露谷物语 (Stardew Valley) 安装目录",
           defaultPath: directory || "C:\\Program Files (x86)\\Steam\\steamapps\\common",
         })
 
         if (selected) {
           const path = Array.isArray(selected) ? selected[0] : selected
           setDirectory(path)
-          triggerNotification("已成功选择目录！")
+          triggerNotification(t("settings.gamePath.validPath") || "已成功选择目录！")
         }
       } catch (err) {
         console.error("Tauri dialog error:", err)
-        triggerNotification("打开选择器失败，请手动粘贴路径")
+        triggerNotification(t("settings.gamePath.autoDetectError") || "打开选择器失败，请手动粘贴路径")
       }
     } else {
       // Browser Mock behavior
@@ -99,7 +102,7 @@ export function Onboarding({ onComplete, initialReason }: OnboardingProps) {
       ]
       const randomMockPath = mockPaths[Math.floor(Math.random() * mockPaths.length)]
       setDirectory(randomMockPath)
-      triggerNotification("（Web模式模拟）已填充模拟文件夹路径")
+      triggerNotification(t("settings.gamePath.mockBrowseSuccess") || "（Web模式模拟）已填充模拟文件夹路径")
     }
   }
 
@@ -107,25 +110,25 @@ export function Onboarding({ onComplete, initialReason }: OnboardingProps) {
     const invoke = await getTauriInvoke()
     if (invoke) {
       try {
-        triggerNotification("正在自动搜寻游戏目录...")
+        triggerNotification((t("settings.gamePath.autoDetect") || "正在自动搜寻游戏目录") + "...")
         const detectedPath = await invoke("auto_detect_game_dir") as string
         if (detectedPath) {
           setDirectory(detectedPath)
-          triggerNotification("自动检测成功！已找到游戏安装目录。")
+          triggerNotification(t("settings.gamePath.autoDetectSuccess", { path: detectedPath }) || "自动检测成功！已找到游戏安装目录。")
         } else {
-          triggerNotification("未能在 Steam 库中找到安装 of 星露谷物语，请手动选择。")
+          triggerNotification(t("settings.gamePath.autoDetectFail") || "未能在 Steam 库中找到安装 of 星露谷物语，请手动选择。")
         }
       } catch (err) {
         console.error("Tauri auto detect error:", err)
-        triggerNotification("自动检测失败，请手动选择目录。")
+        triggerNotification(t("settings.gamePath.autoDetectError") || "自动检测失败，请手动选择目录。")
       }
     } else {
       // Browser Mock behavior
-      triggerNotification("（Web模式模拟）正在自动搜寻...")
+      triggerNotification((t("settings.gamePath.autoDetect") || "正在自动搜寻") + "...")
       setTimeout(() => {
         const mockPath = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Stardew Valley"
         setDirectory(mockPath)
-        triggerNotification("自动检测成功！已填充 Steam 默认路径。")
+        triggerNotification(t("settings.gamePath.mockAutoDetectSuccess") || "自动检测成功！已填充 Steam 默认路径。")
       }, 1000)
     }
   }
@@ -139,10 +142,10 @@ export function Onboarding({ onComplete, initialReason }: OnboardingProps) {
 
   const handleConfirm = () => {
     if (!directory.trim()) {
-      triggerNotification("请输入或选择一个文件夹路径")
+      triggerNotification(t("settings.gamePath.placeholder") || "请输入或选择一个文件夹路径")
       return
     }
-    setStep(4)
+    setStep(5)
   }
 
   return (
@@ -160,25 +163,30 @@ export function Onboarding({ onComplete, initialReason }: OnboardingProps) {
         <CardContent className="p-8 relative">
           
           {/* Visual Step Progress Bar */}
-          <div className="flex justify-between items-center mb-8 px-4">
-            <div className="flex items-center gap-2">
-              <span className={`h-6 w-6 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${step >= 1 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>1</span>
-              <span className="text-xs font-medium">欢迎</span>
+          <div className="flex justify-between items-center mb-8 px-2 sm:px-4">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <span className={`h-5 w-5 sm:h-6 sm:w-6 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-bold transition-colors ${step >= 1 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>1</span>
+              <span className="text-[10px] sm:text-xs font-medium">{t("onboarding.steps.language")}</span>
             </div>
-            <div className={`h-[2px] flex-1 mx-2 transition-colors ${step >= 2 ? "bg-primary" : "bg-muted"}`}></div>
-            <div className="flex items-center gap-2">
-              <span className={`h-6 w-6 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${step >= 2 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>2</span>
-              <span className="text-xs font-medium">外观选择</span>
+            <div className={`h-[2px] flex-1 mx-1 sm:mx-2 transition-colors ${step >= 2 ? "bg-primary" : "bg-muted"}`}></div>
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <span className={`h-5 w-5 sm:h-6 sm:w-6 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-bold transition-colors ${step >= 2 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>2</span>
+              <span className="text-[10px] sm:text-xs font-medium">{t("onboarding.steps.welcome")}</span>
             </div>
-            <div className={`h-[2px] flex-1 mx-2 transition-colors ${step >= 3 ? "bg-primary" : "bg-muted"}`}></div>
-            <div className="flex items-center gap-2">
-              <span className={`h-6 w-6 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${step >= 3 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>3</span>
-              <span className="text-xs font-medium">选择目录</span>
+            <div className={`h-[2px] flex-1 mx-1 sm:mx-2 transition-colors ${step >= 3 ? "bg-primary" : "bg-muted"}`}></div>
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <span className={`h-5 w-5 sm:h-6 sm:w-6 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-bold transition-colors ${step >= 3 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>3</span>
+              <span className="text-[10px] sm:text-xs font-medium">{t("onboarding.steps.appearance")}</span>
             </div>
-            <div className={`h-[2px] flex-1 mx-2 transition-colors ${step >= 4 ? "bg-primary" : "bg-muted"}`}></div>
-            <div className="flex items-center gap-2">
-              <span className={`h-6 w-6 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${step >= 4 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>4</span>
-              <span className="text-xs font-medium">开启旅程</span>
+            <div className={`h-[2px] flex-1 mx-1 sm:mx-2 transition-colors ${step >= 4 ? "bg-primary" : "bg-muted"}`}></div>
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <span className={`h-5 w-5 sm:h-6 sm:w-6 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-bold transition-colors ${step >= 4 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>4</span>
+              <span className="text-[10px] sm:text-xs font-medium">{t("onboarding.steps.directory")}</span>
+            </div>
+            <div className={`h-[2px] flex-1 mx-1 sm:mx-2 transition-colors ${step >= 5 ? "bg-primary" : "bg-muted"}`}></div>
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <span className={`h-5 w-5 sm:h-6 sm:w-6 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-bold transition-colors ${step >= 5 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>5</span>
+              <span className="text-[10px] sm:text-xs font-medium">{t("onboarding.steps.journey")}</span>
             </div>
           </div>
 
@@ -189,18 +197,19 @@ export function Onboarding({ onComplete, initialReason }: OnboardingProps) {
           )}
 
           {/* Render Active Step */}
-          {step === 1 && <OnboardingStep1 onNext={() => setStep(2)} />}
-          {step === 2 && (
+          {step === 1 && <OnboardingLanguageStep onNext={() => setStep(2)} />}
+          {step === 2 && <OnboardingStep1 onPrev={() => setStep(1)} onNext={() => setStep(3)} />}
+          {step === 3 && (
             <OnboardingStep3
               themeMode={themeMode}
               themeSeason={themeSeason}
               setThemeMode={setThemeMode}
               setThemeSeason={setThemeSeason}
-              onPrev={() => setStep(1)}
-              onNext={() => setStep(3)}
+              onPrev={() => setStep(2)}
+              onNext={() => setStep(4)}
             />
           )}
-          {step === 3 && (
+          {step === 4 && (
             <OnboardingStep2
               directory={directory}
               setDirectory={setDirectory}
@@ -209,16 +218,16 @@ export function Onboarding({ onComplete, initialReason }: OnboardingProps) {
               setShowPresets={setShowPresets}
               onBrowse={handleBrowse}
               onAutoDetect={handleAutoDetect}
-              onPrev={() => setStep(2)}
+              onPrev={() => setStep(3)}
               onConfirm={handleConfirm}
             />
           )}
-          {step === 4 && (
+          {step === 5 && (
             <OnboardingStep4
               directory={directory}
               themeMode={themeMode}
               themeSeason={themeSeason}
-              onPrev={() => setStep(3)}
+              onPrev={() => setStep(4)}
               onComplete={() => onComplete(directory)}
             />
           )}

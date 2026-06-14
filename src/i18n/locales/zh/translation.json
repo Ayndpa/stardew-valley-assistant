@@ -1309,5 +1309,84 @@
     "launchingVanilla": "原版游戏启动中…",
     "launchFailed": "启动游戏失败: {{error}}",
     "gameExited": "游戏已退出，模组管理已恢复可修改。"
+  },
+  "onboarding": {
+    "steps": {
+      "language": "语言",
+      "welcome": "欢迎",
+      "appearance": "外观",
+      "directory": "目录",
+      "journey": "开启"
+    },
+    "language": {
+      "title": "选择你的语言",
+      "description": "请选择您在超级星露谷中使用的界面语言。这会立即更新界面显示。",
+      "next": "确认并继续"
+    },
+    "welcome": {
+      "title": "欢迎来到超级星露谷 !",
+      "description": "这是你的专属农场助手，能够为你管理游戏模组、提醒作物收获、打理村民关系以及追踪节日。",
+      "features": {
+        "modsTitle": "模组管理",
+        "modsDesc": "一键扫描、启用/禁用、热升级 SMAPI 模组。",
+        "cropsTitle": "作物管理",
+        "cropsDesc": "记录当前种植，计算成熟时间与提醒。",
+        "npcsTitle": "村民关系",
+        "npcsDesc": "记录村民喜好、追踪生日与送礼进度。",
+        "calendarTitle": "日程提醒",
+        "calendarDesc": "完美对接游戏日历，重要事件提前知晓。"
+      },
+      "prev": "返回",
+      "startBtn": "开始配置"
+    },
+    "appearance": {
+      "title": "个性外观选择",
+      "description": "选择您喜欢的主题模式与星露谷季节配色，随时可以去设置中调整。",
+      "themeMode": "主题模式",
+      "seasonColor": "季节主题色",
+      "prev": "返回",
+      "next": "下一步",
+      "themes": {
+        "light": "浅色",
+        "dark": "深色",
+        "system": "跟随系统",
+        "classic": "经典绿 (Classic Green)",
+        "classicDesc": "星露谷的经典底色，自然生机盎然",
+        "spring": "春季粉 (Spring Sakura)",
+        "springDesc": "粉色樱花瓣漫天飞舞，浪漫温柔",
+        "summer": "夏季黄 (Summer Gold)",
+        "summerDesc": "金色向日葵傲然绽放，热情洋溢",
+        "fall": "秋季橙 (Fall Maple)",
+        "fallDesc": "红橙枫叶挂满枝头，丰收的喜悦",
+        "winter": "冬季蓝 (Winter Frost)",
+        "winterDesc": "冰雪覆盖的幽静寒蓝，静谧纯洁"
+      }
+    },
+    "directory": {
+      "title": "定位游戏目录",
+      "description": "我们需要定位您的《星露谷物语》安装目录，以读取您的模组文件 and 进行数据交互。",
+      "label": "安装目录路径",
+      "placeholder": "例如: C:\\Program Files (x86)\\Steam\\steamapps\\common\\Stardew Valley",
+      "autoDetect": "自动检测",
+      "browse": "浏览",
+      "invalid": "该路径看起来不像标准的星露谷物语安装文件夹。",
+      "valid": "已检测到星露谷物语路径标识！",
+      "presets": "查看快捷预设路径 (可选安装位置)",
+      "prev": "返回",
+      "next": "下一步"
+    },
+    "journey": {
+      "title": "配置已完成！",
+      "description": "游戏安装目录与个性外观已配置完成。超级星露谷已经为您准备就绪。",
+      "summary": {
+        "directory": "已连接游戏目录:",
+        "theme": "主题模式:",
+        "season": "季节主题色:",
+        "features": "已启用功能:",
+        "featuresList": "模组扫描 · 存档读取 · 日历通知"
+      },
+      "prev": "返回",
+      "enter": "进入助手"
+    }
   }
 }

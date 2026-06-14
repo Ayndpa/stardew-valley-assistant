@@ -1439,5 +1439,84 @@
     "launchingVanilla": "Launching vanilla game…",
     "launchFailed": "Failed to launch game: {{error}}",
     "gameExited": "Game has exited. Mod management is now editable."
+  },
+  "onboarding": {
+    "steps": {
+      "language": "Language",
+      "welcome": "Welcome",
+      "appearance": "Theme",
+      "directory": "Path",
+      "journey": "Start"
+    },
+    "language": {
+      "title": "Select Your Language",
+      "description": "Choose the interface language you want to use. This will update the display language immediately.",
+      "next": "Confirm & Continue"
+    },
+    "welcome": {
+      "title": "Welcome to Stardew Valley Assistant!",
+      "description": "Your cozy farm companion for managing mods, tracking crop harvest, nurturing villager friendships, and planning calendars.",
+      "features": {
+        "modsTitle": "Mod Manager",
+        "modsDesc": "One-click scan, enable/disable, and upgrade SMAPI mods.",
+        "cropsTitle": "Crops Monitor",
+        "cropsDesc": "Monitor planted crops, calculate harvest cycles, and receive alerts.",
+        "npcsTitle": "Villager Relations",
+        "npcsDesc": "Learn villager preferences, track birthdays, and gift progress.",
+        "calendarTitle": "Calendar Events",
+        "calendarDesc": "Sync with the in-game calendar to stay ahead of upcoming festivals."
+      },
+      "prev": "Back",
+      "startBtn": "Start Setup"
+    },
+    "appearance": {
+      "title": "Personalize Appearance",
+      "description": "Choose your preferred theme mode and Stardew Valley season palette. You can adjust this anytime in settings.",
+      "themeMode": "Theme Mode",
+      "seasonColor": "Season Accent Color",
+      "prev": "Back",
+      "next": "Next Step",
+      "themes": {
+        "light": "Light",
+        "dark": "Dark",
+        "system": "System",
+        "classic": "Classic Green",
+        "classicDesc": "The classic background of Stardew Valley, full of natural life",
+        "spring": "Spring Sakura",
+        "springDesc": "Pink cherry blossom petals fluttering, romantic and gentle",
+        "summer": "Summer Gold",
+        "summerDesc": "Golden sunflowers blooming proudly, warm and enthusiastic",
+        "fall": "Fall Maple",
+        "fallDesc": "Red and orange maple leaves, the joy of harvest",
+        "winter": "Winter Frost",
+        "winterDesc": "Quiet cold frost blue, peaceful and pure"
+      }
+    },
+    "directory": {
+      "title": "Locate Game Folder",
+      "description": "We need to locate your Stardew Valley installation folder to read your mods and sync game data.",
+      "label": "Game Directory Path",
+      "placeholder": "e.g., C:\\Program Files (x86)\\Steam\\steamapps\\common\\Stardew Valley",
+      "autoDetect": "Auto Detect",
+      "browse": "Browse",
+      "invalid": "This path does not look like a standard Stardew Valley installation folder.",
+      "valid": "Valid Stardew Valley directory identifier detected!",
+      "presets": "Show Preset Paths (Common installation locations)",
+      "prev": "Back",
+      "next": "Next Step"
+    },
+    "journey": {
+      "title": "Setup Complete!",
+      "description": "Your game path and preferences have been successfully configured. Stardew Valley Assistant is ready for you.",
+      "summary": {
+        "directory": "Connected Directory:",
+        "theme": "Theme Mode:",
+        "season": "Season Palette:",
+        "features": "Enabled Features:",
+        "featuresList": "Mod Scan · Save Read · Calendar Alert"
+      },
+      "prev": "Back",
+      "enter": "Enter Assistant"
+    }
   }
 }
