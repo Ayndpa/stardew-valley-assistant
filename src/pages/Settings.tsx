@@ -64,6 +64,7 @@ const MOCK_SAVE_DETAIL: SaveDetail = {
   weatherToday: "Sun",
   weatherTomorrow: "Rain",
   museumPiecesCount: 62,
+  museumPieces: [],
   friendships: [],
   farmerAppearance: null,
   farmerAvatar: null,

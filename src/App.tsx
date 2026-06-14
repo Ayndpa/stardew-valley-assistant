@@ -53,7 +53,7 @@ const NPCs = lazy(async () => {
 
 function App() {
   const { t } = useTranslation()
-  const [currentPage, setCurrentPage] = useState<Page>("fishingMap")
+  const [currentPage, setCurrentPage] = useState<Page>("dashboard")
   const [itemNavigationTarget, setItemNavigationTarget] = useState<string | null>(null)
   const [showOnboarding, setShowOnboarding] = useState(() => {
     return !localStorage.getItem("stardewGameDirectory")

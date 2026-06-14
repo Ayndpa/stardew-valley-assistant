@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Checkbox } from "@/components/ui/checkbox"
 import { useTranslation } from "react-i18next"
 import {
   Sun,
@@ -14,9 +13,12 @@ import {
   Pickaxe,
   TreePine,
   Clock,
-  User,
   FileQuestion,
+  Package,
+  CheckCircle2,
+  Circle,
 } from "lucide-react"
+import { ItemEntry } from "./items/types"
 
 // Dynamic imports will be done inline inside useEffect/handlers for reliability
 
@@ -54,49 +56,11 @@ interface SaveDetail {
   weatherToday: string
   weatherTomorrow: string
   museumPiecesCount: number
+  museumPieces: string[]
   friendships: FriendshipInfo[]
 }
 
-interface TaskItem {
-  id: string
-  task: string
-  done: boolean
-}
-
-const makeTodayTaskKey = (selectedSaveId: string, summary: SaveSummary) =>
-  `dashboard-tasks:${selectedSaveId}:${summary.year}-${summary.season}-${summary.dayOfMonth}`
-
-const loadTodayTasks = (storageKey: string) => {
-  try {
-    const raw = window.localStorage.getItem(storageKey)
-    if (!raw) return {}
-    const parsed = JSON.parse(raw)
-    if (!parsed || typeof parsed !== "object") return {}
-    const entries = Object.entries(parsed).filter(
-      ([, v]) => typeof v === "boolean",
-    )
-    return Object.fromEntries(entries) as Record<string, boolean>
-  } catch {
-    return {}
-  }
-}
-
-const saveTodayTasks = (storageKey: string, tasks: Record<string, boolean>) => {
-  try {
-    window.localStorage.setItem(storageKey, JSON.stringify(tasks))
-  } catch {
-    // ignore
-  }
-}
-
 const WEEKDAY_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
-
-const BIRTHDAYS: Record<number, Record<number, string>> = {
-  0: { 4: "Kent", 7: "Lewis", 10: "Vincent", 14: "Haley", 18: "Pam", 20: "Shane", 26: "Pierre" },
-  1: { 4: "Jas", 8: "Gus", 10: "Maru", 13: "Alex", 17: "Sam", 19: "Demetrius", 22: "Dwarf", 24: "Willy", 26: "Leo" },
-  2: { 2: "Penny", 5: "Elliott", 11: "Jodi", 13: "Abigail", 15: "Sandy", 18: "Marnie", 21: "Robin", 24: "George" },
-  3: { 3: "Krobus", 7: "Linus", 10: "Sebastian", 14: "Harvey", 17: "Wizard", 20: "Evelyn", 23: "Leah", 26: "Clint" }
-}
 
 const VILLAGERS = new Set([
   "Abigail", "Alex", "Caroline", "Clint", "Demetrius", "Elliott", "Emily", "Evelyn", 
@@ -171,17 +135,14 @@ interface DashboardProps {
 }
 
 export function Dashboard({ selectedSaveId }: DashboardProps) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [detail, setDetail] = useState<SaveDetail | null>(null)
   const [loading, setLoading] = useState(true)
-  const [manualDone, setManualDone] = useState<Record<string, boolean>>({})
   const [showAllForecast, setShowAllForecast] = useState(false)
   const [selectedForecastIndex, setSelectedForecastIndex] = useState(0)
+  const [itemEntries, setItemEntries] = useState<ItemEntry[] | null>(null)
 
-  const taskStorageKey = useMemo(() => {
-    if (!selectedSaveId || !detail) return ""
-    return makeTodayTaskKey(selectedSaveId, detail.summary)
-  }, [selectedSaveId, detail])
+  const activeLang = i18n.resolvedLanguage || i18n.language || "zh"
 
   // Fetch details for the selected save
   useEffect(() => {
@@ -190,14 +151,19 @@ export function Dashboard({ selectedSaveId }: DashboardProps) {
         setLoading(false)
         return
       }
-      
+
       setLoading(true)
       const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__;
-      
+
       if (isTauri) {
         try {
           const { invoke } = await import("@tauri-apps/api/core");
-          const d: SaveDetail = await invoke("get_save_detail", { id: selectedSaveId })
+          const gameDir = localStorage.getItem("stardewGameDirectory") || undefined
+          const d: SaveDetail = await invoke("get_save_detail", {
+            id: selectedSaveId,
+            gameDir,
+            includeAvatar: false,
+          })
           setDetail(d)
         } catch (err) {
           console.error("Error loading save detail:", err)
@@ -212,13 +178,41 @@ export function Dashboard({ selectedSaveId }: DashboardProps) {
     fetchDetail()
   }, [selectedSaveId])
 
+  // Fetch item game data for resolving museum piece names
   useEffect(() => {
-    if (!taskStorageKey) {
-      setManualDone({})
-      return
+    let canceled = false
+
+    async function loadItems() {
+      const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__
+      if (!isTauri) {
+        setItemEntries([])
+        return
+      }
+
+      const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+      try {
+        const { invoke } = await import("@tauri-apps/api/core")
+        const data = await invoke<{ encyclopedia: ItemEntry[] }>("get_item_game_data", {
+          gameDir: gameDir.trim() || undefined,
+          lang: activeLang,
+        })
+        if (!canceled) {
+          setItemEntries(data.encyclopedia)
+        }
+      } catch (err) {
+        console.error("Error loading item game data:", err)
+        if (!canceled) {
+          setItemEntries([])
+        }
+      }
     }
-    setManualDone(loadTodayTasks(taskStorageKey))
-  }, [taskStorageKey])
+
+    loadItems()
+
+    return () => {
+      canceled = true
+    }
+  }, [activeLang])
 
   const forecastResetKey = detail
     ? `${detail.summary.id}-${detail.summary.season}-${detail.summary.year}-${detail.summary.dayOfMonth}`
@@ -229,80 +223,33 @@ export function Dashboard({ selectedSaveId }: DashboardProps) {
     }
   }, [forecastResetKey])
 
-  const tasksList = useMemo(() => {
-    if (!detail) return []
-    const summary = detail.summary
-    const dayOfMonth = summary.dayOfMonth
+  // Museum collection data (must be before any early returns to keep hook order stable)
+  const museumItemSet = useMemo(() => {
+    if (!detail) return new Set<string>()
+    return new Set(detail.museumPieces.map((id) => id.trim()))
+  }, [detail])
 
-    const tasks: TaskItem[] = []
-    const weekdayIdx = (dayOfMonth - 1) % 7
-    if (weekdayIdx === 4 || weekdayIdx === 6) {
-      tasks.push({ id: "merchant", task: t("dashboard.tasks.merchant"), done: false })
-    }
+  const allMuseumItems = useMemo(() => {
+    if (!itemEntries) return []
+    return itemEntries.filter(
+      (item) => item.itemTypeKey === "arch" || item.itemTypeKey === "minerals",
+    )
+  }, [itemEntries])
 
-    const birthdayNPCKey = BIRTHDAYS[summary.season]?.[dayOfMonth]
-    if (birthdayNPCKey) {
-      const npcName = t("npcs." + birthdayNPCKey)
-      tasks.push({ id: "birthday", task: t("dashboard.tasks.birthday", { name: npcName }), done: false })
-    }
+  const collectedMuseumItems = useMemo(() => {
+    return allMuseumItems.filter((item) => museumItemSet.has(item.id))
+  }, [allMuseumItems, museumItemSet])
 
-    const rainTaskDone =
-      detail.weatherToday === "Rain" ||
-      detail.weatherToday === "Storm" ||
-      detail.weatherToday === "GreenRain"
-    tasks.push({
-      id: "watering",
-      task: rainTaskDone ? t("dashboard.tasks.wateringRain") : t("dashboard.tasks.wateringDry"),
-      done: rainTaskDone,
-    })
+  const missingMuseumItems = useMemo(() => {
+    return allMuseumItems.filter((item) => !museumItemSet.has(item.id))
+  }, [allMuseumItems, museumItemSet])
 
-    const trackedVillagers = detail.friendships.filter((f) => VILLAGERS.has(f.npcName))
-    const talkedCount = trackedVillagers.filter((f) => f.talkedToToday).length
-    const giftedCount = trackedVillagers.filter((f) => f.giftsToday > 0).length
-    const trackedTotal = Math.max(trackedVillagers.length, 1)
-    tasks.push({
-      id: "talk",
-      task: t("dashboard.tasks.talk", { talked: talkedCount, total: trackedTotal }),
-      done: talkedCount > 0,
-    })
-    tasks.push({
-      id: "gift",
-      task: t("dashboard.tasks.gift", { gifted: giftedCount, total: trackedTotal }),
-      done: giftedCount > 0,
-    })
-
-    tasks.push({
-      id: "mine",
-      task: summary.miningLevel > 0
-        ? t("dashboard.tasks.mineActive", { level: summary.deepestMineLevel })
-        : t("dashboard.tasks.mineInactive"),
-      done: false,
-    })
-    tasks.push({
-      id: "fish",
-      task: summary.fishingLevel > 0
-        ? t("dashboard.tasks.fishActive")
-        : t("dashboard.tasks.fishInactive"),
-      done: false,
-    })
-
-    if (taskStorageKey) {
-      const normalizedTaskState = loadTodayTasks(taskStorageKey)
-      return tasks.map((task) => ({
-        ...task,
-        done: normalizedTaskState[task.id] ?? task.done,
-      }))
-    }
-    return tasks
-  }, [detail, taskStorageKey, t])
-
-  const tasksWithManualState = tasksList.map((task) => ({
-    ...task,
-    done: manualDone[task.id] ?? task.done,
-  }))
-
-  const completedTasks = tasksWithManualState.filter((t) => t.done).length
-
+  const museumProgress = useMemo(() => {
+    const total = allMuseumItems.length
+    if (total === 0) return { percent: 0, collected: detail?.museumPiecesCount || 0, total: 95 }
+    const collected = collectedMuseumItems.length
+    return { percent: Math.round((collected / total) * 100), collected, total }
+  }, [allMuseumItems, collectedMuseumItems, detail])
 
   if (loading) {
     return (
@@ -381,65 +328,12 @@ export function Dashboard({ selectedSaveId }: DashboardProps) {
     },
     {
       title: t("dashboard.stats.collectionTitle"),
-      value: `${Math.round((detail.museumPiecesCount / 95) * 100)}%`,
+      value: `${museumProgress.percent}%`,
       icon: <Pickaxe className="h-5 w-5" />,
-      description: t("dashboard.stats.collectionDesc", { count: detail.museumPiecesCount }),
+      description: t("dashboard.stats.collectionDesc", { count: museumProgress.collected, total: museumProgress.total }),
       color: "text-blue-500",
     },
   ]
-
-  const toggleTask = (taskId: string, done: boolean) => {
-    if (!taskStorageKey) return
-    setManualDone((prev) => {
-      const next = { ...prev, [taskId]: done }
-      saveTodayTasks(taskStorageKey, next)
-      return next
-    })
-  }
-
-  // Dynamic recent activities
-  const recentActivitiesList = []
-  recentActivitiesList.push({
-    icon: <Coins className="h-4 w-4 text-yellow-500" />,
-    text: t("dashboard.recentActivities.earnedMoney", { amount: summary.totalMoneyEarned.toLocaleString() }),
-    time: t("dashboard.time.recent"),
-  })
-  if (summary.deepestMineLevel > 0) {
-    recentActivitiesList.push({
-      icon: <Pickaxe className="h-4 w-4 text-blue-400" />,
-      text: t("dashboard.recentActivities.mineDepth", { level: summary.deepestMineLevel }),
-      time: t("dashboard.time.dayBeforeYesterday"),
-    })
-  }
-  
-  const bestFriend = detail.friendships.reduce((best, current) => {
-    if (VILLAGERS.has(current.npcName) && current.points > (best?.points || 0)) {
-      return current
-    }
-    return best
-  }, null as FriendshipInfo | null)
-
-  if (bestFriend && bestFriend.points > 0) {
-    const displayName = t("npcs." + bestFriend.npcName)
-    const hearts = Math.floor(bestFriend.points / 250)
-    recentActivitiesList.push({
-      icon: <Heart className="h-4 w-4 text-red-400" />,
-      text: t("dashboard.recentActivities.friendshipLevel", { name: displayName, hearts }),
-      time: t("dashboard.time.thisWeek"),
-    })
-  }
-  if (detail.museumPiecesCount > 0) {
-    recentActivitiesList.push({
-      icon: <User className="h-4 w-4 text-purple-400" />,
-      text: t("dashboard.recentActivities.museumDonations", { count: detail.museumPiecesCount }),
-      time: t("dashboard.time.recent"),
-    })
-  }
-  recentActivitiesList.push({
-    icon: <TreePine className="h-4 w-4 text-green-500" />,
-    text: t("dashboard.recentActivities.daysPlayed", { count: dayOfMonth + (year - 1) * 112 }),
-    time: t("dashboard.time.today"),
-  })
 
   // 7-day forecast generation
   const forecastRaw = generateForecast(dayOfMonth, summary.season, summary.id, detail.weatherTomorrow)
@@ -528,70 +422,12 @@ export function Dashboard({ selectedSaveId }: DashboardProps) {
         ))}
       </div>
 
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Today's Tasks */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">{t("dashboard.tasks.title")}</CardTitle>
-            <CardDescription>
-              {t("dashboard.tasks.completedCount", { completed: completedTasks, total: tasksList.length })}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {tasksWithManualState.map((item, i) => (
-                <div
-                  key={i}
-                className="flex items-center gap-3 p-2 rounded-md hover:bg-accent/50 transition-colors"
-              >
-                <Checkbox
-                  checked={item.done}
-                  onCheckedChange={(checked) => toggleTask(item.id, checked === true)}
-                  aria-label={item.task}
-                />
-                <span
-                  className={`text-sm ${
-                    item.done ? "text-muted-foreground line-through" : ""
-                  }`}
-                >
-                  {item.task}
-                </span>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        {/* Recent Activities */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">{t("dashboard.recentActivities.title")}</CardTitle>
-            <CardDescription>{t("dashboard.recentActivities.description")}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {recentActivitiesList.map((activity, i) => (
-                <div key={i} className="flex items-start gap-3">
-                  <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-full bg-accent">
-                    {activity.icon}
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm">{activity.text}</p>
-                    <p className="text-xs text-muted-foreground">{activity.time}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
       {/* Weather Forecast */}
       <Card>
         <CardHeader className="space-y-3">
           <div className="flex items-start justify-between gap-3">
             <div>
               <CardTitle className="text-lg">{t("dashboard.forecast.title")}</CardTitle>
-              <CardDescription>{t("dashboard.forecast.description")}</CardDescription>
             </div>
             {forecastData.length > 2 && (
               <button
@@ -668,9 +504,107 @@ export function Dashboard({ selectedSaveId }: DashboardProps) {
               </button>
             </div>
           )}
-          <div className="text-center text-[11px] text-muted-foreground">
-            {t("dashboard.forecast.footer", { count: forecastData.length })}
+        </CardContent>
+      </Card>
+
+      {/* Collection Stats */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <CardTitle className="text-lg">{t("dashboard.collection.title")}</CardTitle>
+              <CardDescription>
+                {t("dashboard.collection.description", {
+                  collected: museumProgress.collected,
+                  total: museumProgress.total,
+                })}
+              </CardDescription>
+            </div>
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-accent shrink-0">
+              <Pickaxe className="h-5 w-5 text-blue-500" />
+            </div>
           </div>
+          <div className="mt-3 h-2 w-full rounded-full bg-muted overflow-hidden">
+            <div
+              className="h-full rounded-full bg-blue-500 transition-all"
+              style={{ width: `${museumProgress.total > 0 ? (museumProgress.collected / museumProgress.total) * 100 : 0}%` }}
+            />
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {itemEntries === null ? (
+            <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
+              {t("dashboard.collection.loading")}
+            </div>
+          ) : (
+            <>
+              <div>
+                <h4 className="text-sm font-semibold flex items-center gap-2 mb-2">
+                  <CheckCircle2 className="h-4 w-4 text-green-500" />
+                  {t("dashboard.collection.collectedTitle", { count: collectedMuseumItems.length })}
+                </h4>
+                {collectedMuseumItems.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">{t("dashboard.collection.noCollected")}</p>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-[240px] overflow-y-auto pr-1">
+                    {collectedMuseumItems.map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex items-center gap-2 p-2 rounded-md bg-accent/30 text-sm"
+                      >
+                        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-background/80">
+                          {item.icon ? (
+                            <img
+                              src={item.icon}
+                              alt=""
+                              className="h-5 w-5 object-contain"
+                              style={{ imageRendering: "pixelated" }}
+                            />
+                          ) : (
+                            <Package className="h-3.5 w-3.5 text-muted-foreground" />
+                          )}
+                        </div>
+                        <span className="truncate">{item.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <h4 className="text-sm font-semibold flex items-center gap-2 mb-2">
+                  <Circle className="h-4 w-4 text-amber-500" />
+                  {t("dashboard.collection.missingTitle", { count: missingMuseumItems.length })}
+                </h4>
+                {missingMuseumItems.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">{t("dashboard.collection.noMissing")}</p>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-[240px] overflow-y-auto pr-1">
+                    {missingMuseumItems.map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex items-center gap-2 p-2 rounded-md bg-accent/20 text-sm text-muted-foreground"
+                      >
+                        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-background/80">
+                          {item.icon ? (
+                            <img
+                              src={item.icon}
+                              alt=""
+                              className="h-5 w-5 object-contain opacity-60"
+                              style={{ imageRendering: "pixelated" }}
+                            />
+                          ) : (
+                            <Package className="h-3.5 w-3.5 text-muted-foreground" />
+                          )}
+                        </div>
+                        <span className="truncate">{item.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
     </div>

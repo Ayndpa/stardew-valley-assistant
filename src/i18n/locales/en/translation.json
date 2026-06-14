@@ -238,7 +238,16 @@
       "friendshipTitle": "Friendships",
       "friendshipDesc": "Villagers with 8+ hearts",
       "collectionTitle": "Museum Collection",
-      "collectionDesc": "Donated {{count}}/95"
+      "collectionDesc": "Donated {{count}}/{{total}}"
+    },
+    "collection": {
+      "title": "Museum Collectibles",
+      "description": "Donated {{collected}}/{{total}} collectibles",
+      "loading": "Loading game item data…",
+      "collectedTitle": "Collected ({{count}})",
+      "missingTitle": "Missing ({{count}})",
+      "noCollected": "No artifacts or minerals donated to the museum yet",
+      "noMissing": "Congratulations! All museum collectibles are complete"
     },
     "tasks": {
       "title": "Today's Tasks",
@@ -271,13 +280,11 @@
     },
     "forecast": {
       "title": "Weather Forecast",
-      "description": "Look at today first, then swipe left/right to see the following days",
       "showLess": "Only show 2 days",
       "showMore": "Expand 7 days",
       "currentViewing": "Current Viewing",
       "tip": "In-game weather is usually based on today and tomorrow, focus on today's weather tips",
       "collapseTip": "Collapse and return to today/tomorrow",
-      "footer": "Total {{count}} days forecast · Swipe cards to quickly switch view",
       "today": "Today",
       "tomorrow": "Tomorrow",
       "weekdays": {

@@ -238,7 +238,16 @@
       "friendshipTitle": "关系进度",
       "friendshipDesc": "已达满心(8心以上)的村民",
       "collectionTitle": "收集进度",
-      "collectionDesc": "博物馆捐赠 {{count}}/95"
+      "collectionDesc": "博物馆捐赠 {{count}}/{{total}}"
+    },
+    "collection": {
+      "title": "博物馆收集品",
+      "description": "已捐赠 {{collected}}/{{total}} 件收集品",
+      "loading": "正在读取游戏物品数据…",
+      "collectedTitle": "已收集 ({{count}})",
+      "missingTitle": "未收集 ({{count}})",
+      "noCollected": "尚未向博物馆捐赠任何文物或矿石",
+      "noMissing": "恭喜！博物馆收集品已全部集齐"
     },
     "tasks": {
       "title": "今日待办",
@@ -271,13 +280,11 @@
     },
     "forecast": {
       "title": "天气预报",
-      "description": "先看今天，再左右滑看看后面的天",
       "showLess": "仅看近两天",
       "showMore": "展开 7 天",
       "currentViewing": "当前查看",
       "tip": "游戏内天气通常以当日与次日行为主，建议优先关注今日的状态提示",
       "collapseTip": "收起并返回今日/明天",
-      "footer": "共 {{count}} 天预报 · 上滑动卡片可快速切换查看",
       "today": "今天",
       "tomorrow": "明天",
       "weekdays": {

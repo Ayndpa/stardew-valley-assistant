@@ -61,6 +61,7 @@ export interface SaveDetail {
   weatherToday: string
   weatherTomorrow: string
   museumPiecesCount: number
+  museumPieces: string[]
   friendships: FriendshipInfo[]
   farmerAppearance?: FarmerAppearance | null
   farmerAvatar?: string | null

@@ -46,6 +46,7 @@ pub struct SaveDetail {
     pub weather_today: String,
     pub weather_tomorrow: String,
     pub museum_pieces_count: i32,
+    pub museum_pieces: Vec<String>,
     pub friendships: Vec<FriendshipInfo>,
     pub farmer_appearance: Option<FarmerAppearance>,
     pub farmer_avatar: Option<String>,
@@ -137,14 +138,32 @@ pub fn parse_friendship_data(xml: &str) -> Vec<FriendshipInfo> {
     list
 }
 
-pub fn parse_museum_pieces_count(xml: &str) -> i32 {
+pub fn parse_museum_pieces(xml: &str) -> Vec<String> {
+    let mut pieces = Vec::new();
     if let Some(start_idx) = xml.find("<museumPieces>") {
         if let Some(end_idx) = xml.find("</museumPieces>") {
             let inner = &xml[start_idx + 14..end_idx];
-            return inner.matches("<item>").count() as i32;
+            let mut search_pos = 0;
+            while let Some(item_start) = inner[search_pos..].find("<item>") {
+                let abs_start = search_pos + item_start;
+                let Some(item_end_rel) = inner[abs_start..].find("</item>") else {
+                    break;
+                };
+                let abs_end = abs_start + item_end_rel;
+                let item_xml = &inner[abs_start + 6..abs_end];
+                let id = item_xml
+                    .replace("<int>", "")
+                    .replace("</int>", "")
+                    .trim()
+                    .to_string();
+                if !id.is_empty() {
+                    pieces.push(id);
+                }
+                search_pos = abs_end + 7;
+            }
         }
     }
-    0
+    pieces
 }
 
 pub fn parse_weather(xml: &str) -> (String, String) {
@@ -382,7 +401,8 @@ fn get_save_detail_sync(
         .map_err(|e| format!("Failed to read main save file {}: {}", id, e))?;
 
     let (weather_today, weather_tomorrow) = parse_weather(&main_xml);
-    let museum_pieces_count = parse_museum_pieces_count(&main_xml);
+    let museum_pieces = parse_museum_pieces(&main_xml);
+    let museum_pieces_count = museum_pieces.len() as i32;
     let friendships = parse_friendship_data(&info_xml);
     let farmer_appearance = FarmerAppearance::from_save_xml(&info_xml);
     let (farmer_avatar, farmer_avatar_error) = if include_avatar.unwrap_or(false) {
@@ -399,6 +419,7 @@ fn get_save_detail_sync(
         weather_today,
         weather_tomorrow,
         museum_pieces_count,
+        museum_pieces,
         friendships,
         farmer_appearance: Some(farmer_appearance),
         farmer_avatar,
