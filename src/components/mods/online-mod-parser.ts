@@ -296,7 +296,7 @@ export function parseHtml(htmlString: string, mod: SmapiMod | null, nexusUrl: st
     })
 
     const cleaned = tempContainer.innerHTML
-      .replace(/<\s*br\s*\/?\s*>/gi, "")
+      .replace(/(<\s*br\s*\/?\s*>)(\s*<\s*br\s*\/?\s*>)+/gi, "$1")
       .replace(/<\s*\/\s*p\s*>\s*<\s*p[^>]*>/gi, "")
 
     return cleaned
