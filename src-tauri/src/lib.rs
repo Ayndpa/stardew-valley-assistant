@@ -26,7 +26,7 @@ use crate::mods::{
     save_profile, toggle_mod,
 };
 use crate::saves::{
-    create_save_backup, delete_save_backup, get_npc_locations, get_planted_crops, get_save_detail,
+    create_save_backup, delete_save_backup, get_npc_locations, get_npc_schedule, check_game_running, get_planted_crops, get_save_detail,
     get_save_editor_data, list_save_backups, list_save_files, restore_save_backup,
     update_save_editor_data,
 };
@@ -301,6 +301,8 @@ pub fn run() {
             delete_save_backup,
             get_save_detail,
             get_npc_locations,
+            get_npc_schedule,
+            check_game_running,
             get_save_editor_data,
             update_save_editor_data,
             get_planted_crops,

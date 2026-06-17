@@ -786,7 +786,21 @@
     "mapImageError": "游戏底图渲染失败：{{error}}",
     "webPreviewError": "当前 Web 预览无法读取本地游戏地图，请在桌面应用中打开。",
     "svgTileTitle": "({{x}}, {{y}}) 深度 {{depth}}",
-    "svgTileTitleHidden": "({{x}}, {{y}}) 深度 {{depth}} · 隐藏水域"
+    "svgTileTitleHidden": "({{x}}, {{y}}) 深度 {{depth}} · 隐藏水域",
+    "showNpcRoute": "显示 NPC 行动路线",
+    "showNpcLocation": "显示 NPC 实时位置",
+    "selectNpc": "选择 NPC",
+    "npcScheduleTitle": "日程路线点",
+    "npcLocationsTitle": "NPC 实时位置",
+    "noSaveForNpc": "请先加载存档以载入日期和 NPC 位置数据",
+    "noSchedulePoints": "该 NPC 在当前日期没有日程或日程不在此地图",
+    "clickToPan": "点击定位到地图对应坐标",
+    "otherMapPoint": "位于其他地图 [{{location}}]",
+    "timeLabel": "时间",
+    "locationLabel": "地点",
+    "coordinatesLabel": "坐标",
+    "routeOverlay": "路线",
+    "npcOverlay": "NPC 图层"
   },
   "saveEditor": {
     "warningTitle": "存档编辑警告",

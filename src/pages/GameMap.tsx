@@ -84,6 +84,29 @@ interface HoveredFishingInfo {
   y: number
 }
 
+interface NpcSchedulePoint {
+  time: number
+  location: string
+  locationDisplayName: string
+  tileX: number
+  tileY: number
+  direction: number
+}
+
+interface NpcLocationInfo {
+  npcName: string
+  location: string
+  locationDisplayName: string
+  tileX?: number | null
+  tileY?: number | null
+  direction?: number | null
+  scheduleKey?: string | null
+  scheduleTime?: number | null
+  source: string
+  confidence: string
+  updatedAt?: string | null
+}
+
 const depthColors = ["#38bdf8", "#22c55e", "#facc15", "#fb923c", "#ef4444", "#a855f7"]
 
 function formatCount(value: number) {
@@ -94,7 +117,11 @@ function tileColor(depth: number) {
   return depthColors[Math.max(0, Math.min(depth, depthColors.length - 1))]
 }
 
-export function FishingMap() {
+export interface GameMapProps {
+  selectedSaveId?: string
+}
+
+export function GameMap({ selectedSaveId }: GameMapProps) {
   const { t, i18n } = useTranslation()
   const activeLang = i18n.resolvedLanguage || i18n.language || "zh"
 
@@ -129,6 +156,55 @@ export function FishingMap() {
   const [offset, setOffset] = useState({ x: 0, y: 0 })
   const [isDragging, setIsDragging] = useState(false)
   const [hoveredFishingInfo, setHoveredFishingInfo] = useState<HoveredFishingInfo | null>(null)
+
+  // NPC and Schedule related states
+  const [saveSeason, setSaveSeason] = useState<number>(0)
+  const [saveDay, setSaveDay] = useState<number>(1)
+  const [npcList, setNpcList] = useState<any[]>([])
+  const [npcPortraits, setNpcPortraits] = useState<Record<string, string>>({})
+  const [selectedNpcId, setSelectedNpcId] = useState<string>("")
+  const [showNpcRoute, setShowNpcRoute] = useState<boolean>(false)
+  const [showNpcLocations, setShowNpcLocations] = useState<boolean>(true)
+  const [npcLocations, setNpcLocations] = useState<NpcLocationInfo[]>([])
+  const [schedulePoints, setSchedulePoints] = useState<NpcSchedulePoint[]>([])
+  const [loadingSchedule, setLoadingSchedule] = useState<boolean>(false)
+  const [loadingLocations, setLoadingLocations] = useState<boolean>(false)
+  const [npcLocationError, setNpcLocationError] = useState<string | null>(null)
+  const [isGameRunning, setIsGameRunning] = useState<boolean>(true)
+  const [pendingFocus, setPendingFocus] = useState<{ mapId: string; x: number; y: number } | null>(null)
+
+  const npcDropdownRef = useRef<HTMLDivElement | null>(null)
+  const [isNpcDropdownOpen, setIsNpcDropdownOpen] = useState(false)
+  const [npcSearchTerm, setNpcSearchTerm] = useState("")
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (npcDropdownRef.current && !npcDropdownRef.current.contains(event.target as Node)) {
+        setIsNpcDropdownOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
+
+  useEffect(() => {
+    const checkRunning = async () => {
+      const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__
+      if (!isTauri) return
+      try {
+        const { invoke } = await import("@tauri-apps/api/core")
+        const running = await invoke<boolean>("check_game_running")
+        setIsGameRunning(running)
+      } catch (err) {
+        console.error("Failed to check if game is running:", err)
+        setIsGameRunning(false)
+      }
+    }
+
+    checkRunning()
+    const timer = setInterval(checkRunning, 10000)
+    return () => clearInterval(timer)
+  }, [])
 
   const loadMaps = async (forceRefresh = false) => {
     setLoading(true)
@@ -494,6 +570,210 @@ export function FishingMap() {
     }
   }
 
+  // Load save details to get current date
+  useEffect(() => {
+    let canceled = false
+    async function loadSaveDetail() {
+      if (!selectedSaveId) return
+      try {
+        const { invoke } = await import("@tauri-apps/api/core")
+        const detail: any = await invoke("get_save_detail", { id: selectedSaveId })
+        if (!canceled && detail?.summary) {
+          if (typeof detail.summary.season === "number") {
+            setSaveSeason(detail.summary.season)
+          }
+          if (typeof detail.summary.dayOfMonth === "number") {
+            setSaveDay(detail.summary.dayOfMonth)
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load save detail in GameMap:", err)
+      }
+    }
+    loadSaveDetail()
+    return () => {
+      canceled = true
+    }
+  }, [selectedSaveId])
+
+  // Load NPC profiles and portraits
+  useEffect(() => {
+    let canceled = false
+    async function loadNpcs() {
+      const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__
+      if (!isTauri) return
+      try {
+        const { invoke } = await import("@tauri-apps/api/core")
+        const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+        const data: any = await invoke("get_npc_game_data", {
+          gameDir: gameDir.trim() || undefined,
+          lang: activeLang,
+        })
+        if (!canceled && data?.npcs) {
+          setNpcList(data.npcs)
+          
+          const portraits = await invoke<Record<string, string>>("get_npc_portraits", {
+            npcIds: data.npcs.map((n: any) => n.id),
+            gameDir: gameDir.trim() || undefined,
+          })
+          if (!canceled) {
+            setNpcPortraits(portraits)
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load NPC game data in GameMap:", err)
+      }
+    }
+    loadNpcs()
+    return () => {
+      canceled = true
+    }
+  }, [activeLang])
+
+  // Fetch all NPC locations
+  const fetchNpcLocations = useCallback(async () => {
+    const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__
+    if (!isTauri || !selectedSaveId) return
+    setLoadingLocations(true)
+    setNpcLocationError(null)
+    try {
+      const { invoke } = await import("@tauri-apps/api/core")
+      const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+      const source = localStorage.getItem("stardew_npc_location_source") || "estimate"
+      
+      const result: any = await invoke("get_npc_locations", {
+        saveId: selectedSaveId,
+        gameDir: gameDir.trim() || undefined,
+        source: source,
+        season: saveSeason,
+        day: saveDay,
+        time: undefined,
+      })
+      if (result?.locations) {
+        setNpcLocations(result.locations)
+      }
+    } catch (err) {
+      console.error("Failed to fetch NPC locations:", err)
+      setNpcLocations([])
+      setNpcLocationError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setLoadingLocations(false)
+    }
+  }, [selectedSaveId, saveSeason, saveDay])
+
+  // Poll locations if showNpcLocations is checked
+  useEffect(() => {
+    const source = localStorage.getItem("stardew_npc_location_source") || "estimate"
+    if (!showNpcLocations || (!isGameRunning && source === "mod")) {
+      setNpcLocations([])
+      return
+    }
+    fetchNpcLocations()
+    const timer = setInterval(fetchNpcLocations, 10000)
+    return () => clearInterval(timer)
+  }, [showNpcLocations, isGameRunning, fetchNpcLocations])
+
+  // Load schedule for selected NPC
+  useEffect(() => {
+    let canceled = false
+    async function loadSchedule() {
+      if (!showNpcRoute || !selectedNpcId || !selectedSaveId) {
+        setSchedulePoints([])
+        return
+      }
+      setLoadingSchedule(true)
+      try {
+        const { invoke } = await import("@tauri-apps/api/core")
+        const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+        const points = await invoke<NpcSchedulePoint[]>("get_npc_schedule", {
+          saveId: selectedSaveId,
+          gameDir: gameDir.trim() || undefined,
+          npcName: selectedNpcId,
+          season: saveSeason,
+          day: saveDay,
+        })
+        if (!canceled) {
+          setSchedulePoints(points)
+        }
+      } catch (err) {
+        console.error("Failed to load NPC schedule:", err)
+        if (!canceled) {
+          setSchedulePoints([])
+        }
+      } finally {
+        if (!canceled) {
+          setLoadingSchedule(false)
+        }
+      }
+    }
+    loadSchedule()
+    return () => {
+      canceled = true
+    }
+  }, [showNpcRoute, selectedNpcId, selectedSaveId, saveSeason, saveDay])
+
+  // Helper to center view on a specific tile coordinate
+  const centerOnTile = useCallback((tileX: number, tileY: number, targetZoom = 1.8) => {
+    if (!selectedMap || sceneSize.width <= 0 || sceneSize.height <= 0) return
+    const centerX = sceneSize.width / 2
+    const centerY = sceneSize.height / 2
+    const localX = ((tileX + 0.5) / selectedMap.width) * sceneSize.width
+    const localY = ((tileY + 0.5) / selectedMap.height) * sceneSize.height
+    setOffset({
+      x: (centerX - localX) * targetZoom,
+      y: (centerY - localY) * targetZoom,
+    })
+    setZoom(targetZoom)
+  }, [selectedMap, sceneSize])
+
+  // Wait for map load if pendingFocus exists
+  useEffect(() => {
+    if (selectedMap && pendingFocus && selectedMap.id === pendingFocus.mapId) {
+      const timer = setTimeout(() => {
+        centerOnTile(pendingFocus.x, pendingFocus.y)
+        setPendingFocus(null)
+      }, 300)
+      return () => clearTimeout(timer)
+    }
+  }, [selectedMap, pendingFocus, centerOnTile])
+
+  // Click handler for schedule point list
+  const handleSchedulePointClick = (point: NpcSchedulePoint) => {
+    if (!selectedMap) return
+    const targetMapId = point.location
+    const isOnCurrentMap = targetMapId.toLowerCase() === selectedMap.id.toLowerCase()
+    
+    if (isOnCurrentMap) {
+      centerOnTile(point.tileX, point.tileY)
+    } else {
+      const foundMap = data.maps.find((m) => m.id.toLowerCase() === targetMapId.toLowerCase())
+      if (foundMap) {
+        setPendingFocus({ mapId: foundMap.id, x: point.tileX, y: point.tileY })
+        setSelectedId(foundMap.id)
+      } else {
+        console.warn(`Map ${targetMapId} not found in maps list`)
+      }
+    }
+  }
+
+  function formatGameTime(time?: number | null) {
+    if (!time) return "未知时间"
+    const hour = Math.floor(time / 100)
+    const minute = time % 100
+    return `${hour}:${minute.toString().padStart(2, "0")}`
+  }
+
+  // Filter NPCs on the current map
+  const currentMapNpcs = useMemo(() => {
+    if (!selectedMap || !showNpcLocations) return []
+    return npcLocations.filter(
+      (loc) => loc.location.toLowerCase() === selectedMap.id.toLowerCase() && loc.tileX != null && loc.tileY != null
+    )
+  }, [npcLocations, selectedMap, showNpcLocations])
+
+  const sourceVal = (typeof window !== "undefined" && localStorage.getItem("stardew_npc_location_source")) || "estimate"
+  const isModSource = sourceVal === "mod"
+
   return (
     <section className="relative h-full min-h-[720px] overflow-hidden select-none bg-background text-foreground">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,color-mix(in_oklab,var(--primary)_10%,transparent)_0%,transparent_58%)]" />
@@ -524,7 +804,7 @@ export function FishingMap() {
                     value={searchTerm}
                     onChange={(event) => setSearchTerm(event.currentTarget.value)}
                     placeholder={t("fishingMap.searchPlaceholder")}
-                    className="h-10 border-border/70 bg-background/80 pl-9 placeholder:text-muted-foreground"
+                    className="h-10 border-border/70 bg-background/50 pl-9 placeholder:text-muted-foreground"
                   />
                 </div>
 
@@ -700,6 +980,192 @@ export function FishingMap() {
                     ))}
                   </svg>
                 )}
+
+                {/* NPC Route Layer */}
+                {selectedMap && (showNpcRoute || showNpcLocations) && (
+                  <svg
+                    className="absolute inset-0 h-full w-full overflow-visible"
+                    viewBox={`0 0 ${selectedMap.width} ${selectedMap.height}`}
+                    preserveAspectRatio="none"
+                    aria-hidden="true"
+                  >
+                    <defs>
+                      <marker
+                        id="npc-route-arrow"
+                        viewBox="0 0 10 10"
+                        refX="6"
+                        refY="5"
+                        markerWidth="1.5"
+                        markerHeight="1.5"
+                        orient="auto-start-reverse"
+                      >
+                        <path d="M 0 2 L 10 5 L 0 8 z" fill="#eab308" />
+                      </marker>
+                    </defs>
+
+                    {/* NPC Route Lines */}
+                    {showNpcRoute && (
+                      <g className="npc-route-lines">
+                        {schedulePoints.map((p, idx) => {
+                          if (idx === schedulePoints.length - 1) return null
+                          const next = schedulePoints[idx + 1]
+                          const isCurrentMap = p.location.toLowerCase() === selectedMap.id.toLowerCase()
+                          const isNextCurrentMap = next.location.toLowerCase() === selectedMap.id.toLowerCase()
+                          if (!isCurrentMap || !isNextCurrentMap) return null
+                          
+                          return (
+                            <line
+                              key={`route-line-${idx}`}
+                              x1={p.tileX + 0.5}
+                              y1={p.tileY + 0.5}
+                              x2={next.tileX + 0.5}
+                              y2={next.tileY + 0.5}
+                              stroke="#eab308"
+                              strokeWidth="0.25"
+                              strokeDasharray="0.4 0.2"
+                              markerEnd="url(#npc-route-arrow)"
+                            />
+                          )
+                        })}
+                      </g>
+                    )}
+
+                    {/* NPC Route Node Markers */}
+                    {showNpcRoute && (
+                      <g className="npc-route-markers">
+                        {schedulePoints
+                          .map((p, idx) => ({ ...p, originalIndex: idx }))
+                          .filter((p) => p.location.toLowerCase() === selectedMap.id.toLowerCase())
+                          .map((p) => {
+                            const width = 12.0
+                            const height = 3.6
+                            const x = p.tileX + 0.5 - width / 2
+                            const y = p.tileY + 0.5 - height / 2
+                            const portrait = npcPortraits[selectedNpcId] || ""
+                            const npcName = npcList.find((n) => n.id === selectedNpcId)?.name || selectedNpcId
+
+                            return (
+                              <foreignObject
+                                key={`route-point-${p.originalIndex}`}
+                                x={x}
+                                y={y}
+                                width={width}
+                                height={height}
+                                className="overflow-visible"
+                              >
+                                <div className="flex h-full w-full items-center justify-center pointer-events-none">
+                                  <div
+                                    onClick={() => centerOnTile(p.tileX, p.tileY)}
+                                    className="pointer-events-auto group flex items-center bg-background/90 rounded-full cursor-pointer select-none z-10 transition-all hover:scale-105 hover:bg-background"
+                                    style={{
+                                      borderWidth: '0.12px',
+                                      borderColor: '#eab308',
+                                      padding: '0.18px 0.45px',
+                                      gap: '0.22px',
+                                      fontSize: '0.8px',
+                                      boxShadow: '0 0.08px 0.16px rgba(0,0,0,0.15)'
+                                    }}
+                                  >
+                                    {portrait ? (
+                                      <img
+                                        src={portrait}
+                                        alt=""
+                                        className="rounded-full object-cover shrink-0"
+                                        style={{
+                                          width: '2.4px',
+                                          height: '2.4px',
+                                          borderWidth: '0.04px',
+                                          borderColor: 'rgba(234, 179, 8, 0.2)',
+                                          imageRendering: "pixelated"
+                                        }}
+                                      />
+                                    ) : (
+                                      <div className="rounded-full bg-yellow-500/10 flex items-center justify-center font-bold text-yellow-500 shrink-0"
+                                           style={{
+                                             width: '2.4px',
+                                             height: '2.4px',
+                                             fontSize: '0.75px'
+                                           }}
+                                      >
+                                        {npcName.charAt(0)}
+                                      </div>
+                                    )}
+                                    <span className="font-semibold text-foreground" style={{ lineHeight: 1 }}>{npcName}</span>
+                                    <span className="text-yellow-600 font-bold text-[0.7px]" style={{ lineHeight: 1 }}>{formatGameTime(p.time)}</span>
+                                  </div>
+                                </div>
+                              </foreignObject>
+                            )
+                          })}
+                      </g>
+                    )}
+
+                    {/* NPC Real-time/Estimate Locations */}
+                    {showNpcLocations && (
+                      <g className="npc-locations">
+                        {currentMapNpcs.map((loc) => {
+                          const portrait = npcPortraits[loc.npcName] || ""
+                          const width = 12.0
+                          const height = 3.6
+                          const x = loc.tileX! + 0.5 - width / 2
+                          const y = loc.tileY! + 0.5 - height / 2
+
+                          return (
+                            <foreignObject
+                              key={loc.npcName}
+                              x={x}
+                              y={y}
+                              width={width}
+                              height={height}
+                              className="overflow-visible"
+                            >
+                              <div className="flex h-full w-full items-center justify-center pointer-events-none">
+                                <div
+                                  onClick={() => centerOnTile(loc.tileX!, loc.tileY!)}
+                                  className="pointer-events-auto group flex items-center bg-background/90 rounded-full cursor-pointer select-none z-20 transition-all hover:scale-105 hover:bg-background"
+                                  style={{
+                                    borderWidth: '0.12px',
+                                    borderColor: 'var(--primary)',
+                                    padding: '0.18px 0.45px',
+                                    gap: '0.22px',
+                                    fontSize: '0.8px',
+                                    boxShadow: '0 0.08px 0.16px rgba(0,0,0,0.15)'
+                                  }}
+                                >
+                                  {portrait ? (
+                                    <img
+                                      src={portrait}
+                                      alt=""
+                                      className="rounded-full object-cover shrink-0"
+                                      style={{
+                                        width: '2.4px',
+                                        height: '2.4px',
+                                        borderWidth: '0.04px',
+                                        borderColor: 'color-mix(in oklab, var(--primary) 20%, transparent)',
+                                        imageRendering: "pixelated"
+                                      }}
+                                    />
+                                  ) : (
+                                    <div className="rounded-full bg-primary/10 flex items-center justify-center font-bold text-primary shrink-0"
+                                         style={{
+                                           width: '2.4px',
+                                           height: '2.4px',
+                                           fontSize: '0.75px'
+                                         }}
+                                    >
+                                      {loc.npcName.charAt(0)}
+                                    </div>
+                                  )}
+                                  <span className="font-semibold text-foreground" style={{ lineHeight: 1 }}>{loc.npcName}</span>
+                                </div>
+                              </div>
+                            </foreignObject>
+                          )
+                        })}
+                      </g>
+                    )}
+                  </svg>
+                )}
               </div>
             )}
 
@@ -762,6 +1228,226 @@ export function FishingMap() {
                 )}
               </div>
             )}
+          </div>
+
+          {/* Right side floating panel for NPC overlays */}
+          <div className="absolute right-4 top-4 z-30 max-h-[80%] w-72 overflow-y-auto rounded-lg border border-border/70 bg-background/88 p-4 shadow-2xl backdrop-blur-xl pointer-events-auto">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between border-b pb-2">
+                <h3 className="text-sm font-semibold flex items-center gap-1.5">
+                  <MapIcon className="h-4 w-4 text-primary" />
+                  {t("fishingMap.npcOverlay", { defaultValue: "NPC 图层" })}
+                </h3>
+              </div>
+              
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <label className={cn(
+                    "flex items-center gap-2 text-xs cursor-pointer w-full",
+                    (!isGameRunning && isModSource) && "opacity-50 cursor-not-allowed text-muted-foreground"
+                  )}>
+                    <Checkbox
+                      checked={showNpcLocations}
+                      onCheckedChange={(value) => setShowNpcLocations(Boolean(value))}
+                      disabled={!isGameRunning && isModSource}
+                    />
+                    <span>{t("fishingMap.showNpcLocation", { defaultValue: "显示 NPC 实时位置" })}</span>
+                    {loadingLocations && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground ml-auto" />}
+                  </label>
+                  {(!isGameRunning && isModSource) ? (
+                    <div className="text-[10px] text-red-500 font-medium pl-6">
+                      游戏未启动，实时位置不可用。
+                    </div>
+                  ) : (
+                    npcLocationError && (
+                      <div className="text-[10px] text-red-500 font-medium pl-6">
+                        {npcLocationError}
+                      </div>
+                    )
+                  )}
+                </div>
+                
+                <label className="flex items-center gap-2 text-xs cursor-pointer">
+                  <Checkbox
+                    checked={showNpcRoute}
+                    onCheckedChange={(value) => setShowNpcRoute(Boolean(value))}
+                  />
+                  <span>{t("fishingMap.showNpcRoute", { defaultValue: "显示 NPC 行动路线" })}</span>
+                </label>
+              </div>
+              
+              {showNpcRoute && (
+                <div className="space-y-3 pt-3 border-t">
+                  <div className="space-y-1" ref={npcDropdownRef}>
+                    <span className="text-[11px] font-semibold text-muted-foreground">
+                      {t("fishingMap.selectNpc", { defaultValue: "选择 NPC" })}
+                    </span>
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setIsNpcDropdownOpen(!isNpcDropdownOpen)}
+                        className="flex h-9 w-full items-center justify-between rounded-md border border-border/70 bg-background/50 px-2.5 text-xs text-foreground outline-none hover:bg-background/80 transition-colors"
+                      >
+                        <div className="flex items-center gap-2">
+                          {selectedNpcId ? (
+                            <>
+                              {npcPortraits[selectedNpcId] ? (
+                                <img
+                                  src={npcPortraits[selectedNpcId]}
+                                  alt=""
+                                  className="h-5 w-5 rounded-full object-cover border border-primary/20 shrink-0"
+                                  style={{ imageRendering: "pixelated" }}
+                                />
+                              ) : (
+                                <div className="h-5 w-5 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary shrink-0">
+                                  {selectedNpcId.charAt(0)}
+                                </div>
+                              )}
+                              <span>{npcList.find(n => n.id === selectedNpcId)?.name || selectedNpcId}</span>
+                            </>
+                          ) : (
+                            <span className="text-muted-foreground">-- 选择村民 --</span>
+                          )}
+                        </div>
+                        <span className="text-muted-foreground text-[10px]">▼</span>
+                      </button>
+                      
+                      {isNpcDropdownOpen && (
+                        <div className="mt-1.5 max-h-48 overflow-y-auto rounded-md border border-border bg-popover/50 pb-1">
+                          <div className="w-full px-2 py-1.5 border-b sticky top-0 bg-popover/70 z-10 backdrop-blur-md">
+                            <Input
+                              placeholder="搜索村民..."
+                              value={npcSearchTerm}
+                              onChange={(e) => setNpcSearchTerm(e.target.value)}
+                              className="h-7 text-xs px-2 bg-background/50 border-border/70"
+                            />
+                          </div>
+                          {npcList
+                            .filter(npc => npc.name.toLowerCase().includes(npcSearchTerm.toLowerCase()) || npc.id.toLowerCase().includes(npcSearchTerm.toLowerCase()))
+                            .map((npc) => {
+                              const portrait = npcPortraits[npc.id]
+                              const isSelected = npc.id === selectedNpcId
+                              return (
+                                <button
+                                  key={npc.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedNpcId(npc.id)
+                                    setIsNpcDropdownOpen(false)
+                                    setNpcSearchTerm("")
+                                  }}
+                                  className={cn(
+                                    "w-full flex items-center gap-2.5 px-2.5 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer",
+                                    isSelected && "bg-accent/50 text-accent-foreground font-semibold"
+                                  )}
+                                >
+                                  {portrait ? (
+                                    <img
+                                      src={portrait}
+                                      alt=""
+                                      className="h-5 w-5 rounded-full object-cover border border-primary/20 shrink-0"
+                                      style={{ imageRendering: "pixelated" }}
+                                    />
+                                  ) : (
+                                    <div className="h-5 w-5 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary shrink-0">
+                                      {npc.name.charAt(0)}
+                                    </div>
+                                  )}
+                                  <span className="truncate">{npc.name}</span>
+                                </button>
+                              )
+                            })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {selectedSaveId && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <span className="text-[10px] font-semibold text-muted-foreground">季节</span>
+                        <select
+                          value={saveSeason}
+                          onChange={(e) => setSaveSeason(Number(e.target.value))}
+                          className="h-8 w-full rounded-md border border-border/70 bg-background/50 px-2 text-[11px] text-foreground outline-none"
+                        >
+                          <option value={0}>春季</option>
+                          <option value={1}>夏季</option>
+                          <option value={2}>秋季</option>
+                          <option value={3}>冬季</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <span className="text-[10px] font-semibold text-muted-foreground">天数</span>
+                        <Input
+                          type="number"
+                          min={1}
+                          max={28}
+                          value={saveDay}
+                          onChange={(e) => {
+                            const next = Number(e.target.value)
+                            if (Number.isFinite(next)) {
+                              setSaveDay(Math.min(28, Math.max(1, next)))
+                            }
+                          }}
+                          className="h-8 px-2 text-[11px] bg-background/50 border-border/70"
+                        />
+                      </div>
+                    </div>
+                  )}
+                  
+                  {selectedNpcId && (
+                    <div className="space-y-1.5 pt-2 border-t">
+                      <span className="text-[11px] font-semibold text-muted-foreground">
+                        {t("fishingMap.npcScheduleTitle", { defaultValue: "日程路线点" })}
+                      </span>
+                      
+                      {loadingSchedule ? (
+                        <div className="flex items-center justify-center py-4">
+                          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                        </div>
+                      ) : schedulePoints.length === 0 ? (
+                        <p className="text-[10px] text-muted-foreground text-center py-2">
+                          {t("fishingMap.noSchedulePoints", { defaultValue: "今日无日程或不在当前地图" })}
+                        </p>
+                      ) : (
+                        <div className="max-h-40 overflow-y-auto pr-1 space-y-1">
+                          {schedulePoints.map((p, idx) => {
+                            const isOnCurrentMap = p.location.toLowerCase() === selectedMap?.id.toLowerCase()
+                            return (
+                              <button
+                                key={`list-point-${idx}`}
+                                type="button"
+                                onClick={() => handleSchedulePointClick(p)}
+                                className={cn(
+                                  "w-full text-left p-1.5 rounded text-[11px] border transition-colors flex items-center justify-between",
+                                  isOnCurrentMap 
+                                    ? "bg-primary/5 border-primary/20 hover:bg-primary/10 text-foreground"
+                                    : "bg-muted/30 border-border/40 hover:bg-muted/50 text-muted-foreground"
+                                )}
+                                title={isOnCurrentMap ? "点击定位到此坐标" : `点击切换至 ${p.locationDisplayName} 地图并定位`}
+                              >
+                                <div className="truncate">
+                                  <span className="font-semibold text-primary/80 mr-1.5">
+                                    {formatGameTime(p.time)}
+                                  </span>
+                                  <span>
+                                    {p.locationDisplayName}
+                                  </span>
+                                </div>
+                                <div className="text-[9px] shrink-0 opacity-80">
+                                  {isOnCurrentMap ? `(${p.tileX}, ${p.tileY})` : "➔"}
+                                </div>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           {(loadingDetail || loading) && (

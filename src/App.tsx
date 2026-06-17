@@ -5,7 +5,7 @@ import { Dashboard } from "@/pages/Dashboard"
 import { Crops } from "@/pages/Crops"
 import { Items } from "@/pages/Items"
 import { Calendar } from "@/pages/Calendar"
-import { FishingMap } from "@/pages/FishingMap"
+import { GameMap } from "@/pages/GameMap"
 import { SaveEditor } from "@/pages/SaveEditor"
 import { SaveBackups } from "@/pages/SaveBackups"
 import { Settings } from "@/pages/Settings"
@@ -310,7 +310,7 @@ function App() {
       case "calendar":
         return <Calendar selectedSaveId={selectedSaveId} />
       case "fishingMap":
-        return <FishingMap />
+        return <GameMap selectedSaveId={selectedSaveId} />
       case "settings":
         return (
         <Settings

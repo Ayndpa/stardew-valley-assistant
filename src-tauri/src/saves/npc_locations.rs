@@ -27,6 +27,17 @@ pub struct NpcLocationInfo {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
+pub struct NpcSchedulePoint {
+    pub time: i32,
+    pub location: String,
+    pub location_display_name: String,
+    pub tile_x: i32,
+    pub tile_y: i32,
+    pub direction: i32,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct NpcLocationsResult {
     pub source: String,
     pub save_id: Option<String>,
@@ -70,6 +81,152 @@ pub async fn get_npc_locations(
     .map_err(|e| format!("读取 NPC 位置任务失败: {}", e))?
 }
 
+#[tauri::command]
+pub async fn get_npc_schedule(
+    save_id: Option<String>,
+    game_dir: Option<String>,
+    npc_name: String,
+    season: Option<i32>,
+    day: Option<i32>,
+) -> Result<Vec<NpcSchedulePoint>, String> {
+    task::spawn_blocking(move || {
+        get_npc_schedule_sync(save_id, game_dir, npc_name, season, day)
+    })
+    .await
+    .map_err(|e| format!("读取 NPC 日程任务失败: {}", e))?
+}
+
+#[tauri::command]
+pub fn check_game_running() -> bool {
+    if let Some(path) = realtime_snapshot_path() {
+        if let Ok(metadata) = fs::metadata(&path) {
+            if let Ok(modified) = metadata.modified() {
+                if let Ok(elapsed) = std::time::SystemTime::now().duration_since(modified) {
+                    return elapsed.as_secs() < 30;
+                }
+            }
+        }
+    }
+    false
+}
+
+fn get_npc_schedule_sync(
+    save_id: Option<String>,
+    game_dir: Option<String>,
+    npc_name: String,
+    season_override: Option<i32>,
+    day_override: Option<i32>,
+) -> Result<Vec<NpcSchedulePoint>, String> {
+    let save_id = match save_id {
+        Some(value) if !value.trim().is_empty() => value,
+        _ => return Err("请先选择存档。".to_string()),
+    };
+
+    let save_folder = super::get_saves_dir()
+        .ok_or_else(|| "无法定位星露谷用户数据目录".to_string())?
+        .join(&save_id);
+    let info_xml = fs::read_to_string(save_folder.join("SaveGameInfo"))
+        .map_err(|e| format!("无法读取 SaveGameInfo: {}", e))?;
+    let main_xml = fs::read_to_string(save_folder.join(&save_id))
+        .map_err(|e| format!("无法读取主存档文件: {}", e))?;
+
+    let mut summary = SaveSummary {
+        id: save_id.clone(),
+        player_name: String::new(),
+        farm_name: String::new(),
+        money: 0,
+        total_money_earned: 0,
+        day_of_month: extract_tag_i32(&info_xml, "dayOfMonthForSaveGame"),
+        season: extract_tag_i32(&info_xml, "seasonForSaveGame"),
+        year: extract_tag_i32(&info_xml, "yearForSaveGame"),
+        farming_level: 0,
+        mining_level: 0,
+        combat_level: 0,
+        foraging_level: 0,
+        fishing_level: 0,
+        deepest_mine_level: 0,
+        milliseconds_played: 0,
+        last_save_time: 0,
+        farmer_avatar: None,
+        farmer_avatar_error: None,
+    };
+
+    if let Some(season) = season_override.filter(|value| (0..=3).contains(value)) {
+        summary.season = season;
+    }
+    if let Some(day) = day_override.filter(|value| (1..=28).contains(value)) {
+        summary.day_of_month = day;
+    }
+    let (weather_today, _) = parse_weather(&main_xml);
+
+    let content_dir = crate::game_data::locate_content_dir(game_dir.as_deref())?;
+    let schedule_file = content_dir
+        .join("Characters")
+        .join("schedules")
+        .join(format!("{}.xnb", npc_name));
+
+    if !schedule_file.exists() {
+        return Ok(Vec::new());
+    }
+
+    let schedule = load_string_dictionary_xnb(&schedule_file)
+        .map_err(|e| format!("加载 NPC 日程失败: {}", e))?;
+
+    let Some((_key, line)) = choose_schedule_line(&schedule, &summary, &weather_today) else {
+        return Ok(Vec::new());
+    };
+
+    let mut resolved = line.trim().to_string();
+    for _ in 0..4 {
+        let mut parts = resolved.split_whitespace();
+        if parts
+            .next()
+            .is_some_and(|value| value.eq_ignore_ascii_case("GOTO"))
+        {
+            let key = parts.next().ok_or_else(|| "GOTO 指令缺少参数".to_string())?;
+            resolved = get_schedule_value(&schedule, key)
+                .ok_or_else(|| format!("未找到指定的 schedule key: {}", key))?
+                .to_string();
+        } else {
+            break;
+        }
+    }
+
+    let mut points = Vec::new();
+    for segment in resolved.split('/') {
+        let tokens: Vec<&str> = segment.split_whitespace().collect();
+        if tokens.len() < 5 {
+            continue;
+        }
+        let Ok(time) = tokens[0].parse::<i32>() else {
+            continue;
+        };
+        let Ok(x) = tokens[2].parse::<i32>() else {
+            continue;
+        };
+        let Ok(y) = tokens[3].parse::<i32>() else {
+            continue;
+        };
+        let direction = tokens[4].parse::<i32>().unwrap_or(2);
+        let location = tokens[1].to_string();
+
+        let location_display_name = map_display_name(&location)
+            .map(str::to_string)
+            .unwrap_or_else(|| location.clone());
+
+        points.push(NpcSchedulePoint {
+            time,
+            location,
+            location_display_name,
+            tile_x: x,
+            tile_y: y,
+            direction,
+        });
+    }
+
+    Ok(points)
+}
+
 fn get_npc_locations_sync(
     save_id: Option<String>,
     game_dir: Option<String>,
@@ -94,6 +251,22 @@ fn read_realtime_locations(
 ) -> Result<NpcLocationsResult, String> {
     let path = realtime_snapshot_path()
         .ok_or_else(|| "无法定位星露谷用户数据目录，不能读取实时 NPC 位置。".to_string())?;
+
+    if !path.exists() {
+        return Err("游戏未启动，实时位置不可用。".to_string());
+    }
+
+    let metadata = fs::metadata(&path)
+        .map_err(|e| format!("无法读取实时位置快照元数据: {}", e))?;
+    let modified = metadata.modified()
+        .map_err(|e| format!("无法获取实时位置快照修改时间: {}", e))?;
+    let elapsed = std::time::SystemTime::now()
+        .duration_since(modified)
+        .unwrap_or_else(|_| std::time::Duration::from_secs(0));
+
+    if elapsed.as_secs() > 30 {
+        return Err("游戏未启动，实时位置不可用。".to_string());
+    }
 
     let raw = fs::read_to_string(&path)
         .map_err(|e| format!("无法读取实时 NPC 位置快照 {}: {}", path.display(), e))?;

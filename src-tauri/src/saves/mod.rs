@@ -11,7 +11,7 @@ pub mod xml_utils;
 pub use backups::{create_save_backup, delete_save_backup, list_save_backups, restore_save_backup};
 pub use crops::get_planted_crops;
 pub use editor::{get_save_editor_data, update_save_editor_data};
-pub use npc_locations::get_npc_locations;
+pub use npc_locations::{get_npc_locations, get_npc_schedule, check_game_running, NpcSchedulePoint};
 pub use parser::{get_save_detail, list_save_files};
 
 pub fn get_saves_dir() -> Option<PathBuf> {
