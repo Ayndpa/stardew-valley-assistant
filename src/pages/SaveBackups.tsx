@@ -22,7 +22,7 @@ export function SaveBackups({
         </p>
       </div>
 
-      <div className="max-w-5xl space-y-6">
+      <div className="space-y-6">
         <div className="rounded-lg border bg-accent/20 px-4 py-3 text-sm text-muted-foreground">
           <div className="flex items-start gap-3">
             <ArchiveRestore className="h-4 w-4 mt-0.5 shrink-0 text-primary" />
