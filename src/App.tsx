@@ -89,12 +89,17 @@ function App() {
     const saved = localStorage.getItem("enabledFeatures")
     if (saved) {
       try {
-        return JSON.parse(saved) as Page[]
+        const parsed = JSON.parse(saved) as Page[]
+        // 迁移：旧版本中 collections 始终显示，未存储在 enabledFeatures 中，需要补上
+        if (!parsed.includes("collections")) {
+          parsed.push("collections")
+        }
+        return parsed
       } catch (e) {
         // ignore
       }
     }
-    return ["crops", "items", "npcs", "calendar", "fishingMap", "saveEditor", "saveBackups", "mods", "onlineMods", "downloads"]
+    return ["collections", "crops", "items", "npcs", "calendar", "fishingMap", "saveEditor", "saveBackups", "mods", "onlineMods", "downloads"]
   })
 
   const updateEnabledFeatures = useCallback((value: Page[]) => {

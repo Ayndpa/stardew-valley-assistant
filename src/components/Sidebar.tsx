@@ -368,7 +368,7 @@ export function Sidebar({
       <ScrollArea className={cn("flex-1 pb-4", collapsed ? "px-2" : "px-3")}>
         <nav className="flex flex-col gap-1">
           {navItems
-            .filter((item) => item.id === "dashboard" || item.id === "collections" || item.id === "settings" || enabledFeatures.includes(item.id))
+            .filter((item) => item.id === "dashboard" || item.id === "settings" || enabledFeatures.includes(item.id))
             .map((item) => {
             const showDownloadCount = item.id === "downloads" && activeDownloadCount > 0
             return (
