@@ -1538,40 +1538,66 @@ export function GameMap({ selectedSaveId }: GameMapProps) {
                 </h3>
               </div>
               
-              <div className="space-y-3">
-                <div className="space-y-1">
-                  <label className={cn(
-                    "flex items-center gap-2 text-xs cursor-pointer w-full",
-                    (!isGameRunning && isModSource) && "opacity-50 cursor-not-allowed text-muted-foreground"
-                  )}>
-                    <Checkbox
-                      checked={showNpcLocations}
-                      onCheckedChange={(value) => setShowNpcLocations(Boolean(value))}
-                      disabled={!isGameRunning && isModSource}
-                    />
-                    <span>{t("fishingMap.showNpcLocation", { defaultValue: "显示 NPC 实时位置" })}</span>
-                    {loadingLocations && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground ml-auto" />}
-                  </label>
-                  {(!isGameRunning && isModSource) ? (
-                    <div className="text-[10px] text-red-500 font-medium pl-6">
-                      游戏未启动，实时位置不可用。
-                    </div>
-                  ) : (
-                    npcLocationError && (
-                      <div className="text-[10px] text-red-500 font-medium pl-6">
-                        {npcLocationError}
-                      </div>
-                    )
-                  )}
+              <div className="space-y-2">
+                <div className="flex rounded-md border overflow-hidden text-xs">
+                  <button
+                    className={cn(
+                      "flex-1 py-1.5 px-2 transition-colors",
+                      !showNpcLocations && !showNpcRoute
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted text-muted-foreground hover:bg-muted/80"
+                    )}
+                    onClick={() => {
+                      setShowNpcLocations(false)
+                      setShowNpcRoute(false)
+                    }}
+                  >
+                    关闭
+                  </button>
+                  <button
+                    className={cn(
+                      "flex-1 py-1.5 px-2 border-l transition-colors",
+                      !isGameRunning && isModSource
+                        ? "opacity-50 cursor-not-allowed text-muted-foreground"
+                        : showNpcLocations
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-muted text-muted-foreground hover:bg-muted/80"
+                    )}
+                    onClick={() => {
+                      if (!isGameRunning && isModSource) return
+                      setShowNpcLocations(!showNpcLocations)
+                      setShowNpcRoute(false)
+                    }}
+                  >
+                    {t("fishingMap.showNpcLocation", { defaultValue: "实时位置" })}
+                    {loadingLocations && <Loader2 className="h-3 w-3 animate-spin inline ml-1" />}
+                  </button>
+                  <button
+                    className={cn(
+                      "flex-1 py-1.5 px-2 border-l transition-colors",
+                      showNpcRoute
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted text-muted-foreground hover:bg-muted/80"
+                    )}
+                    onClick={() => {
+                      setShowNpcRoute(!showNpcRoute)
+                      setShowNpcLocations(false)
+                    }}
+                  >
+                    {t("fishingMap.showNpcRoute", { defaultValue: "行动路线" })}
+                  </button>
                 </div>
-                
-                <label className="flex items-center gap-2 text-xs cursor-pointer">
-                  <Checkbox
-                    checked={showNpcRoute}
-                    onCheckedChange={(value) => setShowNpcRoute(Boolean(value))}
-                  />
-                  <span>{t("fishingMap.showNpcRoute", { defaultValue: "显示 NPC 行动路线" })}</span>
-                </label>
+                {(!isGameRunning && isModSource) ? (
+                  <div className="text-[10px] text-red-500 font-medium">
+                    游戏未启动，实时位置不可用。
+                  </div>
+                ) : (
+                  npcLocationError && (
+                    <div className="text-[10px] text-red-500 font-medium">
+                      {npcLocationError}
+                    </div>
+                  )
+                )}
               </div>
               
               {showNpcRoute && (
