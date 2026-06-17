@@ -30,6 +30,7 @@ interface UseSmapiInstallerOptions {
   showToast: (message: string, type: "success" | "info" | "warning") => void
   onQueueSmapiDownload?: (request: QueueSmapiDownloadRequest) => { ok: boolean; message: string }
   refreshMods: () => Promise<void>
+  confirm?: (options: { title: string; message: string; confirmText?: string; cancelText?: string; variant?: "default" | "destructive" }) => Promise<boolean>
 }
 
 export function useSmapiInstaller({
@@ -37,6 +38,7 @@ export function useSmapiInstaller({
   showToast,
   onQueueSmapiDownload,
   refreshMods,
+  confirm,
 }: UseSmapiInstallerOptions) {
   const [smapiStatus, setSmapiStatus] = useState<{
     installed: boolean
@@ -247,7 +249,15 @@ export function useSmapiInstaller({
     const gameDir = localStorage.getItem("stardewGameDirectory") || ""
     if (!gameDir) return
 
-    if (window.confirm("确定要卸载 SMAPI 吗？此操作会清除 SMAPI 启动核心，但会保留您的 Mods 文件夹和其中的个人模组。")) {
+    const confirmed = confirm
+      ? await confirm({
+          title: "卸载 SMAPI",
+          message: "确定要卸载 SMAPI 吗？此操作会清除 SMAPI 启动核心，但会保留您的 Mods 文件夹和其中的个人模组。",
+          confirmText: "卸载",
+          variant: "destructive",
+        })
+      : window.confirm("确定要卸载 SMAPI 吗？此操作会清除 SMAPI 启动核心，但会保留您的 Mods 文件夹和其中的个人模组。")
+    if (confirmed) {
       const invoke = await getTauriInvoke()
       if (invoke) {
         try {

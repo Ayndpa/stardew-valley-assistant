@@ -26,6 +26,7 @@ type UseModManagementOptions = {
   refreshSignal?: number
   isGameRunning?: boolean
   onQueueSmapiDownload?: (request: QueueSmapiDownloadRequest) => { ok: boolean; message: string }
+  confirm?: (options: { title: string; message: string; confirmText?: string; cancelText?: string; variant?: "default" | "destructive" }) => Promise<boolean>
 }
 
 export function useModManagement(options?: UseModManagementOptions) {
@@ -150,6 +151,7 @@ export function useModManagement(options?: UseModManagementOptions) {
     showToast,
     onQueueSmapiDownload: options?.onQueueSmapiDownload,
     refreshMods: refreshModsOnly,
+    confirm: options?.confirm,
   })
 
   const editor = useModEditor({

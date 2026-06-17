@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useTranslation } from "react-i18next"
+import { useConfirm } from "@/hooks/useConfirm"
 
 interface SaveBackupEntry {
   timestamp: number
@@ -59,6 +60,7 @@ export function SaveBackupCard({
   onChanged?: () => void | Promise<void>
 }) {
   const { t } = useTranslation()
+  const { confirm, ConfirmDialogElement } = useConfirm()
   const [catalog, setCatalog] = useState<SaveBackupCatalog | null>(null)
   const [loading, setLoading] = useState(false)
   const [actingKey, setActingKey] = useState<string | null>(null)
@@ -127,7 +129,12 @@ export function SaveBackupCard({
 
   const handleRestoreBackup = async (timestamp: number) => {
     if (!selectedSaveId) return
-    const confirmed = window.confirm(t("saveBackups.card.confirmRestore"))
+    const confirmed = await confirm({
+      title: t("saveBackups.card.restoreTitle", "恢复存档备份"),
+      message: t("saveBackups.card.confirmRestore"),
+      confirmText: t("saveBackups.card.restoreConfirm", "恢复"),
+      variant: "destructive",
+    })
     if (!confirmed) return
     const invoke = await getTauriInvoke()
     if (!invoke) return
@@ -140,7 +147,12 @@ export function SaveBackupCard({
 
   const handleDeleteBackup = async (timestamp: number) => {
     if (!selectedSaveId) return
-    const confirmed = window.confirm(t("saveBackups.card.confirmDelete"))
+    const confirmed = await confirm({
+      title: t("saveBackups.card.deleteTitle", "删除存档备份"),
+      message: t("saveBackups.card.confirmDelete"),
+      confirmText: t("saveBackups.card.deleteConfirm", "删除"),
+      variant: "destructive",
+    })
     if (!confirmed) return
     const invoke = await getTauriInvoke()
     if (!invoke) return
@@ -164,6 +176,8 @@ export function SaveBackupCard({
   }
 
   return (
+    <>
+    {ConfirmDialogElement}
     <Card>
       <CardHeader>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -266,5 +280,6 @@ export function SaveBackupCard({
         )}
       </CardContent>
     </Card>
+    </>
   )
 }

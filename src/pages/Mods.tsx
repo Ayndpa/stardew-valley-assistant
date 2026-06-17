@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next"
 import { Badge } from "@/components/ui/badge"
 import { useModManagement } from "@/hooks/useModManagement"
+import { useConfirm } from "@/hooks/useConfirm"
 import { Button } from "@/components/ui/button"
 import { Sliders, CheckCircle2, AlertTriangle, Info, X, PackagePlus } from "lucide-react"
 import type { Page } from "@/App"
@@ -41,6 +42,7 @@ export function Mods({ onNavigate, refreshSignal, isGameRunning = false, onQueue
   const { t, i18n } = useTranslation()
   const isZh = (i18n.resolvedLanguage || i18n.language || "zh").startsWith("zh")
   const CATEGORY_MAP = isZh ? CATEGORY_MAP_ZH : CATEGORY_MAP_EN
+  const { confirm, ConfirmDialogElement } = useConfirm()
   const {
     mods,
     isLoadingMods,
@@ -90,7 +92,7 @@ export function Mods({ onNavigate, refreshSignal, isGameRunning = false, onQueue
     handleApplyProfile,
     handleInstallModFromZip,
     showToast
-  } = useModManagement({ refreshSignal, isGameRunning, onQueueSmapiDownload })
+  } = useModManagement({ refreshSignal, isGameRunning, onQueueSmapiDownload, confirm })
 
   const handlePickZipFile = async () => {
     if (isGameRunning) {
@@ -134,6 +136,7 @@ export function Mods({ onNavigate, refreshSignal, isGameRunning = false, onQueue
     <div
       className="min-h-screen p-8 space-y-6 relative"
     >
+      {ConfirmDialogElement}
       {/* Toast Notification */}
       {toast && (
         <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 px-5 py-4 rounded-xl border shadow-xl animate-in slide-in-from-bottom-5 fade-in duration-300 ${
