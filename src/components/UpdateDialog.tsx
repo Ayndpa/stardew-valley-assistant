@@ -65,7 +65,7 @@ export function UpdateDialog({ isOpen, updateInfo, onClose, onDownload }: Update
   return createPortal(
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200"
-      onClick={onClose}
+      onClick={() => onClose()}
     >
       <Card
         className="w-full max-w-md border border-border shadow-2xl bg-card rounded-xl overflow-hidden animate-in zoom-in-95 duration-200"
@@ -83,7 +83,7 @@ export function UpdateDialog({ isOpen, updateInfo, onClose, onDownload }: Update
               </h3>
             </div>
             <button
-              onClick={onClose}
+              onClick={() => onClose()}
               className="rounded-lg p-1.5 transition-colors hover:bg-accent text-muted-foreground hover:text-foreground"
             >
               <X className="h-4 w-4" />

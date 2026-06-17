@@ -185,6 +185,7 @@
       "newVersion": "最新版本：{{version}}",
       "downloadUpdate": "前往下载",
       "updateCheckError": "检查更新失败，请检查网络连接后重试",
+      "recentProjects": "不妨看看这些同作者项目",
       "updateDialog": {
         "title": "发现新版本",
         "currentVersion": "当前版本",

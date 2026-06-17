@@ -185,6 +185,7 @@
       "newVersion": "Latest version: {{version}}",
       "downloadUpdate": "Download Update",
       "updateCheckError": "Failed to check for updates. Please check your network connection and try again.",
+      "recentProjects": "More by this author",
       "updateDialog": {
         "title": "New Version Available",
         "currentVersion": "Current Version",
