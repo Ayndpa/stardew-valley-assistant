@@ -83,13 +83,34 @@ function App() {
     updateSidebarCollapsed(!sidebarCollapsed)
   }, [sidebarCollapsed, updateSidebarCollapsed])
 
-  // BroadcastChannel: sync collapsed state across windows
+  // --- Enabled sidebar features state (synced across windows) ---
+  const [enabledFeatures, setEnabledFeatures] = useState<Page[]>(() => {
+    const saved = localStorage.getItem("enabledFeatures")
+    if (saved) {
+      try {
+        return JSON.parse(saved) as Page[]
+      } catch (e) {
+        // ignore
+      }
+    }
+    return ["crops", "items", "npcs", "calendar", "fishingMap", "saveEditor", "saveBackups", "mods", "onlineMods", "downloads"]
+  })
+
+  const updateEnabledFeatures = useCallback((value: Page[]) => {
+    setEnabledFeatures(value)
+    localStorage.setItem("enabledFeatures", JSON.stringify(value))
+    channelRef.current?.postMessage({ type: "enabledFeatures", value })
+  }, [])
+
+  // BroadcastChannel: sync collapsed and features state across windows
   useEffect(() => {
     const channel = new BroadcastChannel("stardew-assistant")
     channelRef.current = channel
     channel.onmessage = (e) => {
       if (e.data?.type === "sidebarCollapsed") {
         setSidebarCollapsed(e.data.value)
+      } else if (e.data?.type === "enabledFeatures") {
+        setEnabledFeatures(e.data.value)
       }
     }
     return () => channel.close()
@@ -116,8 +137,11 @@ function App() {
     }
   }, [currentPage])
 
-  const handleOnboardingComplete = (dir: string) => {
+  const handleOnboardingComplete = (dir: string, features?: Page[]) => {
     localStorage.setItem("stardewGameDirectory", dir)
+    if (features) {
+      updateEnabledFeatures(features)
+    }
     setOnboardingReason(null)
     setShowOnboarding(false)
   }
@@ -241,6 +265,13 @@ function App() {
     }
   }, [globalToast])
 
+  // Redirect to dashboard if the current page gets disabled
+  useEffect(() => {
+    if (currentPage !== "dashboard" && currentPage !== "settings" && !enabledFeatures.includes(currentPage)) {
+      setCurrentPage("dashboard")
+    }
+  }, [currentPage, enabledFeatures])
+
   const renderPage = () => {
     switch (currentPage) {
       case "dashboard":
@@ -285,6 +316,8 @@ function App() {
         <Settings
           selectedSaveId={selectedSaveId}
           onRestartOnboarding={() => setShowOnboarding(true)}
+          enabledFeatures={enabledFeatures}
+          onEnabledFeaturesChange={updateEnabledFeatures}
           />
         )
       case "saveBackups":
@@ -365,6 +398,7 @@ function App() {
           onLaunchGame={handleLaunchGame}
           isGameRunning={isGameRunning}
           downloadStats={downloadStats}
+          enabledFeatures={enabledFeatures}
         />
         <main
           className="app-panel relative flex-1 overflow-auto pt-13"
@@ -404,7 +438,13 @@ function App() {
           {renderPage()}
         </main>
       </div>
-      {showOnboarding && <Onboarding onComplete={handleOnboardingComplete} initialReason={onboardingReason} />}
+      {showOnboarding && (
+        <Onboarding
+          onComplete={handleOnboardingComplete}
+          initialReason={onboardingReason}
+          enabledFeatures={enabledFeatures}
+        />
+      )}
     </div>
   )
 }

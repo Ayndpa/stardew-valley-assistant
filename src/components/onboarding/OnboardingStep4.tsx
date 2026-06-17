@@ -7,6 +7,7 @@ interface OnboardingStep4Props {
   directory: string
   themeMode: ThemeMode
   themeSeason: ThemeSeason
+  selectedFeatures: string[]
   onPrev: () => void
   onComplete: () => void
 }
@@ -15,10 +16,12 @@ export function OnboardingStep4({
   directory,
   themeMode,
   themeSeason,
+  selectedFeatures,
   onPrev,
   onComplete,
 }: OnboardingStep4Props) {
   const { t } = useTranslation()
+  const enabledCount = selectedFeatures.length
 
   return (
     <div className="space-y-6 text-center animate-fade-in">
@@ -57,7 +60,10 @@ export function OnboardingStep4({
         <div className="flex justify-between items-center text-xs pt-1">
           <span className="text-muted-foreground font-medium">{t("onboarding.journey.summary.features")}</span>
           <span className="text-emerald-500 font-semibold flex items-center gap-1 text-[11px] sm:text-xs">
-            <CheckCircle2 className="h-3 w-3 shrink-0" /> {t("onboarding.journey.summary.featuresList")}
+            <CheckCircle2 className="h-3 w-3 shrink-0" />
+            {enabledCount === 7
+              ? t("onboarding.journey.summary.featuresList")
+              : t("onboarding.journey.summary.featuresListCustom", { count: enabledCount })}
           </span>
         </div>
       </div>

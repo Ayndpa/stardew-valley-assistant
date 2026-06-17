@@ -8,6 +8,8 @@ import { OnboardingStep1 } from "./onboarding/OnboardingStep1"
 import { OnboardingStep2 } from "./onboarding/OnboardingStep2"
 import { OnboardingStep3 } from "./onboarding/OnboardingStep3"
 import { OnboardingStep4 } from "./onboarding/OnboardingStep4"
+import { OnboardingFeaturesStep } from "./onboarding/OnboardingFeaturesStep"
+import type { Page } from "@/App"
 
 // Helper functions for dynamic imports to ensure web compatibility
 async function getTauriDialog() {
@@ -35,13 +37,66 @@ async function getTauriInvoke() {
 }
 
 interface OnboardingProps {
-  onComplete: (gameDirectory: string) => void
+  onComplete: (gameDirectory: string, enabledFeatures: Page[]) => void
   initialReason?: string | null
+  enabledFeatures: Page[]
 }
 
-export function Onboarding({ onComplete, initialReason }: OnboardingProps) {
+const mapCategoriesToPages = (categories: string[]): Page[] => {
+  const pages: Page[] = []
+  if (categories.includes("mods")) {
+    pages.push("mods", "onlineMods", "downloads")
+  }
+  if (categories.includes("crops")) {
+    pages.push("crops")
+  }
+  if (categories.includes("items")) {
+    pages.push("items")
+  }
+  if (categories.includes("npcs")) {
+    pages.push("npcs")
+  }
+  if (categories.includes("calendar")) {
+    pages.push("calendar")
+  }
+  if (categories.includes("fishingMap")) {
+    pages.push("fishingMap")
+  }
+  if (categories.includes("saveEditor")) {
+    pages.push("saveEditor", "saveBackups")
+  }
+  return pages
+}
+
+const mapPagesToCategories = (pages: Page[]): string[] => {
+  const categories: string[] = []
+  if (pages.includes("mods") || pages.includes("onlineMods") || pages.includes("downloads")) {
+    categories.push("mods")
+  }
+  if (pages.includes("crops")) {
+    categories.push("crops")
+  }
+  if (pages.includes("items")) {
+    categories.push("items")
+  }
+  if (pages.includes("npcs")) {
+    categories.push("npcs")
+  }
+  if (pages.includes("calendar")) {
+    categories.push("calendar")
+  }
+  if (pages.includes("fishingMap")) {
+    categories.push("fishingMap")
+  }
+  if (pages.includes("saveEditor") || pages.includes("saveBackups")) {
+    categories.push("saveEditor")
+  }
+  return categories
+}
+
+export function Onboarding({ onComplete, initialReason, enabledFeatures }: OnboardingProps) {
   const { t } = useTranslation()
-  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(() => (initialReason ? 4 : 1))
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6>(() => (initialReason ? 5 : 1))
   const { themeMode, themeSeason, setThemeMode, setThemeSeason } = useTheme()
   const [directory, setDirectory] = useState(() => {
     return localStorage.getItem("stardewGameDirectory") || ""
@@ -49,10 +104,13 @@ export function Onboarding({ onComplete, initialReason }: OnboardingProps) {
   const [isValidPath, setIsValidPath] = useState<boolean | null>(null)
   const [showNotification, setShowNotification] = useState<string | null>(null)
   const [showPresets, setShowPresets] = useState(false)
+  const [selectedFeatures, setSelectedFeatures] = useState<string[]>(() => {
+    return mapPagesToCategories(enabledFeatures)
+  })
 
   useEffect(() => {
     if (!initialReason) return
-    setStep(4)
+    setStep(5)
     triggerNotification(initialReason)
   }, [initialReason])
 
@@ -145,7 +203,7 @@ export function Onboarding({ onComplete, initialReason }: OnboardingProps) {
       triggerNotification(t("settings.gamePath.placeholder") || "请输入或选择一个文件夹路径")
       return
     }
-    setStep(5)
+    setStep(6)
   }
 
   return (
@@ -166,27 +224,32 @@ export function Onboarding({ onComplete, initialReason }: OnboardingProps) {
           <div className="flex justify-between items-center mb-8 px-2 sm:px-4">
             <div className="flex items-center gap-1.5 sm:gap-2">
               <span className={`h-5 w-5 sm:h-6 sm:w-6 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-bold transition-colors ${step >= 1 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>1</span>
-              <span className="text-[10px] sm:text-xs font-medium">{t("onboarding.steps.language")}</span>
+              <span className="text-[10px] sm:text-xs font-medium hidden sm:inline">{t("onboarding.steps.language")}</span>
             </div>
             <div className={`h-[2px] flex-1 mx-1 sm:mx-2 transition-colors ${step >= 2 ? "bg-primary" : "bg-muted"}`}></div>
             <div className="flex items-center gap-1.5 sm:gap-2">
               <span className={`h-5 w-5 sm:h-6 sm:w-6 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-bold transition-colors ${step >= 2 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>2</span>
-              <span className="text-[10px] sm:text-xs font-medium">{t("onboarding.steps.welcome")}</span>
+              <span className="text-[10px] sm:text-xs font-medium hidden sm:inline">{t("onboarding.steps.welcome")}</span>
             </div>
             <div className={`h-[2px] flex-1 mx-1 sm:mx-2 transition-colors ${step >= 3 ? "bg-primary" : "bg-muted"}`}></div>
             <div className="flex items-center gap-1.5 sm:gap-2">
               <span className={`h-5 w-5 sm:h-6 sm:w-6 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-bold transition-colors ${step >= 3 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>3</span>
-              <span className="text-[10px] sm:text-xs font-medium">{t("onboarding.steps.appearance")}</span>
+              <span className="text-[10px] sm:text-xs font-medium hidden sm:inline">{t("onboarding.steps.features")}</span>
             </div>
             <div className={`h-[2px] flex-1 mx-1 sm:mx-2 transition-colors ${step >= 4 ? "bg-primary" : "bg-muted"}`}></div>
             <div className="flex items-center gap-1.5 sm:gap-2">
               <span className={`h-5 w-5 sm:h-6 sm:w-6 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-bold transition-colors ${step >= 4 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>4</span>
-              <span className="text-[10px] sm:text-xs font-medium">{t("onboarding.steps.directory")}</span>
+              <span className="text-[10px] sm:text-xs font-medium hidden sm:inline">{t("onboarding.steps.appearance")}</span>
             </div>
             <div className={`h-[2px] flex-1 mx-1 sm:mx-2 transition-colors ${step >= 5 ? "bg-primary" : "bg-muted"}`}></div>
             <div className="flex items-center gap-1.5 sm:gap-2">
               <span className={`h-5 w-5 sm:h-6 sm:w-6 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-bold transition-colors ${step >= 5 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>5</span>
-              <span className="text-[10px] sm:text-xs font-medium">{t("onboarding.steps.journey")}</span>
+              <span className="text-[10px] sm:text-xs font-medium hidden sm:inline">{t("onboarding.steps.directory")}</span>
+            </div>
+            <div className={`h-[2px] flex-1 mx-1 sm:mx-2 transition-colors ${step >= 6 ? "bg-primary" : "bg-muted"}`}></div>
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <span className={`h-5 w-5 sm:h-6 sm:w-6 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-bold transition-colors ${step >= 6 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>6</span>
+              <span className="text-[10px] sm:text-xs font-medium hidden sm:inline">{t("onboarding.steps.journey")}</span>
             </div>
           </div>
 
@@ -200,16 +263,24 @@ export function Onboarding({ onComplete, initialReason }: OnboardingProps) {
           {step === 1 && <OnboardingLanguageStep onNext={() => setStep(2)} />}
           {step === 2 && <OnboardingStep1 onPrev={() => setStep(1)} onNext={() => setStep(3)} />}
           {step === 3 && (
-            <OnboardingStep3
-              themeMode={themeMode}
-              themeSeason={themeSeason}
-              setThemeMode={setThemeMode}
-              setThemeSeason={setThemeSeason}
+            <OnboardingFeaturesStep
+              selectedFeatures={selectedFeatures}
+              onChange={setSelectedFeatures}
               onPrev={() => setStep(2)}
               onNext={() => setStep(4)}
             />
           )}
           {step === 4 && (
+            <OnboardingStep3
+              themeMode={themeMode}
+              themeSeason={themeSeason}
+              setThemeMode={setThemeMode}
+              setThemeSeason={setThemeSeason}
+              onPrev={() => setStep(3)}
+              onNext={() => setStep(5)}
+            />
+          )}
+          {step === 5 && (
             <OnboardingStep2
               directory={directory}
               setDirectory={setDirectory}
@@ -218,17 +289,18 @@ export function Onboarding({ onComplete, initialReason }: OnboardingProps) {
               setShowPresets={setShowPresets}
               onBrowse={handleBrowse}
               onAutoDetect={handleAutoDetect}
-              onPrev={() => setStep(3)}
+              onPrev={() => setStep(4)}
               onConfirm={handleConfirm}
             />
           )}
-          {step === 5 && (
+          {step === 6 && (
             <OnboardingStep4
               directory={directory}
               themeMode={themeMode}
               themeSeason={themeSeason}
-              onPrev={() => setStep(4)}
-              onComplete={() => onComplete(directory)}
+              selectedFeatures={selectedFeatures}
+              onPrev={() => setStep(5)}
+              onComplete={() => onComplete(directory, mapCategoriesToPages(selectedFeatures))}
             />
           )}
 

@@ -46,6 +46,7 @@ interface SidebarProps {
     total: number
     maxConcurrent: number
   }
+  enabledFeatures: Page[]
 }
 
 const navItems: { id: Page; label: string; icon: React.ReactNode }[] = [
@@ -104,6 +105,7 @@ export function Sidebar({
   onLaunchGame,
   isGameRunning,
   downloadStats,
+  enabledFeatures,
 }: SidebarProps) {
   const { t } = useTranslation()
   const [isOpen, setIsOpen] = useState(false)
@@ -363,7 +365,9 @@ export function Sidebar({
       {/* Navigation */}
       <ScrollArea className={cn("flex-1 pb-4", collapsed ? "px-2" : "px-3")}>
         <nav className="flex flex-col gap-1">
-          {navItems.map((item) => {
+          {navItems
+            .filter((item) => item.id === "dashboard" || item.id === "settings" || enabledFeatures.includes(item.id))
+            .map((item) => {
             const showDownloadCount = item.id === "downloads" && activeDownloadCount > 0
             return (
               <Button

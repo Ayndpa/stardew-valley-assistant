@@ -139,6 +139,12 @@
       "winter": "Winter Frost",
       "winterDesc": "Quiet cold frost blue, peaceful and pure"
     },
+    "features": {
+      "title": "Sidebar Features",
+      "description": "Customize features you want to enable in the sidebar. Disabled features will be hidden to keep your UI clean.",
+      "enableAll": "Enable All",
+      "disableAll": "Disable All"
+    },
     "data": {
       "title": "Data Management",
       "description": "Manage application data",
@@ -1444,6 +1450,7 @@
     "steps": {
       "language": "Language",
       "welcome": "Welcome",
+      "features": "Features",
       "appearance": "Theme",
       "directory": "Path",
       "journey": "Start"
@@ -1468,6 +1475,30 @@
       },
       "prev": "Back",
       "startBtn": "Start Setup"
+    },
+    "features": {
+      "title": "What do you mainly use the assistant for?",
+      "description": "Select the modules you would like to use. We'll customize your sidebar based on your choice. You can select all and customize later.",
+      "selectAll": "Select All",
+      "deselectAll": "Deselect All",
+      "prev": "Back",
+      "next": "Next Step",
+      "categories": {
+        "modsTitle": "Mod Management & Get Mods",
+        "modsDesc": "Manage installed mods, search/download new mods, and view download tasks",
+        "cropsTitle": "Crops Monitor",
+        "cropsDesc": "Record crop status, calculate harvest dates, and get crop alerts",
+        "itemsTitle": "Items Encyclopedia",
+        "itemsDesc": "Lookup items, prices, preferences, and sources",
+        "npcsTitle": "Villager Relationships",
+        "npcsDesc": "Track villager schedules, birthdays, gifts, and preferences",
+        "calendarTitle": "Calendar Events",
+        "calendarDesc": "Sync with in-game calendar, and get festival/birthday alerts",
+        "fishingMapTitle": "Game Map & Exploration",
+        "fishingMapDesc": "Track resource positions and fish distribution on map",
+        "saveEditorTitle": "Save Editor & Backups",
+        "saveEditorDesc": "Edit gold, skills, and attributes, with auto-backup protection"
+      }
     },
     "appearance": {
       "title": "Personalize Appearance",
@@ -1513,7 +1544,8 @@
         "theme": "Theme Mode:",
         "season": "Season Palette:",
         "features": "Enabled Features:",
-        "featuresList": "Mod Scan · Save Read · Calendar Alert"
+        "featuresList": "Mod Scan · Save Read · Calendar Alert",
+        "featuresListCustom": "{{count}} custom features enabled"
       },
       "prev": "Back",
       "enter": "Enter Assistant"

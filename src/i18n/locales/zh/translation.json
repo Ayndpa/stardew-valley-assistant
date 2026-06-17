@@ -139,6 +139,12 @@
       "winter": "冬季蓝 (Winter Frost)",
       "winterDesc": "冰雪覆盖的幽静寒蓝，静谧纯洁"
     },
+    "features": {
+      "title": "侧边栏功能定制",
+      "description": "自定义您在侧边栏中需要使用的功能模块。关闭的模块将被隐藏，帮助您保持界面整洁。",
+      "enableAll": "全部启用",
+      "disableAll": "全部禁用"
+    },
     "data": {
       "title": "数据管理",
       "description": "管理应用数据",
@@ -1310,36 +1316,61 @@
     "launchFailed": "启动游戏失败: {{error}}",
     "gameExited": "游戏已退出，模组管理已恢复可修改。"
   },
-  "onboarding": {
-    "steps": {
-      "language": "语言",
-      "welcome": "欢迎",
-      "appearance": "外观",
-      "directory": "目录",
-      "journey": "开启"
-    },
-    "language": {
-      "title": "选择你的语言",
-      "description": "请选择您在超级星露谷中使用的界面语言。这会立即更新界面显示。",
-      "next": "确认并继续"
-    },
-    "welcome": {
-      "title": "欢迎来到超级星露谷 !",
-      "description": "这是你的专属农场助手，能够为你管理游戏模组、提醒作物收获、打理村民关系以及追踪节日。",
-      "features": {
-        "modsTitle": "模组管理",
-        "modsDesc": "一键扫描、启用/禁用、热升级 SMAPI 模组。",
-        "cropsTitle": "作物管理",
-        "cropsDesc": "记录当前种植，计算成熟时间与提醒。",
-        "npcsTitle": "村民关系",
-        "npcsDesc": "记录村民喜好、追踪生日与送礼进度。",
-        "calendarTitle": "日程提醒",
-        "calendarDesc": "完美对接游戏日历，重要事件提前知晓。"
+    "onboarding": {
+      "steps": {
+        "language": "语言",
+        "welcome": "欢迎",
+        "features": "功能",
+        "appearance": "外观",
+        "directory": "目录",
+        "journey": "开启"
       },
-      "prev": "返回",
-      "startBtn": "开始配置"
-    },
-    "appearance": {
+      "language": {
+        "title": "选择你的语言",
+        "description": "请选择您在超级星露谷中使用的界面语言。这会立即更新界面显示。",
+        "next": "确认并继续"
+      },
+      "welcome": {
+        "title": "欢迎来到超级星露谷 !",
+        "description": "这是你的专属农场助手，能够为你管理游戏模组、提醒作物收获、打理村民关系以及追踪节日。",
+        "features": {
+          "modsTitle": "模组管理",
+          "modsDesc": "一键扫描、启用/禁用、热升级 SMAPI 模组。",
+          "cropsTitle": "作物管理",
+          "cropsDesc": "记录当前种植，计算成熟时间与提醒。",
+          "npcsTitle": "村民关系",
+          "npcsDesc": "记录村民喜好、追踪生日与送礼进度。",
+          "calendarTitle": "日程提醒",
+          "calendarDesc": "完美对接游戏日历，重要事件提前知晓。"
+        },
+        "prev": "返回",
+        "startBtn": "开始配置"
+      },
+      "features": {
+        "title": "你主要想用助手来做什么？",
+        "description": "根据你的日常习惯选择，我们会为你展示最实用的模块。可以多选或全选，随时可在设置中修改。",
+        "selectAll": "全选",
+        "deselectAll": "取消全选",
+        "prev": "返回",
+        "next": "下一步",
+        "categories": {
+          "modsTitle": "模组管理与获取",
+          "modsDesc": "安装、启用/禁用模组，从网络获取模组及管理下载",
+          "cropsTitle": "作物种植监控",
+          "cropsDesc": "记录农作物种植，查看成熟预测及收获提醒",
+          "itemsTitle": "物品百科查询",
+          "itemsDesc": "快速检索物品百科，包含喜好、价格与产出渠道",
+          "npcsTitle": "村民关系与喜好",
+          "npcsDesc": "掌握村民日程喜好，追踪生日礼物进度",
+          "calendarTitle": "节日日历日程",
+          "calendarDesc": "同步星露谷游戏日历，重要节日提前提醒",
+          "fishingMapTitle": "游戏地图与探索",
+          "fishingMapDesc": "在地图上追踪资源位置及鱼类分布",
+          "saveEditorTitle": "存档编辑与备份",
+          "saveEditorDesc": "修改金钱、属性等存档数据，支持自动备份"
+        }
+      },
+      "appearance": {
       "title": "个性外观选择",
       "description": "选择您喜欢的主题模式与星露谷季节配色，随时可以去设置中调整。",
       "themeMode": "主题模式",
@@ -1383,7 +1414,8 @@
         "theme": "主题模式:",
         "season": "季节主题色:",
         "features": "已启用功能:",
-        "featuresList": "模组扫描 · 存档读取 · 日历通知"
+        "featuresList": "模组扫描 · 存档读取 · 日历通知",
+        "featuresListCustom": "已启用 {{count}} 项自定义功能"
       },
       "prev": "返回",
       "enter": "进入助手"

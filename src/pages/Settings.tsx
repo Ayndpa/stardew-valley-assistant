@@ -41,6 +41,8 @@ import { NexusAccountCard } from "@/components/settings/NexusAccountCard"
 import { AppearanceCard } from "@/components/settings/AppearanceCard"
 import { LanguageCard } from "@/components/settings/LanguageCard"
 import { AboutCard } from "@/components/settings/AboutCard"
+import { FeaturesCard } from "@/components/settings/FeaturesCard"
+import type { Page } from "@/App"
 
 const MOCK_SAVE_DETAIL: SaveDetail = {
   summary: {
@@ -74,9 +76,13 @@ const MOCK_SAVE_DETAIL: SaveDetail = {
 export function Settings({
   selectedSaveId,
   onRestartOnboarding,
+  enabledFeatures,
+  onEnabledFeaturesChange,
 }: {
   selectedSaveId: string
   onRestartOnboarding?: () => void
+  enabledFeatures: Page[]
+  onEnabledFeaturesChange: (features: Page[]) => void
 }) {
   const { t } = useTranslation()
   const { themeMode, themeSeason, setThemeMode, setThemeSeason } = useTheme()
@@ -282,6 +288,11 @@ export function Settings({
           themeSeason={themeSeason}
           setThemeMode={setThemeMode}
           setThemeSeason={setThemeSeason}
+        />
+
+        <FeaturesCard
+          enabledFeatures={enabledFeatures}
+          onEnabledFeaturesChange={onEnabledFeaturesChange}
         />
 
         <LanguageCard />
