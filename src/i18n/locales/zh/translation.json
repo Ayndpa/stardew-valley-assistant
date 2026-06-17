@@ -177,7 +177,14 @@
       "title": "关于",
       "version": "应用版本",
       "framework": "框架",
-      "ui": "UI 框架"
+      "ui": "UI 框架",
+      "checkUpdate": "检查更新",
+      "checking": "检查中...",
+      "updateAvailable": "发现新版本！",
+      "upToDate": "已是最新版本",
+      "newVersion": "最新版本：{{version}}",
+      "downloadUpdate": "前往下载",
+      "updateCheckError": "检查更新失败，请检查网络连接后重试"
     }
   },
   "seasons": {

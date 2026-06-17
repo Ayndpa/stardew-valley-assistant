@@ -5,6 +5,7 @@ mod game_data;
 mod mods;
 mod saves;
 mod smapi;
+mod updater;
 mod utils;
 
 use std::{fs, sync::Mutex, thread, time::Duration};
@@ -32,6 +33,7 @@ use crate::saves::{
     update_save_editor_data,
 };
 use crate::smapi::{check_smapi_status, install_smapi, uninstall_smapi};
+use crate::updater::check_for_updates;
 use crate::utils::{open_in_file_manager, path_exists};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, Monitor, PhysicalPosition, PhysicalSize, Size, State};
@@ -329,7 +331,8 @@ pub fn run() {
             resume_download_task,
             install_mod_from_zip,
             install_bundled_npc_locations_mod,
-            get_npc_portraits
+            get_npc_portraits,
+            check_for_updates
         ])
         .setup(|app| {
             let app_handle = app.handle();

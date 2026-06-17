@@ -177,7 +177,14 @@
       "title": "About",
       "version": "App Version",
       "framework": "Framework",
-      "ui": "UI Framework"
+      "ui": "UI Framework",
+      "checkUpdate": "Check for Updates",
+      "checking": "Checking...",
+      "updateAvailable": "Update Available!",
+      "upToDate": "Up to Date",
+      "newVersion": "Latest version: {{version}}",
+      "downloadUpdate": "Download Update",
+      "updateCheckError": "Failed to check for updates. Please check your network connection and try again."
     }
   },
   "seasons": {
