@@ -1379,6 +1379,43 @@ pub fn load_string_dictionary_xnb(path: &Path) -> Result<HashMap<String, String>
     Ok(values)
 }
 
+/// Load a Dictionary<int, string> XNB file (e.g. Data/SecretNotes).
+/// Keys are read as i32 and converted to strings; values are read as strings.
+pub fn load_int_string_dictionary_xnb(path: &Path) -> Result<HashMap<String, String>, String> {
+    let payload = load_xnb_payload(path)?;
+    let mut reader = XnbPayloadReader::new(&payload);
+    let type_readers = reader.read_type_readers()?;
+    let root_reader = reader.read_7bit_usize()?;
+    if root_reader == 0 {
+        return Ok(HashMap::new());
+    }
+    require_reader(&type_readers, root_reader, "DictionaryReader")?;
+
+    let count = reader.read_i32()?.max(0) as usize;
+    let mut values = HashMap::with_capacity(count);
+    for _ in 0..count {
+        // Key is stored as raw i32 (no reader index prefix in dictionary entries)
+        let key = reader.read_i32()?;
+        // Value is stored as object string (with reader index prefix)
+        let value = reader.read_object_string(&type_readers)?;
+        values.insert(key.to_string(), value);
+    }
+    Ok(values)
+}
+
+/// Best-effort loader for Dictionary<int, string> XNB files with localization fallback.
+pub fn load_int_string_dictionary_best_effort(paths: &[PathBuf]) -> HashMap<String, String> {
+    for path in paths {
+        if !path.exists() {
+            continue;
+        }
+        if let Ok(values) = load_int_string_dictionary_xnb(path) {
+            return values;
+        }
+    }
+    HashMap::new()
+}
+
 #[cfg(test)]
 pub fn load_localized_string_tables(
     content_dir: &Path,

@@ -5,6 +5,7 @@ pub mod image_utils;
 pub mod items;
 pub mod map_names;
 pub mod npc;
+pub mod secret_notes;
 pub mod tbin;
 pub mod xnb;
 
@@ -17,6 +18,7 @@ pub use crops::get_crop_game_data;
 pub use fishing::{get_fishing_map_data, get_fishing_map_detail};
 pub use items::{get_item_game_data, get_item_game_data_overview, query_item_game_data};
 pub use npc::get_npc_game_data;
+pub use secret_notes::get_secret_notes_game_data;
 
 pub fn locate_content_dir(game_dir: Option<&str>) -> Result<PathBuf, String> {
     let mut candidates = Vec::new();

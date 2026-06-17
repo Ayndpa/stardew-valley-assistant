@@ -14,7 +14,8 @@ use crate::farmer_avatar::get_npc_portraits;
 use crate::game::{auto_detect_game_dir, get_game_version, launch_game};
 use crate::game_data::{
     get_calendar_game_data, get_crop_game_data, get_fishing_map_data, get_fishing_map_detail,
-    get_item_game_data, get_item_game_data_overview, get_npc_game_data, query_item_game_data,
+    get_item_game_data, get_item_game_data_overview, get_npc_game_data, get_secret_notes_game_data,
+    query_item_game_data,
 };
 use crate::mods::{
     apply_profile, check_mod_updates, check_nexus_login_status, close_scraper_window, delete_mod,
@@ -291,6 +292,7 @@ pub fn run() {
             get_fishing_map_data,
             get_fishing_map_detail,
             get_npc_game_data,
+            get_secret_notes_game_data,
             launch_game,
             install_smapi,
             uninstall_smapi,

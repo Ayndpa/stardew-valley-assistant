@@ -2,6 +2,7 @@ import { lazy, Suspense, useState, useEffect, useRef, useCallback } from "react"
 import { useTranslation } from "react-i18next"
 import { Sidebar } from "@/components/Sidebar"
 import { Dashboard } from "@/pages/Dashboard"
+import { Collections } from "@/pages/Collections"
 import { Crops } from "@/pages/Crops"
 import { Items } from "@/pages/Items"
 import { Calendar } from "@/pages/Calendar"
@@ -21,7 +22,7 @@ import { useNxmDeepLink } from "@/hooks/useNxmDeepLink"
 import { useGlobalDragAndDrop } from "@/hooks/useGlobalDragAndDrop"
 import "./index.css"
 
-export type Page = "dashboard" | "crops" | "items" | "npcs" | "calendar" | "fishingMap" | "saveEditor" | "saveBackups" | "settings" | "mods" | "onlineMods" | "downloads"
+export type Page = "dashboard" | "collections" | "crops" | "items" | "npcs" | "calendar" | "fishingMap" | "saveEditor" | "saveBackups" | "settings" | "mods" | "onlineMods" | "downloads"
 
 export interface SaveSummary {
   id: string
@@ -267,7 +268,7 @@ function App() {
 
   // Redirect to dashboard if the current page gets disabled
   useEffect(() => {
-    if (currentPage !== "dashboard" && currentPage !== "settings" && !enabledFeatures.includes(currentPage)) {
+    if (currentPage !== "dashboard" && currentPage !== "collections" && currentPage !== "settings" && !enabledFeatures.includes(currentPage)) {
       setCurrentPage("dashboard")
     }
   }, [currentPage, enabledFeatures])
@@ -276,6 +277,16 @@ function App() {
     switch (currentPage) {
       case "dashboard":
         return <Dashboard selectedSaveId={selectedSaveId} />
+      case "collections":
+        return (
+          <Collections
+            selectedSaveId={selectedSaveId}
+            onNavigateToItem={(itemName) => {
+              setItemNavigationTarget(itemName)
+              setCurrentPage("items")
+            }}
+          />
+        )
       case "crops":
         return <Crops selectedSaveId={selectedSaveId} />
       case "items":

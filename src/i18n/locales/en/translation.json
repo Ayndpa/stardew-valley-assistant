@@ -1,6 +1,7 @@
 {
   "sidebar": {
     "dashboard": "Dashboard",
+    "collections": "Collections",
     "crops": "Crops",
     "items": "Items Wiki",
     "npcs": "NPC Relationships",
@@ -25,6 +26,17 @@
     "version": "Stardew Valley Assistant",
     "appName": "Stardew Valley",
     "appNameSubtitle": "Assistant"
+  },
+  "collections": {
+    "title": "Collections",
+    "subtitle": "View detailed collection progress by category",
+    "collectedTitle": "Collected ({{count}})",
+    "missingTitle": "Missing ({{count}})",
+    "allComplete": "Congratulations! This category is complete",
+    "notes": {
+      "notePrefix": "Secret Note",
+      "imageNote": "Image"
+    }
   },
   "onlineModsPage": {
     "title": "Get Mods",
@@ -262,17 +274,48 @@
       "levelDesc": "Farming Lv.{{farming}} · Mining Lv.{{mining}}",
       "friendshipTitle": "Friendships",
       "friendshipDesc": "Villagers with 8+ hearts",
-      "collectionTitle": "Museum Collection",
-      "collectionDesc": "Donated {{count}}/{{total}}"
+      "collectionTitle": "Perfection",
+      "collectionDesc": "Overall progress {{percent}}%"
     },
     "collection": {
-      "title": "Museum Collectibles",
-      "description": "Donated {{collected}}/{{total}} collectibles",
+      "title": "Collection Progress",
       "loading": "Loading game item data…",
-      "collectedTitle": "Collected ({{count}})",
-      "missingTitle": "Missing ({{count}})",
-      "noCollected": "No artifacts or minerals donated to the museum yet",
-      "noMissing": "Congratulations! All museum collectibles are complete"
+      "overall": "Perfection {{percent}}%",
+      "collected": "{{collected}}/{{total}}",
+      "stardrops": "Stardrops {{count}}/7",
+      "walnuts": "Golden Walnuts {{count}}/130",
+      "monsterSlayer": "Monster Slayer {{count}} goals",
+      "shipping": {
+        "title": "Shipped Items",
+        "desc": "Items shipped via shipping bin",
+        "empty": "No items shipped yet"
+      },
+      "fish": {
+        "title": "Fish",
+        "desc": "Fish successfully caught",
+        "empty": "No fish caught yet"
+      },
+      "museum": {
+        "title": "Museum",
+        "desc": "Artifacts and minerals donated",
+        "empty": "No items donated to the museum yet",
+        "full": "Congratulations! Museum collection is complete"
+      },
+      "cooking": {
+        "title": "Cooking",
+        "desc": "Recipes cooked personally",
+        "empty": "No recipes cooked yet"
+      },
+      "crafting": {
+        "title": "Crafting",
+        "desc": "Items crafted personally",
+        "empty": "No items crafted yet"
+      },
+      "notes": {
+        "title": "Secret Notes",
+        "desc": "Secret notes and journal scraps found",
+        "empty": "No secret notes found yet"
+      }
     },
     "tasks": {
       "title": "Today's Tasks",

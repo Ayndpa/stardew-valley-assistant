@@ -16,6 +16,7 @@ import {
   Download,
   ListChecks,
   Sliders,
+  Trophy,
 } from "lucide-react"
 
 interface FeaturesCardProps {
@@ -30,6 +31,7 @@ export function FeaturesCard({
   const { t } = useTranslation()
 
   const optionalFeatures: { id: Page; icon: any }[] = [
+    { id: "collections", icon: Trophy },
     { id: "crops", icon: Sprout },
     { id: "items", icon: Package },
     { id: "npcs", icon: Users },

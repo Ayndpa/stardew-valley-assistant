@@ -1,6 +1,7 @@
 {
   "sidebar": {
     "dashboard": "仪表盘",
+    "collections": "收集进度",
     "crops": "作物管理",
     "items": "物品百科",
     "npcs": "村民关系",
@@ -25,6 +26,17 @@
     "version": "超级星露谷",
     "appName": "超级星露谷",
     "appNameSubtitle": ""
+  },
+  "collections": {
+    "title": "收集进度",
+    "subtitle": "查看各分类的收集详情",
+    "collectedTitle": "已收集 ({{count}})",
+    "missingTitle": "未收集 ({{count}})",
+    "allComplete": "恭喜！该分类已全部集齐",
+    "notes": {
+      "notePrefix": "秘密纸条",
+      "imageNote": "图片"
+    }
   },
   "onlineModsPage": {
     "title": "获取模组",
@@ -262,17 +274,48 @@
       "levelDesc": "耕种 Lv.{{farming}} · 采矿 Lv.{{mining}}",
       "friendshipTitle": "关系进度",
       "friendshipDesc": "已达满心(8心以上)的村民",
-      "collectionTitle": "收集进度",
-      "collectionDesc": "博物馆捐赠 {{count}}/{{total}}"
+      "collectionTitle": "完美度",
+      "collectionDesc": "总收集进度 {{percent}}%"
     },
     "collection": {
-      "title": "博物馆收集品",
-      "description": "已捐赠 {{collected}}/{{total}} 件收集品",
+      "title": "收集进度",
       "loading": "正在读取游戏物品数据…",
-      "collectedTitle": "已收集 ({{count}})",
-      "missingTitle": "未收集 ({{count}})",
-      "noCollected": "尚未向博物馆捐赠任何文物或矿石",
-      "noMissing": "恭喜！博物馆收集品已全部集齐"
+      "overall": "总完美度 {{percent}}%",
+      "collected": "{{collected}}/{{total}}",
+      "stardrops": "星之果实 {{count}}/7",
+      "walnuts": "金核桃 {{count}}/130",
+      "monsterSlayer": "怪物猎人 {{count}} 项完成",
+      "shipping": {
+        "title": "出货物品",
+        "desc": "通过出货箱售出的物品",
+        "empty": "尚未售出任何物品"
+      },
+      "fish": {
+        "title": "鱼类",
+        "desc": "成功钓起的鱼类",
+        "empty": "尚未钓到任何鱼"
+      },
+      "museum": {
+        "title": "博物馆",
+        "desc": "已捐赠的文物与矿石",
+        "empty": "尚未向博物馆捐赠任何物品",
+        "full": "恭喜！博物馆已全部集齐"
+      },
+      "cooking": {
+        "title": "烹饪",
+        "desc": "亲自制作的料理",
+        "empty": "尚未烹饪任何料理"
+      },
+      "crafting": {
+        "title": "制造",
+        "desc": "亲手制造的物品",
+        "empty": "尚未制造任何物品"
+      },
+      "notes": {
+        "title": "秘密纸条",
+        "desc": "已发现的秘密纸条与日记残页",
+        "empty": "尚未发现任何秘密纸条"
+      }
     },
     "tasks": {
       "title": "今日待办",

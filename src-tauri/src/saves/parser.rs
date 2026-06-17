@@ -41,6 +41,13 @@ pub struct FriendshipInfo {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
+pub struct MonsterKillInfo {
+    pub name: String,
+    pub count: i32,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct SaveDetail {
     pub summary: SaveSummary,
     pub weather_today: String,
@@ -51,6 +58,18 @@ pub struct SaveDetail {
     pub farmer_appearance: Option<FarmerAppearance>,
     pub farmer_avatar: Option<String>,
     pub farmer_avatar_error: Option<String>,
+    // Collection tracking fields
+    pub shipped_items: Vec<String>,
+    pub fish_caught: Vec<String>,
+    pub cooking_recipes: Vec<String>,
+    pub crafting_recipes: Vec<String>,
+    pub recipes_cooked: Vec<String>,
+    pub secret_notes_seen: Vec<i32>,
+    pub songs_heard: Vec<String>,
+    pub mail_received: Vec<String>,
+    pub max_stamina: i32,
+    pub specific_monsters_killed: Vec<MonsterKillInfo>,
+    pub golden_walnuts_found: i32,
 }
 
 pub fn parse_friendship_data(xml: &str) -> Vec<FriendshipInfo> {
@@ -259,6 +278,257 @@ pub fn parse_weather(xml: &str) -> (String, String) {
     (today, tomorrow)
 }
 
+/// Parse a NetStringDictionary<int> section (e.g. basicShipped, cookingRecipes, craftingRecipes, recipesCooked).
+/// Returns Vec of (key_string, value_int).
+fn parse_string_int_dict(xml: &str, tag: &str) -> Vec<(String, i32)> {
+    let mut result = Vec::new();
+    let open_tag = format!("<{}>", tag);
+    let close_tag = format!("</{}>", tag);
+    if let Some(start_idx) = xml.find(&open_tag) {
+        if let Some(end_idx) = xml.find(&close_tag) {
+            let section = &xml[start_idx + open_tag.len()..end_idx];
+            let mut search_pos = 0;
+            while let Some(item_start) = section[search_pos..].find("<item>") {
+                let abs_start = search_pos + item_start;
+                let Some(item_end_rel) = section[abs_start..].find("</item>") else {
+                    break;
+                };
+                let abs_end = abs_start + item_end_rel;
+                let item_xml = &section[abs_start..abs_end];
+
+                let mut key = String::new();
+                let mut val = 0i32;
+
+                // Extract key string
+                if let Some(ks) = item_xml.find("<key>") {
+                    if let Some(ke) = item_xml.find("</key>") {
+                        let key_section = &item_xml[ks..ke];
+                        if let Some(ss) = key_section.find("<string>") {
+                            if let Some(se) = key_section.find("</string>") {
+                                key = key_section[ss + 8..se].to_string();
+                            }
+                        }
+                    }
+                }
+
+                // Extract value int
+                if let Some(vs) = item_xml.find("<value>") {
+                    if let Some(ve) = item_xml.find("</value>") {
+                        let val_section = &item_xml[vs..ve];
+                        if let Some(is) = val_section.find("<int>") {
+                            if let Some(ie) = val_section.find("</int>") {
+                                val = val_section[is + 5..ie].parse::<i32>().unwrap_or(0);
+                            }
+                        }
+                    }
+                }
+
+                if !key.is_empty() {
+                    result.push((key, val));
+                }
+                search_pos = abs_end + 7;
+            }
+        }
+    }
+    result
+}
+
+/// Parse a NetStringIntArrayDictionary section (e.g. fishCaught, archaeologyFound).
+/// Returns Vec of (key_string, first_int_value).
+fn parse_string_int_array_dict(xml: &str, tag: &str) -> Vec<(String, i32, i32)> {
+    let mut result = Vec::new();
+    let open_tag = format!("<{}>", tag);
+    let close_tag = format!("</{}>", tag);
+    if let Some(start_idx) = xml.find(&open_tag) {
+        if let Some(end_idx) = xml.find(&close_tag) {
+            let section = &xml[start_idx + open_tag.len()..end_idx];
+            let mut search_pos = 0;
+            while let Some(item_start) = section[search_pos..].find("<item>") {
+                let abs_start = search_pos + item_start;
+                let Some(item_end_rel) = section[abs_start..].find("</item>") else {
+                    break;
+                };
+                let abs_end = abs_start + item_end_rel;
+                let item_xml = &section[abs_start..abs_end];
+
+                let mut key = String::new();
+                let mut val0 = 0i32;
+                let mut val1 = 0i32;
+
+                // Extract key string
+                if let Some(ks) = item_xml.find("<key>") {
+                    if let Some(ke) = item_xml.find("</key>") {
+                        let key_section = &item_xml[ks..ke];
+                        if let Some(ss) = key_section.find("<string>") {
+                            if let Some(se) = key_section.find("</string>") {
+                                key = key_section[ss + 8..se].to_string();
+                            }
+                        }
+                    }
+                }
+
+                // Extract value ArrayOfint -> first two ints
+                if let Some(vs) = item_xml.find("<value>") {
+                    if let Some(ve) = item_xml.find("</value>") {
+                        let val_section = &item_xml[vs..ve];
+                        let mut int_search = 0;
+                        let mut ints = Vec::new();
+                        while let Some(is) = val_section[int_search..].find("<int>") {
+                            let abs_is = int_search + is;
+                            if let Some(ie) = val_section[abs_is..].find("</int>") {
+                                let int_val = val_section[abs_is + 5..abs_is + ie]
+                                    .parse::<i32>()
+                                    .unwrap_or(0);
+                                ints.push(int_val);
+                                int_search = abs_is + ie + 6;
+                            } else {
+                                break;
+                            }
+                        }
+                        if ints.len() >= 2 {
+                            val0 = ints[0];
+                            val1 = ints[1];
+                        } else if ints.len() == 1 {
+                            val0 = ints[0];
+                        }
+                    }
+                }
+
+                if !key.is_empty() {
+                    result.push((key, val0, val1));
+                }
+                search_pos = abs_end + 7;
+            }
+        }
+    }
+    result
+}
+
+/// Parse a set of <int> elements (e.g. secretNotesSeen, achievements).
+fn parse_int_set(xml: &str, tag: &str) -> Vec<i32> {
+    let mut result = Vec::new();
+    let open_tag = format!("<{}>", tag);
+    let close_tag = format!("</{}>", tag);
+    if let Some(start_idx) = xml.find(&open_tag) {
+        if let Some(end_idx) = xml.find(&close_tag) {
+            let section = &xml[start_idx + open_tag.len()..end_idx];
+            let mut search_pos = 0;
+            while let Some(int_start) = section[search_pos..].find("<int>") {
+                let abs_start = search_pos + int_start;
+                if let Some(int_end) = section[abs_start..].find("</int>") {
+                    let val = section[abs_start + 5..abs_start + int_end]
+                        .parse::<i32>()
+                        .unwrap_or(0);
+                    result.push(val);
+                    search_pos = abs_start + int_end + 6;
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+    result
+}
+
+/// Parse a set of <string> elements (e.g. songsHeard, mailReceived).
+fn parse_string_set(xml: &str, tag: &str) -> Vec<String> {
+    let mut result = Vec::new();
+    let open_tag = format!("<{}>", tag);
+    let close_tag = format!("</{}>", tag);
+    if let Some(start_idx) = xml.find(&open_tag) {
+        if let Some(end_idx) = xml.find(&close_tag) {
+            let section = &xml[start_idx + open_tag.len()..end_idx];
+            let mut search_pos = 0;
+            while let Some(str_start) = section[search_pos..].find("<string>") {
+                let abs_start = search_pos + str_start;
+                if let Some(str_end) = section[abs_start..].find("</string>") {
+                    let val = section[abs_start + 8..abs_start + str_end].to_string();
+                    result.push(val);
+                    search_pos = abs_start + str_end + 9;
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+    result
+}
+
+/// Parse <specificMonstersKilled> dictionary from stats section.
+fn parse_specific_monsters_killed(xml: &str) -> Vec<MonsterKillInfo> {
+    let mut result = Vec::new();
+    // Find the stats section first
+    let stats_tag = "<stats>";
+    let stats_close = "</stats>";
+    let stats_section = if let Some(s) = xml.find(stats_tag) {
+        if let Some(e) = xml.find(stats_close) {
+            &xml[s..e]
+        } else {
+            xml
+        }
+    } else {
+        xml
+    };
+
+    let tag = "specificMonstersKilled";
+    let open_tag = format!("<{}>", tag);
+    let close_tag = format!("</{}>", tag);
+    if let Some(start_idx) = stats_section.find(&open_tag) {
+        if let Some(end_idx) = stats_section.find(&close_tag) {
+            let section = &stats_section[start_idx + open_tag.len()..end_idx];
+            let mut search_pos = 0;
+            while let Some(item_start) = section[search_pos..].find("<item>") {
+                let abs_start = search_pos + item_start;
+                let Some(item_end_rel) = section[abs_start..].find("</item>") else {
+                    break;
+                };
+                let abs_end = abs_start + item_end_rel;
+                let item_xml = &section[abs_start..abs_end];
+
+                let mut name = String::new();
+                let mut count = 0i32;
+
+                if let Some(ks) = item_xml.find("<key>") {
+                    if let Some(ke) = item_xml.find("</key>") {
+                        let key_section = &item_xml[ks..ke];
+                        if let Some(ss) = key_section.find("<string>") {
+                            if let Some(se) = key_section.find("</string>") {
+                                name = key_section[ss + 8..se].to_string();
+                            }
+                        }
+                    }
+                }
+
+                if let Some(vs) = item_xml.find("<value>") {
+                    if let Some(ve) = item_xml.find("</value>") {
+                        let val_section = &item_xml[vs..ve];
+                        if let Some(is) = val_section.find("<int>") {
+                            if let Some(ie) = val_section.find("</int>") {
+                                count = val_section[is + 5..ie].parse::<i32>().unwrap_or(0);
+                            }
+                        }
+                    }
+                }
+
+                if !name.is_empty() {
+                    result.push(MonsterKillInfo { name, count });
+                }
+                search_pos = abs_end + 7;
+            }
+        }
+    }
+    result
+}
+
+/// Parse goldenWalnutsFound from the top-level save XML.
+fn parse_golden_walnuts_found(xml: &str) -> i32 {
+    if let Some(val) = super::xml_utils::get_tag_value(xml, "goldenWalnutsFound") {
+        val.parse::<i32>().unwrap_or(0)
+    } else {
+        0
+    }
+}
+
 pub fn list_save_files_sync(game_dir: Option<String>) -> Result<Vec<SaveSummary>, String> {
     let saves_dir = super::get_saves_dir()
         .ok_or_else(|| "Could not locate APPDATA or HOME directory".to_string())?;
@@ -438,6 +708,34 @@ fn get_save_detail_sync(
         (None, None)
     };
 
+    // Collection tracking: extract IDs from save data
+    let shipped_items: Vec<String> = parse_string_int_dict(&main_xml, "basicShipped")
+        .into_iter()
+        .map(|(k, _)| k)
+        .collect();
+    let fish_caught: Vec<String> = parse_string_int_array_dict(&main_xml, "fishCaught")
+        .into_iter()
+        .map(|(k, _, _)| k)
+        .collect();
+    let cooking_recipes: Vec<String> = parse_string_int_dict(&main_xml, "cookingRecipes")
+        .into_iter()
+        .map(|(k, _)| k)
+        .collect();
+    let crafting_recipes: Vec<String> = parse_string_int_dict(&main_xml, "craftingRecipes")
+        .into_iter()
+        .map(|(k, _)| k)
+        .collect();
+    let recipes_cooked: Vec<String> = parse_string_int_dict(&main_xml, "recipesCooked")
+        .into_iter()
+        .map(|(k, _)| k)
+        .collect();
+    let secret_notes_seen = parse_int_set(&main_xml, "secretNotesSeen");
+    let songs_heard = parse_string_set(&main_xml, "songsHeard");
+    let mail_received = parse_string_set(&main_xml, "mailReceived");
+    let max_stamina = extract_tag_i32(&main_xml, "maxStamina");
+    let specific_monsters_killed = parse_specific_monsters_killed(&main_xml);
+    let golden_walnuts_found = parse_golden_walnuts_found(&main_xml);
+
     Ok(SaveDetail {
         summary,
         weather_today,
@@ -448,6 +746,17 @@ fn get_save_detail_sync(
         farmer_appearance: Some(farmer_appearance),
         farmer_avatar,
         farmer_avatar_error,
+        shipped_items,
+        fish_caught,
+        cooking_recipes,
+        crafting_recipes,
+        recipes_cooked,
+        secret_notes_seen,
+        songs_heard,
+        mail_received,
+        max_stamina,
+        specific_monsters_killed,
+        golden_walnuts_found,
     })
 }
 

@@ -25,6 +25,7 @@ import {
   PencilRuler,
   ArchiveRestore,
   Package,
+  Trophy,
 } from "lucide-react"
 
 interface SidebarProps {
@@ -51,6 +52,7 @@ interface SidebarProps {
 
 const navItems: { id: Page; label: string; icon: React.ReactNode }[] = [
   { id: "dashboard", label: "仪表盘", icon: <LayoutDashboard /> },
+  { id: "collections", label: "收集进度", icon: <Trophy className="h-4 w-4" /> },
   { id: "crops", label: "作物管理", icon: <Sprout /> },
   { id: "items", label: "物品百科", icon: <Package className="h-4 w-4" /> },
   { id: "npcs", label: "村民关系", icon: <Users /> },
@@ -366,7 +368,7 @@ export function Sidebar({
       <ScrollArea className={cn("flex-1 pb-4", collapsed ? "px-2" : "px-3")}>
         <nav className="flex flex-col gap-1">
           {navItems
-            .filter((item) => item.id === "dashboard" || item.id === "settings" || enabledFeatures.includes(item.id))
+            .filter((item) => item.id === "dashboard" || item.id === "collections" || item.id === "settings" || enabledFeatures.includes(item.id))
             .map((item) => {
             const showDownloadCount = item.id === "downloads" && activeDownloadCount > 0
             return (
