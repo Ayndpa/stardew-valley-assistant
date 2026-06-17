@@ -1087,7 +1087,7 @@ export function GameMap({ selectedSaveId }: GameMapProps) {
                                 height={height}
                                 className="overflow-visible"
                               >
-                                <div className="flex h-full w-full items-center justify-center pointer-events-none">
+                                <div className="flex h-full w-full items-center justify-center pointer-events-none" style={{ transform: `scale(${1 / zoom})`, transformOrigin: 'center center' }}>
                                   <div
                                     onClick={() => centerOnTile(p.tileX, p.tileY)}
                                     className="pointer-events-auto group flex items-center bg-background/90 rounded-full cursor-pointer select-none z-10 transition-all hover:scale-105 hover:bg-background"
@@ -1153,7 +1153,7 @@ export function GameMap({ selectedSaveId }: GameMapProps) {
                               height={height}
                               className="overflow-visible"
                             >
-                              <div className="flex h-full w-full items-center justify-center pointer-events-none">
+                              <div className="flex h-full w-full items-center justify-center pointer-events-none" style={{ transform: `scale(${1 / zoom})`, transformOrigin: 'center center' }}>
                                 <div
                                   onClick={() => centerOnTile(loc.tileX!, loc.tileY!)}
                                   className="pointer-events-auto group flex items-center bg-background/90 rounded-full cursor-pointer select-none z-20 transition-all hover:scale-105 hover:bg-background"
@@ -1719,18 +1719,26 @@ export function GameMap({ selectedSaveId }: GameMapProps) {
                                 onClick={() => handleSchedulePointClick(p)}
                                 className={cn(
                                   "w-full text-left p-1.5 rounded text-[11px] border transition-colors flex items-center justify-between",
-                                  isOnCurrentMap 
+                                  isOnCurrentMap
                                     ? "bg-primary/5 border-primary/20 hover:bg-primary/10 text-foreground"
                                     : "bg-muted/30 border-border/40 hover:bg-muted/50 text-muted-foreground"
                                 )}
-                                title={isOnCurrentMap ? "点击定位到此坐标" : `点击切换至 ${p.locationDisplayName} 地图并定位`}
+                                title={isOnCurrentMap ? t("fishingMap.scheduleClickLocate", { defaultValue: "点击定位到此坐标" }) : t("fishingMap.scheduleClickSwitch", { defaultValue: "点击切换地图并定位", location: p.locationDisplayName })}
                               >
                                 <div className="truncate">
                                   <span className="font-semibold text-primary/80 mr-1.5">
                                     {formatGameTime(p.time)}
                                   </span>
                                   <span>
-                                    {p.locationDisplayName}
+                                    {(() => {
+                                      const keys = [`maps.${p.location}`, `fishingMap.locations.${p.location}`]
+                                      for (const key of keys) {
+                                        if (i18n.exists(key, { lng: i18n.language })) {
+                                          return t(key, { lng: i18n.language })
+                                        }
+                                      }
+                                      return p.locationDisplayName
+                                    })()}
                                   </span>
                                 </div>
                                 <div className="text-[9px] shrink-0 opacity-80">
