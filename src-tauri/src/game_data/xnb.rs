@@ -48,6 +48,8 @@ pub struct RawLocationFishArea {
 pub struct RawLocationFishEntry {
     pub item_ids: Vec<String>,
     pub fish_area_id: String,
+    pub min_distance_from_shore: i32,
+    pub max_distance_from_shore: i32,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -839,8 +841,8 @@ impl<'a> XnbPayloadReader<'a> {
             self.skip_nullable_rectangle()?;
             self.skip_nullable_rectangle()?;
             let _min_fishing_level = self.read_i32()?;
-            let _min_distance_from_shore = self.read_i32()?;
-            let _max_distance_from_shore = self.read_i32()?;
+            let min_distance_from_shore = self.read_i32()?;
+            let max_distance_from_shore = self.read_i32()?;
             let _apply_daily_luck = self.read_bool()?;
             let _curiosity_lure_buff = self.read_f32()?;
             let _specific_bait_buff = self.read_f32()?;
@@ -860,6 +862,8 @@ impl<'a> XnbPayloadReader<'a> {
             fish.push(RawLocationFishEntry {
                 item_ids,
                 fish_area_id,
+                min_distance_from_shore,
+                max_distance_from_shore,
             });
         }
         Ok(fish)

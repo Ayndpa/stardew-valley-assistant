@@ -65,6 +65,8 @@ interface FishingAreaFish {
   minLevel: number
   isTrap: boolean
   price: number
+  minDistanceFromShore: number
+  maxDistanceFromShore: number
 }
 
 interface FishingArea {
@@ -1251,9 +1253,20 @@ export function GameMap({ selectedSaveId }: GameMapProps) {
               const hasRainy = selectedFishingInfo.area?.fish.some((f) => f.weather === "rainy") ?? false
               const hasSunny = selectedFishingInfo.area?.fish.some((f) => f.weather === "sunny") ?? false
               const hasTrap = selectedFishingInfo.area?.fish.some((f) => f.isTrap) ?? false
+              const tileDepth = selectedFishingInfo.tile.depth
 
               // Filter + search + sort
               let visibleFish = (selectedFishingInfo.area?.fish ?? []).filter((fish) => {
+                // Depth/distance filter: skip fish that can't appear at this tile's depth
+                if (!fish.isTrap) {
+                  const minDist = fish.minDistanceFromShore
+                  const maxDist = fish.maxDistanceFromShore
+                  if (minDist > 0 || maxDist > 0) {
+                    const fishMinDepth = Math.max(0, minDist - 1)
+                    const fishMaxDepth = maxDist > 0 ? Math.min(5, maxDist - 1) : 5
+                    if (tileDepth < fishMinDepth || tileDepth > fishMaxDepth) return false
+                  }
+                }
                 if (fishPanelSearch) {
                   const q = fishPanelSearch.toLowerCase()
                   if (!fish.name.toLowerCase().includes(q) && !fish.description.toLowerCase().includes(q)) return false

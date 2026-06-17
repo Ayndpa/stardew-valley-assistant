@@ -57,6 +57,8 @@ pub struct FishingAreaFish {
     pub min_level: i32,
     pub is_trap: bool,
     pub price: i32,
+    pub min_distance_from_shore: i32,
+    pub max_distance_from_shore: i32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -633,6 +635,8 @@ fn load_fishing_areas_for_map(
                     min_level,
                     is_trap,
                     price: object.price,
+                    min_distance_from_shore: fish_entry.min_distance_from_shore,
+                    max_distance_from_shore: fish_entry.max_distance_from_shore,
                 });
             }
         }
