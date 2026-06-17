@@ -334,7 +334,7 @@ export function Dashboard({ selectedSaveId }: DashboardProps) {
 
     // Crafting
     const craftedSet = new Set(
-      detail.craftingRecipes.filter(([, count]) => count > 0).map(([name]) => name),
+      detail.craftingRecipes,
     )
     const allCrafting = itemEntries.filter((item) => item.itemTypeKey === "crafting")
     const craftedCount = allCrafting.filter(

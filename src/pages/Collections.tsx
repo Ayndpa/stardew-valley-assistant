@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useTranslation } from "react-i18next"
@@ -220,7 +220,7 @@ export function Collections({ selectedSaveId, onNavigateToItem }: CollectionsPro
 
     // Crafting
     const craftedSet = new Set(
-      detail.craftingRecipes.filter(([, count]) => count > 0).map(([name]) => name),
+      detail.craftingRecipes,
     )
     const allCrafting = itemEntries.filter((item) => item.itemTypeKey === "crafting")
     const craftingCollected = allCrafting.filter(
