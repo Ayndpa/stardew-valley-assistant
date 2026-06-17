@@ -51,6 +51,12 @@ pub struct FishingAreaFish {
     pub name: String,
     pub description: String,
     pub icon: Option<String>,
+    pub seasons: Vec<String>,
+    pub time_ranges: Vec<(i32, i32)>,
+    pub weather: String,
+    pub min_level: i32,
+    pub is_trap: bool,
+    pub price: i32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -433,6 +439,69 @@ pub fn parse_fishing_map(
     }))
 }
 
+pub fn parse_fish_conditions(raw_str: &str) -> (Vec<String>, Vec<(i32, i32)>, String, i32, bool) {
+    let parts: Vec<&str> = raw_str.split('/').collect();
+    if parts.len() < 5 {
+        return (Vec::new(), Vec::new(), "both".to_string(), 0, false);
+    }
+
+    let is_trap = parts.get(1).map(|&s| s.trim() == "trap").unwrap_or(false);
+    if is_trap {
+        return (
+            vec![
+                "spring".to_string(),
+                "summer".to_string(),
+                "fall".to_string(),
+                "winter".to_string(),
+            ],
+            vec![(600, 2600)],
+            "both".to_string(),
+            0,
+            true,
+        );
+    }
+
+    let mut time_ranges = Vec::new();
+    if let Some(&raw_times) = parts.get(5) {
+        let times: Vec<&str> = raw_times.split_whitespace().collect();
+        for chunk in times.chunks_exact(2) {
+            if let (Ok(start), Ok(end)) = (chunk[0].parse::<i32>(), chunk[1].parse::<i32>()) {
+                time_ranges.push((start, end));
+            }
+        }
+    }
+    if time_ranges.is_empty() {
+        time_ranges.push((600, 2600));
+    }
+
+    let mut seasons = Vec::new();
+    if let Some(&raw_seasons) = parts.get(6) {
+        for s in raw_seasons.split_whitespace() {
+            seasons.push(s.to_string());
+        }
+    }
+    if seasons.is_empty() {
+        seasons = vec![
+            "spring".to_string(),
+            "summer".to_string(),
+            "fall".to_string(),
+            "winter".to_string(),
+        ];
+    }
+
+    let weather = parts
+        .get(7)
+        .map(|&w| w.trim().to_string())
+        .unwrap_or_else(|| "both".to_string());
+
+    let min_level = parts
+        .get(12)
+        .and_then(|s| s.trim().parse::<i32>().ok())
+        .unwrap_or(0);
+
+    (seasons, time_ranges, weather, min_level, false)
+}
+
 fn load_fishing_areas_for_map(
     content_dir: &Path,
     map_id: &str,
@@ -527,6 +596,24 @@ fn load_fishing_areas_for_map(
                 }
                 let name = resolve_localized_text(&object.display_name, &localized_tables);
                 let description = resolve_localized_text(&object.description, &localized_tables);
+                let (seasons, time_ranges, weather, min_level, is_trap) = fish_data
+                    .get(&object_id)
+                    .map(|raw_str| parse_fish_conditions(raw_str))
+                    .unwrap_or_else(|| {
+                        (
+                            vec![
+                                "spring".to_string(),
+                                "summer".to_string(),
+                                "fall".to_string(),
+                                "winter".to_string(),
+                            ],
+                            vec![(600, 2600)],
+                            "both".to_string(),
+                            0,
+                            false,
+                        )
+                    });
+
                 area.fish.push(FishingAreaFish {
                     id: object_id.clone(),
                     name: if name.trim().is_empty() {
@@ -540,6 +627,12 @@ fn load_fishing_areas_for_map(
                         description
                     },
                     icon: render_object_icon(content_dir, object, &mut texture_cache).ok(),
+                    seasons,
+                    time_ranges,
+                    weather,
+                    min_level,
+                    is_trap,
+                    price: object.price,
                 });
             }
         }

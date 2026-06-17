@@ -4,7 +4,8 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { BookOpen, ChevronLeft, ChevronRight, Coins, Gift, Package, Search, Soup, Tag, Trash2 } from "lucide-react"
+import { cn } from "@/lib/utils"
+import { BookOpen, ChevronLeft, ChevronRight, Clock, Coins, Fish, Gift, Package, Search, Soup, Tag, Trash2 } from "lucide-react"
 import {
   ItemEntry,
   ItemGameDataOverview,
@@ -375,6 +376,78 @@ export function Items({ navigationTarget, onNavigationHandled }: ItemsProps) {
                     </div>
                   </div>
                 )}
+
+                {/* Fish conditions block */}
+                {item.fishConditions && (() => {
+                  const fc = item.fishConditions
+                  const seasonColors: Record<string, string> = {
+                    spring: "bg-green-500/15 text-green-400 border-green-500/30",
+                    summer: "bg-yellow-500/15 text-yellow-400 border-yellow-500/30",
+                    fall: "bg-orange-500/15 text-orange-400 border-orange-500/30",
+                    winter: "bg-blue-400/15 text-blue-400 border-blue-400/30",
+                  }
+                  const formatTime = (n: number) => {
+                    const h = Math.floor(n / 100)
+                    const m = n % 100
+                    const hour = h > 12 ? h - 12 : h === 0 ? 12 : h
+                    const ampm = h >= 12 && h < 24 ? "PM" : "AM"
+                    return `${hour}:${m.toString().padStart(2, "0")} ${ampm}`
+                  }
+                  return (
+                    <div className="rounded-md border border-border/70 bg-accent/20 px-3 py-2 space-y-2">
+                      <div className="flex items-center gap-2 text-xs font-medium text-foreground">
+                        <Fish className="h-3.5 w-3.5 text-primary" />
+                        <span>{t("fishingMap.conditions")}</span>
+                        {fc.isTrap && (
+                          <span className="ml-auto inline-flex items-center rounded-full border border-teal-500/30 bg-teal-500/15 px-2 py-0.5 text-[9px] font-medium text-teal-400">
+                            {t("fishingMap.crabPot")}
+                          </span>
+                        )}
+                        {fc.minLevel > 0 && (
+                          <span className="inline-flex items-center rounded-full border border-purple-500/30 bg-purple-500/15 px-2 py-0.5 text-[9px] font-medium text-purple-400">
+                            {t("fishingMap.minLevel", { level: fc.minLevel })}
+                          </span>
+                        )}
+                      </div>
+                      {!fc.isTrap && (
+                        <div className="flex flex-wrap gap-1">
+                          {fc.seasons.map((season) => (
+                            <span
+                              key={season}
+                              className={cn(
+                                "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium",
+                                seasonColors[season] ?? "bg-muted/30 text-muted-foreground border-border/40"
+                              )}
+                            >
+                              {t(`fishingMap.${season}`, { defaultValue: season })}
+                            </span>
+                          ))}
+                          {fc.weather && fc.weather !== "both" && (
+                            <span
+                              className={cn(
+                                "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium",
+                                fc.weather === "rainy"
+                                  ? "bg-blue-500/15 text-blue-400 border-blue-500/30"
+                                  : "bg-amber-400/15 text-amber-400 border-amber-400/30"
+                              )}
+                            >
+                              {t(`fishingMap.${fc.weather}`, { defaultValue: fc.weather })}
+                            </span>
+                          )}
+                          {fc.timeRanges.map(([start, end], idx) => (
+                            <span
+                              key={idx}
+                              className="inline-flex items-center gap-1 rounded-full border border-border/40 bg-muted/30 px-2 py-0.5 text-[10px] font-medium text-muted-foreground"
+                            >
+                              <Clock className="h-2.5 w-2.5" />
+                              {formatTime(start)}–{formatTime(end)}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
 
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   <div className="flex items-center gap-2 text-muted-foreground">

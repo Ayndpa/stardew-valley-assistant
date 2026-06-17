@@ -1,3 +1,11 @@
+export interface FishConditions {
+  seasons: string[]
+  timeRanges: [number, number][]
+  weather: string
+  minLevel: number
+  isTrap: boolean
+}
+
 export interface ItemEntry {
   id: string
   name: string
@@ -13,6 +21,7 @@ export interface ItemEntry {
   canBeGivenAsGift: boolean
   canBeTrashed: boolean
   recipeSources: string[]
+  fishConditions?: FishConditions | null
 }
 
 export interface ItemGameData {

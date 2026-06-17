@@ -7,11 +7,22 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use super::calendar::resolve_localized_text;
+use super::fishing::parse_fish_conditions;
 use super::image_utils::render_object_icon;
 use super::xnb::{
     load_localized_string_tables_with_lang, load_objects_xnb, load_string_dictionary_best_effort,
     load_string_dictionary_xnb, RawObjectData,
 };
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct FishConditions {
+    pub seasons: Vec<String>,
+    pub time_ranges: Vec<(i32, i32)>,
+    pub weather: String,
+    pub min_level: i32,
+    pub is_trap: bool,
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -30,6 +41,7 @@ pub struct ItemEncyclopediaEntry {
     pub can_be_given_as_gift: bool,
     pub can_be_trashed: bool,
     pub recipe_sources: Vec<String>,
+    pub fish_conditions: Option<FishConditions>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -73,6 +85,7 @@ struct IndexedItemEntry {
     can_be_trashed: bool,
     recipe_sources: Vec<String>,
     raw_object: RawObjectData,
+    fish_conditions: Option<FishConditions>,
 }
 
 #[derive(Debug, Clone)]
@@ -223,6 +236,10 @@ fn build_item_snapshot(content_dir: PathBuf, lang: Option<&str>) -> Result<ItemS
     let recipe_sources =
         load_cooking_recipe_sources_localized(&content_dir, &localized_tables, is_zh);
 
+    // Load fish data (tolerate if file not found)
+    let fish_data = load_string_dictionary_xnb(&content_dir.join("Data").join("Fish.xnb"))
+        .unwrap_or_default();
+
     let mut encyclopedia = Vec::with_capacity(objects.len());
 
     for (id, object) in objects {
@@ -234,6 +251,19 @@ fn build_item_snapshot(content_dir: PathBuf, lang: Option<&str>) -> Result<ItemS
             classify_category_localized(object.category, &object.object_type, is_zh);
         let edibility = (object.edibility > -300).then_some(object.edibility);
         let item_recipe_sources = recipe_sources.get(&id).cloned().unwrap_or_default();
+
+        // Build fish conditions if this object has a Fish.xnb entry
+        let fish_conditions = fish_data.get(&id).map(|raw_str| {
+            let (seasons, time_ranges, weather, min_level, is_trap) =
+                parse_fish_conditions(raw_str);
+            FishConditions {
+                seasons,
+                time_ranges,
+                weather,
+                min_level,
+                is_trap,
+            }
+        });
 
         encyclopedia.push(IndexedItemEntry {
             id,
@@ -262,6 +292,7 @@ fn build_item_snapshot(content_dir: PathBuf, lang: Option<&str>) -> Result<ItemS
             can_be_trashed: object.can_be_trashed,
             recipe_sources: item_recipe_sources,
             raw_object: object,
+            fish_conditions,
         });
     }
 
@@ -333,6 +364,7 @@ fn build_item_entry(
         can_be_given_as_gift: item.can_be_given_as_gift,
         can_be_trashed: item.can_be_trashed,
         recipe_sources: item.recipe_sources.clone(),
+        fish_conditions: item.fish_conditions.clone(),
     }
 }
 
