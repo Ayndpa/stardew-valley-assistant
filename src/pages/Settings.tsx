@@ -78,11 +78,13 @@ export function Settings({
   onRestartOnboarding,
   enabledFeatures,
   onEnabledFeaturesChange,
+  onUpdateFound,
 }: {
   selectedSaveId: string
   onRestartOnboarding?: () => void
   enabledFeatures: Page[]
   onEnabledFeaturesChange: (features: Page[]) => void
+  onUpdateFound?: (info: any) => void
 }) {
   const { t } = useTranslation()
   const { themeMode, themeSeason, setThemeMode, setThemeSeason } = useTheme()
@@ -340,7 +342,7 @@ export function Settings({
           </CardContent>
         </Card>
 
-        <AboutCard />
+        <AboutCard onUpdateFound={onUpdateFound} />
       </div>
     </div>
   )

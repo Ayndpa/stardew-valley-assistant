@@ -15,6 +15,8 @@ import { Downloads } from "@/pages/Downloads"
 import { OnlineMods } from "@/components/mods/OnlineMods"
 import { Onboarding } from "@/components/Onboarding"
 import { TitleBar } from "@/components/TitleBar"
+import { UpdateDialog, DISMISSED_UPDATE_VERSION_KEY } from "@/components/UpdateDialog"
+import type { UpdateInfo } from "@/components/UpdateDialog"
 import { useDownloadManager } from "@/hooks/useDownloadManager"
 import { useSavesList } from "@/hooks/useSavesList"
 import { useGameLauncher } from "@/hooks/useGameLauncher"
@@ -63,6 +65,7 @@ function App() {
   const [modListRefreshSignal, setModListRefreshSignal] = useState(0)
   const [globalToast, setGlobalToast] = useState<{ message: string; type: "success" | "info" | "warning" } | null>(null)
   const [saveEditorAcknowledged, setSaveEditorAcknowledged] = useState(false)
+  const [updateDialogInfo, setUpdateDialogInfo] = useState<UpdateInfo | null>(null)
 
   // Custom Hooks
   const { saves, selectedSaveId, fetchSavesList, handleSaveChange } = useSavesList()
@@ -195,6 +198,37 @@ function App() {
   useEffect(() => {
     ensureGameDirectoryReady()
   }, [ensureGameDirectoryReady])
+
+  // Auto-check for updates on startup
+  useEffect(() => {
+    const checkUpdateOnStart = async () => {
+      if (typeof window === "undefined" || !(window as any).__TAURI_INTERNALS__) return
+      try {
+        const { invoke } = await import("@tauri-apps/api/core")
+        const { getVersion } = await import("@tauri-apps/api/app")
+        const currentVersion = await getVersion()
+        const info: UpdateInfo = await invoke("check_for_updates", { currentVersion })
+        if (info.has_update) {
+          const dismissedVersion = localStorage.getItem(DISMISSED_UPDATE_VERSION_KEY)
+          if (dismissedVersion === info.latest_version) return
+          setUpdateDialogInfo(info)
+        }
+      } catch {
+        // Silently ignore auto-check failures
+      }
+    }
+    checkUpdateOnStart()
+  }, [])
+
+  const handleDownloadUpdate = async (url: string) => {
+    try {
+      const { openUrl } = await import("@tauri-apps/plugin-opener")
+      await openUrl(url)
+    } catch {
+      window.open(url, "_blank")
+    }
+    setUpdateDialogInfo(null)
+  }
 
   // Custom hooks for launcher, deep link and drag and drop
   const { isGameRunning, handleLaunchGame } = useGameLauncher({ ensureGameDirectoryReady, showGlobalToast })
@@ -334,6 +368,7 @@ function App() {
           onRestartOnboarding={() => setShowOnboarding(true)}
           enabledFeatures={enabledFeatures}
           onEnabledFeaturesChange={updateEnabledFeatures}
+          onUpdateFound={setUpdateDialogInfo}
           />
         )
       case "saveBackups":
@@ -461,6 +496,17 @@ function App() {
           enabledFeatures={enabledFeatures}
         />
       )}
+      <UpdateDialog
+        isOpen={!!updateDialogInfo}
+        updateInfo={updateDialogInfo}
+        onClose={(dismissVersion) => {
+          if (dismissVersion && updateDialogInfo) {
+            localStorage.setItem(DISMISSED_UPDATE_VERSION_KEY, updateDialogInfo.latest_version)
+          }
+          setUpdateDialogInfo(null)
+        }}
+        onDownload={handleDownloadUpdate}
+      />
     </div>
   )
 }

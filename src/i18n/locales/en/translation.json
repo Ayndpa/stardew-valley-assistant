@@ -184,7 +184,15 @@
       "upToDate": "Up to Date",
       "newVersion": "Latest version: {{version}}",
       "downloadUpdate": "Download Update",
-      "updateCheckError": "Failed to check for updates. Please check your network connection and try again."
+      "updateCheckError": "Failed to check for updates. Please check your network connection and try again.",
+      "updateDialog": {
+        "title": "New Version Available",
+        "currentVersion": "Current Version",
+        "latestVersion": "Latest Version",
+        "releaseNotes": "Release Notes",
+        "close": "Close",
+        "dismissVersion": "Don't remind me about version {{version}}"
+      }
     }
   },
   "seasons": {
