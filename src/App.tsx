@@ -5,6 +5,7 @@ import { Dashboard } from "@/pages/Dashboard"
 import { Collections } from "@/pages/Collections"
 import { Crops } from "@/pages/Crops"
 import { Items } from "@/pages/Items"
+import { Bundles } from "@/pages/Bundles"
 import { Calendar } from "@/pages/Calendar"
 import { GameMap } from "@/pages/GameMap"
 import { SaveEditor } from "@/pages/SaveEditor"
@@ -24,7 +25,7 @@ import { useNxmDeepLink } from "@/hooks/useNxmDeepLink"
 import { useGlobalDragAndDrop } from "@/hooks/useGlobalDragAndDrop"
 import "./index.css"
 
-export type Page = "dashboard" | "collections" | "crops" | "items" | "npcs" | "calendar" | "fishingMap" | "saveEditor" | "saveBackups" | "settings" | "mods" | "onlineMods" | "downloads"
+export type Page = "dashboard" | "collections" | "crops" | "items" | "npcs" | "calendar" | "fishingMap" | "saveEditor" | "saveBackups" | "settings" | "mods" | "onlineMods" | "downloads" | "bundles"
 
 export interface SaveSummary {
   id: string
@@ -97,12 +98,16 @@ function App() {
         if (!parsed.includes("collections")) {
           parsed.push("collections")
         }
+        // 迁移：新增的 bundles 功能需要补上
+        if (!parsed.includes("bundles")) {
+          parsed.push("bundles")
+        }
         return parsed
       } catch (e) {
         // ignore
       }
     }
-    return ["collections", "crops", "items", "npcs", "calendar", "fishingMap", "saveEditor", "saveBackups", "mods", "onlineMods", "downloads"]
+    return ["collections", "crops", "items", "npcs", "calendar", "bundles", "fishingMap", "saveEditor", "saveBackups", "mods", "onlineMods", "downloads"]
   })
 
   const updateEnabledFeatures = useCallback((value: Page[]) => {
@@ -359,6 +364,15 @@ function App() {
         )
       case "calendar":
         return <Calendar selectedSaveId={selectedSaveId} />
+      case "bundles":
+        return (
+          <Bundles
+            onNavigateToItem={(itemName) => {
+              setItemNavigationTarget(itemName)
+              setCurrentPage("items")
+            }}
+          />
+        )
       case "fishingMap":
         return <GameMap selectedSaveId={selectedSaveId} />
       case "settings":

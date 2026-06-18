@@ -10,7 +10,7 @@ use std::path::Path;
 
 pub use loaders::{
     get_lang_suffix, load_crops_xnb, load_int_string_dictionary_best_effort,
-    load_localized_string_tables_with_lang,
+    load_int_string_dictionary_xnb, load_localized_string_tables_with_lang,
     load_location_fishing_xnb, load_objects_xnb, load_string_dictionary_best_effort,
     load_string_dictionary_xnb, load_xnb_texture,
 };

@@ -4,6 +4,7 @@
     "collections": "Collections",
     "crops": "Crops",
     "items": "Items Wiki",
+    "bundles": "Bundles",
     "npcs": "NPC Relationships",
     "calendar": "Calendar",
     "fishingMap": "Game Map",
@@ -36,6 +37,20 @@
     "notes": {
       "notePrefix": "Secret Note",
       "imageNote": "Image"
+    }
+  },
+  "bundles": {
+    "title": "Community Center Bundles",
+    "loading": "Loading bundle data...",
+    "error": "Failed to load bundle data",
+    "noData": "No bundle data available",
+    "pickAny": "Pick any {{count}}",
+    "allRequired": "All required",
+    "quality": {
+      "normal": "Normal",
+      "silver": "Silver",
+      "gold": "Gold",
+      "iridium": "Iridium"
     }
   },
   "onlineModsPage": {

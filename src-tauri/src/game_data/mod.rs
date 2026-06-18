@@ -1,3 +1,4 @@
+pub mod bundles;
 pub mod calendar;
 pub mod crops;
 pub mod fishing;
@@ -13,6 +14,7 @@ use crate::game::find_stardew_valley;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+pub use bundles::get_bundle_game_data;
 pub use calendar::get_calendar_game_data;
 pub use crops::get_crop_game_data;
 pub use fishing::{get_fishing_map_data, get_fishing_map_detail};

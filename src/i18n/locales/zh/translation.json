@@ -4,6 +4,7 @@
     "collections": "收集进度",
     "crops": "作物管理",
     "items": "物品百科",
+    "bundles": "收集包",
     "npcs": "村民关系",
     "calendar": "节日日历",
     "fishingMap": "游戏地图",
@@ -36,6 +37,20 @@
     "notes": {
       "notePrefix": "秘密纸条",
       "imageNote": "图片"
+    }
+  },
+  "bundles": {
+    "title": "社区中心收集包",
+    "loading": "加载收集包数据中...",
+    "error": "加载收集包数据失败",
+    "noData": "暂无收集包数据",
+    "pickAny": "任选 {{count}} 个",
+    "allRequired": "全部需要",
+    "quality": {
+      "normal": "普通",
+      "silver": "银星",
+      "gold": "金星",
+      "iridium": "铱星"
     }
   },
   "onlineModsPage": {

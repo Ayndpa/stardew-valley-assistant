@@ -14,9 +14,9 @@ use crate::download_control::{pause_download_task, resume_download_task, Downloa
 use crate::farmer_avatar::get_npc_portraits;
 use crate::game::{auto_detect_game_dir, get_game_version, launch_game};
 use crate::game_data::{
-    get_calendar_game_data, get_crop_game_data, get_fishing_map_data, get_fishing_map_detail,
-    get_item_game_data, get_item_game_data_overview, get_npc_game_data, get_secret_notes_game_data,
-    query_item_game_data,
+    get_bundle_game_data, get_calendar_game_data, get_crop_game_data, get_fishing_map_data,
+    get_fishing_map_detail, get_item_game_data, get_item_game_data_overview, get_npc_game_data,
+    get_secret_notes_game_data, query_item_game_data,
 };
 use crate::mods::{
     apply_profile, check_mod_updates, check_nexus_login_status, close_scraper_window, delete_mod,
@@ -286,6 +286,7 @@ pub fn run() {
             open_in_file_manager,
             path_exists,
             get_game_version,
+            get_bundle_game_data,
             get_calendar_game_data,
             get_crop_game_data,
             get_item_game_data,

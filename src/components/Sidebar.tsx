@@ -25,6 +25,7 @@ import {
   PencilRuler,
   ArchiveRestore,
   Package,
+  PackageOpen,
   Trophy,
 } from "lucide-react"
 
@@ -55,6 +56,7 @@ const navItems: { id: Page; label: string; icon: React.ReactNode }[] = [
   { id: "collections", label: "收集进度", icon: <Trophy className="h-4 w-4" /> },
   { id: "crops", label: "作物管理", icon: <Sprout /> },
   { id: "items", label: "物品百科", icon: <Package className="h-4 w-4" /> },
+  { id: "bundles", label: "收集包", icon: <PackageOpen className="h-4 w-4" /> },
   { id: "npcs", label: "村民关系", icon: <Users /> },
   { id: "calendar", label: "节日日历", icon: <CalendarDays /> },
   { id: "fishingMap", label: "游戏地图", icon: <Map className="h-4 w-4" /> },
