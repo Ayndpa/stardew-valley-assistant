@@ -5,10 +5,14 @@ import {
   Puzzle,
   Sprout,
   Package,
+  PackageOpen,
   Users,
   CalendarDays,
   Fish,
   PencilRuler,
+  Trophy,
+  PawPrint,
+  Baby,
   Check,
   ChevronRight,
 } from "lucide-react"
@@ -32,9 +36,13 @@ export function OnboardingFeaturesStep({
     { id: "mods", icon: Puzzle, gradient: "from-purple-500/10 to-indigo-500/10" },
     { id: "crops", icon: Sprout, gradient: "from-emerald-500/10 to-teal-500/10" },
     { id: "items", icon: Package, gradient: "from-amber-500/10 to-orange-500/10" },
+    { id: "collections", icon: Trophy, gradient: "from-yellow-500/10 to-lime-500/10" },
+    { id: "bundles", icon: PackageOpen, gradient: "from-violet-500/10 to-purple-500/10" },
+    { id: "animals", icon: PawPrint, gradient: "from-orange-500/10 to-red-500/10" },
     { id: "npcs", icon: Users, gradient: "from-pink-500/10 to-rose-500/10" },
     { id: "calendar", icon: CalendarDays, gradient: "from-blue-500/10 to-sky-500/10" },
     { id: "fishingMap", icon: Fish, gradient: "from-cyan-500/10 to-blue-500/10" },
+    { id: "children", icon: Baby, gradient: "from-rose-500/10 to-pink-500/10" },
     { id: "saveEditor", icon: PencilRuler, gradient: "from-yellow-500/10 to-amber-500/10" },
   ]
 

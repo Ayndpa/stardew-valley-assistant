@@ -53,6 +53,15 @@ const mapCategoriesToPages = (categories: string[]): Page[] => {
   if (categories.includes("items")) {
     pages.push("items")
   }
+  if (categories.includes("collections")) {
+    pages.push("collections")
+  }
+  if (categories.includes("bundles")) {
+    pages.push("bundles")
+  }
+  if (categories.includes("animals")) {
+    pages.push("animals")
+  }
   if (categories.includes("npcs")) {
     pages.push("npcs")
   }
@@ -61,6 +70,9 @@ const mapCategoriesToPages = (categories: string[]): Page[] => {
   }
   if (categories.includes("fishingMap")) {
     pages.push("fishingMap")
+  }
+  if (categories.includes("children")) {
+    pages.push("children")
   }
   if (categories.includes("saveEditor")) {
     pages.push("saveEditor", "saveBackups")
@@ -79,6 +91,15 @@ const mapPagesToCategories = (pages: Page[]): string[] => {
   if (pages.includes("items")) {
     categories.push("items")
   }
+  if (pages.includes("collections")) {
+    categories.push("collections")
+  }
+  if (pages.includes("bundles")) {
+    categories.push("bundles")
+  }
+  if (pages.includes("animals")) {
+    categories.push("animals")
+  }
   if (pages.includes("npcs")) {
     categories.push("npcs")
   }
@@ -87,6 +108,9 @@ const mapPagesToCategories = (pages: Page[]): string[] => {
   }
   if (pages.includes("fishingMap")) {
     categories.push("fishingMap")
+  }
+  if (pages.includes("children")) {
+    categories.push("children")
   }
   if (pages.includes("saveEditor") || pages.includes("saveBackups")) {
     categories.push("saveEditor")

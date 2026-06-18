@@ -1684,6 +1684,14 @@
         "calendarDesc": "Sync with in-game calendar, and get festival/birthday alerts",
         "fishingMapTitle": "Game Map & Exploration",
         "fishingMapDesc": "Track resource positions and fish distribution on map",
+        "collectionsTitle": "Collections Tracker",
+        "collectionsDesc": "Track item collections and achievement progress at a glance",
+        "bundlesTitle": "Bundle Management",
+        "bundlesDesc": "View Community Center bundle requirements and track completion",
+        "animalsTitle": "Animal Management",
+        "animalsDesc": "Manage farm animals, track production and profit calculations",
+        "childrenTitle": "Children Management",
+        "childrenDesc": "Manage children with your spouse, track growth stages and interactions",
         "saveEditorTitle": "Save Editor & Backups",
         "saveEditorDesc": "Edit gold, skills, and attributes, with auto-backup protection"
       }
@@ -1732,7 +1740,7 @@
         "theme": "Theme Mode:",
         "season": "Season Palette:",
         "features": "Enabled Features:",
-        "featuresList": "Mod Scan · Save Read · Calendar Alert",
+        "featuresList": "All feature modules enabled",
         "featuresListCustom": "{{count}} custom features enabled"
       },
       "prev": "Back",

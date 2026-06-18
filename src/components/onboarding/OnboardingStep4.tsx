@@ -61,7 +61,7 @@ export function OnboardingStep4({
           <span className="text-muted-foreground font-medium">{t("onboarding.journey.summary.features")}</span>
           <span className="text-emerald-500 font-semibold flex items-center gap-1 text-[11px] sm:text-xs">
             <CheckCircle2 className="h-3 w-3 shrink-0" />
-            {enabledCount === 7
+            {enabledCount === 11
               ? t("onboarding.journey.summary.featuresList")
               : t("onboarding.journey.summary.featuresListCustom", { count: enabledCount })}
           </span>

@@ -1554,6 +1554,14 @@
           "calendarDesc": "同步星露谷游戏日历，重要节日提前提醒",
           "fishingMapTitle": "游戏地图与探索",
           "fishingMapDesc": "在地图上追踪资源位置及鱼类分布",
+          "collectionsTitle": "收集进度追踪",
+          "collectionsDesc": "追踪物品收集、成就完成进度，一览全收集目标",
+          "bundlesTitle": "收集包管理",
+          "bundlesDesc": "查看社区中心收集包需求，追踪完成进度",
+          "animalsTitle": "动物管理",
+          "animalsDesc": "管理农场动物，追踪产出与收益计算",
+          "childrenTitle": "孩子管理",
+          "childrenDesc": "管理与配偶的孩子，追踪成长阶段与互动",
           "saveEditorTitle": "存档编辑与备份",
           "saveEditorDesc": "修改金钱、属性等存档数据，支持自动备份"
         }
@@ -1602,7 +1610,7 @@
         "theme": "主题模式:",
         "season": "季节主题色:",
         "features": "已启用功能:",
-        "featuresList": "模组扫描 · 存档读取 · 日历通知",
+        "featuresList": "已启用全部功能模块",
         "featuresListCustom": "已启用 {{count}} 项自定义功能"
       },
       "prev": "返回",
