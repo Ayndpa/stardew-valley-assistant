@@ -423,6 +423,7 @@
     "noCropsPlanted": "当前存档中未找到生长的作物",
     "noCropsPlantedDesc": "在你的农场、温室或姜岛上播种并浇水后，作物状态将在此处实时显示。",
     "filterAll": "全部",
+    "allLocations": "全部区域汇总",
     "totalCountBadge": "共 {{count}} 株",
     "wateredCountBadge": "已浇水 {{watered}}/{{total}}",
     "matureCountBadge": "已成熟 {{count}}",
@@ -436,6 +437,7 @@
     "notTauri": "当前环境不是 Tauri，无法直接读取游戏目录。",
     "locations": {
       "Farm": "主要农场",
+      "FarmCave": "农场洞穴",
       "Greenhouse": "温室大棚",
       "IslandWest": "姜岛农场 (西)",
       "IslandNorth": "姜岛农场 (北)",

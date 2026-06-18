@@ -423,6 +423,7 @@
     "noCropsPlanted": "No Growing Crops Found in Save",
     "noCropsPlantedDesc": "Crops planted and watered on your farm, greenhouse, or Ginger Island will appear here in real-time.",
     "filterAll": "All",
+    "allLocations": "All Locations Summary",
     "totalCountBadge": "{{count}} total",
     "wateredCountBadge": "Watered {{watered}}/{{total}}",
     "matureCountBadge": "Mature {{count}}",
@@ -436,6 +437,7 @@
     "notTauri": "Current environment is not Tauri, cannot read game directory directly.",
     "locations": {
       "Farm": "Main Farm",
+      "FarmCave": "Farm Cave",
       "Greenhouse": "Greenhouse",
       "IslandWest": "Ginger Island (West)",
       "IslandNorth": "Ginger Island (North)",

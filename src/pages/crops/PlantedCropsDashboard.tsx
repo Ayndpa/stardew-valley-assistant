@@ -292,12 +292,80 @@ export function PlantedCropsDashboard({
     [locationSections]
   )
 
+  const allLocationsSummary = useMemo(() => {
+    if (locationSections.length === 0) return null
+
+    const totalCount = locationSections.reduce((sum, s) => sum + s.totalCount, 0)
+    const wateredCount = locationSections.reduce((sum, s) => sum + s.wateredCount, 0)
+    const matureCount = locationSections.reduce((sum, s) => sum + s.matureCount, 0)
+    const deadCount = locationSections.reduce((sum, s) => sum + s.deadCount, 0)
+
+    const cropTotalsMap = new Map<string, CropSummary>()
+    locationSections.forEach((section) => {
+      section.cropTotals.forEach((crop) => {
+        const existing = cropTotalsMap.get(crop.cropKey)
+        if (existing) {
+          existing.count += crop.count
+        } else {
+          cropTotalsMap.set(crop.cropKey, { ...crop })
+        }
+      })
+    })
+
+    const statusGroupsMap = new Map<string, StatusGroup>()
+    locationSections.forEach((section) => {
+      section.statusGroups.forEach((group) => {
+        const existing = statusGroupsMap.get(group.key)
+        if (existing) {
+          existing.count += group.count
+          existing.wateredCount += group.wateredCount
+          group.crops.forEach((crop) => {
+            const existingCrop = existing.crops.find((c) => c.cropKey === crop.cropKey)
+            if (existingCrop) {
+              existingCrop.count += crop.count
+            } else {
+              existing.crops.push({ ...crop })
+            }
+          })
+        } else {
+          statusGroupsMap.set(group.key, {
+            ...group,
+            crops: group.crops.map((c) => ({ ...c })),
+          })
+        }
+      })
+    })
+
+    return {
+      locationKey: "all",
+      locationName: t("crops.allLocations"),
+      totalCount,
+      wateredCount,
+      matureCount,
+      deadCount,
+      cropTotals: Array.from(cropTotalsMap.values()).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)),
+      statusGroups: Array.from(statusGroupsMap.values())
+        .map((group) => ({
+          ...group,
+          crops: [...group.crops].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)),
+        }))
+        .sort((a, b) => {
+          const priority = { dead: 0, ready: 1, growing: 2 }
+          return (
+            priority[a.statusType] - priority[b.statusType] ||
+            a.daysRemaining - b.daysRemaining ||
+            b.count - a.count
+          )
+        }),
+    }
+  }, [locationSections, t])
+
   const visibleSections = useMemo(() => {
     if (activeLocation === "all") {
-      return locationSections
+      return allLocationsSummary ? [allLocationsSummary] : []
     }
     return locationSections.filter((section) => section.locationKey === activeLocation)
-  }, [activeLocation, locationSections])
+  }, [activeLocation, allLocationsSummary, locationSections])
 
   if (!selectedSaveId) {
     return (
