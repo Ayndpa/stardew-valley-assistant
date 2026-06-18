@@ -444,16 +444,18 @@ pub fn run() {
 
             // Start the named pipe server for bidirectional communication with the mod
             let live_state = app.state::<LiveGameState>().inner().clone();
-            let rt = tokio::runtime::Handle::current();
-            rt.spawn(async move {
-                match pipe_server::start_pipe_server(live_state).await {
-                    Ok(_) => {
-                        println!("命名管道服务器已启动");
+            std::thread::spawn(move || {
+                let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
+                rt.block_on(async move {
+                    match pipe_server::start_pipe_server(live_state).await {
+                        Ok(_) => {
+                            println!("命名管道服务器已启动");
+                        }
+                        Err(e) => {
+                            eprintln!("启动命名管道服务器失败: {}", e);
+                        }
                     }
-                    Err(e) => {
-                        eprintln!("启动命名管道服务器失败: {}", e);
-                    }
-                }
+                });
             });
 
             #[cfg(any(target_os = "macos", windows, target_os = "linux"))]
