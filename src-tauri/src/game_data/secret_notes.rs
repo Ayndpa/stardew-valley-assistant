@@ -229,7 +229,7 @@ mod tests {
         };
 
         let path = content.join("Data").join("SecretNotes.xnb");
-        let raw_data = crate::game_data::xnb::load_int_string_dictionary_xnb(&path)
+        let raw_data = crate::game_data::xnb::loaders::load_int_string_dictionary_xnb(&path)
             .expect("Failed to parse SecretNotes.xnb");
         assert!(!raw_data.is_empty(), "SecretNotes.xnb should contain data");
 

@@ -838,7 +838,7 @@ fn translate_object_type_label(key: &str, is_zh: bool) -> String {
     }
 }
 
-fn classify_weapon_type_localized(weapon_type: i32, is_zh: bool) -> (String, String) {
+fn classify_weapon_type_localized(_weapon_type: i32, is_zh: bool) -> (String, String) {
     (
         "weapon".to_string(),
         if is_zh { "武器" } else { "Weapon" }.to_string(),

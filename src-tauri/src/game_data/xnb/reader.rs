@@ -86,8 +86,8 @@ impl<'a> XnbPayloadReader<'a> {
         let name = self.read_object_string_any()?;
         let display_name = self.read_object_string_any()?;
         let description = self.read_object_string_any()?;
-        let min_damage = self.read_i32()?;
-        let max_damage = self.read_i32()?;
+        let _min_damage = self.read_i32()?;
+        let _max_damage = self.read_i32()?;
         let _knockback = self.read_f32()?;
         let _speed = self.read_i32()?;
         let _precision = self.read_i32()?;
@@ -108,8 +108,6 @@ impl<'a> XnbPayloadReader<'a> {
             name,
             display_name,
             description,
-            min_damage,
-            max_damage,
             weapon_type,
             texture,
             sprite_index,
@@ -119,14 +117,14 @@ impl<'a> XnbPayloadReader<'a> {
     pub fn read_tool_data(&mut self) -> Result<RawToolData, String> {
         let class_name = self.read_object_string_any()?;
         let name = self.read_object_string_any()?;
-        let attachment_slots = self.read_i32()?;
+        let _attachment_slots = self.read_i32()?;
         let sale_price = self.read_i32()?;
         let display_name = self.read_object_string_any()?;
         let description = self.read_object_string_any()?;
         let texture = self.read_object_string_any()?;
         let sprite_index = self.read_i32()?;
         let menu_sprite_index = self.read_i32()?;
-        let upgrade_level = self.read_i32()?;
+        let _upgrade_level = self.read_i32()?;
         let _conventional_upgrade_from = self.read_object_string_any()?;
         self.skip_nullable_tool_upgrade_data_list()?;
         let _can_be_lost_on_death = self.read_bool()?;
@@ -142,7 +140,6 @@ impl<'a> XnbPayloadReader<'a> {
             texture,
             sprite_index,
             menu_sprite_index,
-            upgrade_level,
             sale_price,
         })
     }
@@ -399,7 +396,7 @@ impl<'a> XnbPayloadReader<'a> {
         let _baby_sound = self.read_object_string_any()?;
         let texture = self.read_object_string_any()?;
         let _harvested_texture = self.read_object_string_any()?;
-        let baby_texture = self.read_object_string_any()?;
+        let _baby_texture = self.read_object_string_any()?;
         let _use_flipped_right_for_left = self.read_bool()?;
         let sprite_width = self.read_i32()?;
         let sprite_height = self.read_i32()?;
@@ -461,7 +458,6 @@ impl<'a> XnbPayloadReader<'a> {
             can_swim,
             can_eat_golden_crackers,
             texture,
-            baby_texture,
             sprite_width,
             sprite_height,
         })

@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 
-use super::image_utils::{item_icon_rect, resolve_object_texture_path, object_texture_key, Texture};
+use super::image_utils::{resolve_object_texture_path, object_texture_key, Texture};
 use super::xnb::{load_farm_animals_xnb, load_objects_xnb, load_string_dictionary_best_effort};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
