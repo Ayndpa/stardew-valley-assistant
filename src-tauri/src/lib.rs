@@ -8,7 +8,12 @@ mod smapi;
 mod updater;
 mod utils;
 
-use std::{fs, sync::Mutex, thread, time::Duration};
+use std::{
+    fs,
+    sync::{atomic::{AtomicBool, Ordering}, Mutex},
+    thread,
+    time::Duration,
+};
 
 use crate::download_control::{pause_download_task, resume_download_task, DownloadControlState};
 use crate::farmer_avatar::get_npc_portraits;
@@ -44,6 +49,8 @@ use window_vibrancy::{apply_acrylic, apply_mica};
 
 const MAIN_WINDOW_MIN_WIDTH: f64 = 800.0;
 const MAIN_WINDOW_MIN_HEIGHT: f64 = 600.0;
+
+static RESTORING_WINDOW_STATE: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Deserialize, Serialize)]
 struct MainWindowState {
@@ -181,6 +188,9 @@ fn visible_window_bounds(
 }
 
 fn save_main_window_state(app: &AppHandle, window: &tauri::WebviewWindow) {
+    if RESTORING_WINDOW_STATE.load(Ordering::Acquire) {
+        return;
+    }
     if window.is_minimized().unwrap_or(false) || !window.is_visible().unwrap_or(true) {
         return;
     }
@@ -224,8 +234,10 @@ fn restore_main_window_state(app: &AppHandle, window: &tauri::WebviewWindow) {
     let height = state.height.max(min_size.height);
     let (pos, size) = visible_window_bounds(window, state.x, state.y, width, height);
 
+    RESTORING_WINDOW_STATE.store(true, Ordering::Release);
     let _ = window.set_size(Size::Physical(size));
     let _ = window.set_position(pos);
+    RESTORING_WINDOW_STATE.store(false, Ordering::Release);
 }
 
 fn show_main_window_in_front(window: &tauri::WebviewWindow) {
@@ -368,13 +380,23 @@ pub fn run() {
                     MAIN_WINDOW_MIN_HEIGHT,
                 ))));
                 apply_windows_backdrop(&window);
-                restore_main_window_state(app_handle, &window);
                 show_main_window_in_front(&window);
+                restore_main_window_state(app_handle, &window);
 
                 let app_handle = app.handle().clone();
-                window.on_window_event(move |_| {
-                    if let Some(window) = app_handle.get_webview_window("main") {
-                        save_main_window_state(&app_handle, &window);
+                window.on_window_event(move |event| {
+                    match event {
+                        tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_) => {
+                            if let Some(window) = app_handle.get_webview_window("main") {
+                                save_main_window_state(&app_handle, &window);
+                            }
+                        }
+                        tauri::WindowEvent::CloseRequested { .. } => {
+                            if let Some(window) = app_handle.get_webview_window("main") {
+                                save_main_window_state(&app_handle, &window);
+                            }
+                        }
+                        _ => {}
                     }
                 });
             }
