@@ -1,13 +1,19 @@
 import { useState, useMemo } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
 import {
   Coins,
   TrendingUp,
   Calendar,
   PawPrint,
+  ArrowDownAZ,
+  ArrowUpAZ,
 } from "lucide-react"
 import type { AnimalEncyclopediaEntry } from "./types"
+
+type SortField = "dailyProfit" | "seasonProfit" | "yearProfit" | "purchasePrice" | "name"
+type SortDirection = "asc" | "desc"
 
 interface AnimalProfitCalculatorProps {
   encyclopedia: AnimalEncyclopediaEntry[]
@@ -96,15 +102,40 @@ function AnimalProfitCard({ animal }: { animal: AnimalEncyclopediaEntry }) {
 export function AnimalProfitCalculator({
   encyclopedia,
 }: AnimalProfitCalculatorProps) {
+  const [sortField, setSortField] = useState<SortField>("dailyProfit")
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc")
+
   const sorted = useMemo(() => {
     return [...encyclopedia]
       .filter((a) => a.sellPrice > 0 && a.daysToProduce > 0)
       .sort((a, b) => {
-        const profitA = a.sellPrice / a.daysToProduce
-        const profitB = b.sellPrice / b.daysToProduce
-        return profitB - profitA
+        const dailyA = Math.floor(a.sellPrice / a.daysToProduce)
+        const dailyB = Math.floor(b.sellPrice / b.daysToProduce)
+
+        const compareValue = (() => {
+          switch (sortField) {
+            case "dailyProfit":
+              return dailyA - dailyB
+            case "seasonProfit":
+              return dailyA * 28 - dailyB * 28
+            case "yearProfit":
+              return dailyA * 28 * 4 - dailyB * 28 * 4
+            case "purchasePrice":
+              return a.purchasePrice - b.purchasePrice
+            case "name":
+              return a.name.localeCompare(b.name)
+            default:
+              return 0
+          }
+        })()
+
+        if (compareValue !== 0) {
+          return sortDirection === "asc" ? compareValue : -compareValue
+        }
+        // Fallback: sort by name
+        return a.name.localeCompare(b.name)
       })
-  }, [encyclopedia])
+  }, [encyclopedia, sortField, sortDirection])
 
   return (
     <div className="space-y-4">
@@ -114,6 +145,56 @@ export function AnimalProfitCalculator({
           收益计算基于动物基础售价和产出间隔，实际收益可能因好感度、品质等因素有所不同。
           高级产出（如大瓶牛奶、铱星品质等）会显著提高实际收益。
         </p>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          variant={sortField === "dailyProfit" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setSortField("dailyProfit")}
+        >
+          每日收益
+        </Button>
+        <Button
+          variant={sortField === "seasonProfit" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setSortField("seasonProfit")}
+        >
+          每季收益
+        </Button>
+        <Button
+          variant={sortField === "yearProfit" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setSortField("yearProfit")}
+        >
+          每年收益
+        </Button>
+        <Button
+          variant={sortField === "purchasePrice" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setSortField("purchasePrice")}
+        >
+          购入价
+        </Button>
+        <Button
+          variant={sortField === "name" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setSortField("name")}
+        >
+          名称
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setSortDirection((d) => (d === "desc" ? "asc" : "desc"))}
+        >
+          {sortDirection === "desc" ? (
+            <ArrowDownAZ className="h-4 w-4" />
+          ) : (
+            <ArrowUpAZ className="h-4 w-4" />
+          )}
+          {sortDirection === "desc" ? "从高到低" : "从低到高"}
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">

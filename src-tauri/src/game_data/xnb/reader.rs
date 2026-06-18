@@ -539,17 +539,21 @@ impl<'a> XnbPayloadReader<'a> {
     }
 
     fn skip_nullable_shadow_data(&mut self) -> Result<(), String> {
+        // FarmAnimalShadowData is a class (reference type), so nullable class references
+        // are serialized as a 7-bit type reader index (0 = null), not a bool presence flag.
+        // NullableReader<T> only handles value types (where T : struct).
+        if self.read_7bit_usize()? == 0 {
+            return Ok(());
+        }
+        let _visible = self.read_bool()?;
+        // Offset: nullable Point (value type, uses bool presence flag)
         if self.read_bool()? {
-            let _visible = self.read_bool()?;
-            // Offset: nullable Point
-            if self.read_bool()? {
-                let _x = self.read_i32()?;
-                let _y = self.read_i32()?;
-            }
-            // Scale: nullable float
-            if self.read_bool()? {
-                let _ = self.read_f32()?;
-            }
+            let _x = self.read_i32()?;
+            let _y = self.read_i32()?;
+        }
+        // Scale: nullable float (value type, uses bool presence flag)
+        if self.read_bool()? {
+            let _ = self.read_f32()?;
         }
         Ok(())
     }

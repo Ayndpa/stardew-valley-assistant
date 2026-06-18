@@ -104,17 +104,7 @@ export function TitleBar() {
   }
 
   const controls = (
-    <div className="titlebar-controls flex items-center gap-2" data-titlebar-no-drag="true">
-      <button
-        type="button"
-        className="titlebar-control titlebar-close"
-        onClick={() => void handleClose()}
-        disabled={!controlsEnabled}
-        aria-label={t("titlebar.close")}
-        title={t("titlebar.close")}
-      >
-        <X className="h-2.5 w-2.5" />
-      </button>
+    <div className="titlebar-controls flex items-center gap-1.5" data-titlebar-no-drag="true">
       <button
         type="button"
         className="titlebar-control titlebar-minimize"
@@ -134,6 +124,16 @@ export function TitleBar() {
         title={isMaximized ? t("titlebar.restore") : t("titlebar.maximize")}
       >
         {isMaximized ? <SquareStack className="h-2.5 w-2.5" /> : <Square className="h-2.5 w-2.5" />}
+      </button>
+      <button
+        type="button"
+        className="titlebar-control titlebar-close"
+        onClick={() => void handleClose()}
+        disabled={!controlsEnabled}
+        aria-label={t("titlebar.close")}
+        title={t("titlebar.close")}
+      >
+        <X className="h-2.5 w-2.5" />
       </button>
     </div>
   )
@@ -156,7 +156,7 @@ export function TitleBar() {
       onMouseDown={(event) => void handleDragMouseDown(event)}
     >
       <div className="flex min-w-0 flex-1 items-center">
-        {!isWindows && <div className="w-28 shrink-0">{controls}</div>}
+        {!isWindows && <div className="w-20 shrink-0">{controls}</div>}
       </div>
 
       <div
@@ -166,7 +166,7 @@ export function TitleBar() {
       </div>
 
       <div className="flex min-w-0 flex-1 items-center justify-end">
-        {isWindows ? <div className="w-28 shrink-0">{controls}</div> : <div className="w-28 shrink-0" />}
+        {isWindows ? <div className="w-20 shrink-0">{controls}</div> : <div className="w-20 shrink-0" />}
       </div>
     </header>
   )
