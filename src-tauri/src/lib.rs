@@ -14,9 +14,9 @@ use crate::download_control::{pause_download_task, resume_download_task, Downloa
 use crate::farmer_avatar::get_npc_portraits;
 use crate::game::{auto_detect_game_dir, get_game_version, launch_game};
 use crate::game_data::{
-    get_bundle_game_data, get_calendar_game_data, get_crop_game_data, get_fishing_map_data,
-    get_fishing_map_detail, get_item_game_data, get_item_game_data_overview, get_npc_game_data,
-    get_secret_notes_game_data, query_item_game_data,
+    get_animal_game_data, get_bundle_game_data, get_calendar_game_data, get_crop_game_data,
+    get_fishing_map_data, get_fishing_map_detail, get_item_game_data, get_item_game_data_overview,
+    get_npc_game_data, get_secret_notes_game_data, query_item_game_data,
 };
 use crate::mods::{
     apply_profile, check_mod_updates, check_nexus_login_status, close_scraper_window, delete_mod,
@@ -28,9 +28,10 @@ use crate::mods::{
     save_profile, toggle_mod,
 };
 use crate::saves::{
-    create_save_backup, delete_save_backup, get_npc_locations, get_npc_schedule, check_game_running, get_planted_crops, get_save_detail,
+    create_save_backup, delete_save_backup, get_children_data, get_npc_locations, get_npc_schedule,
+    check_game_running, get_planted_crops, get_save_animals, get_save_detail,
     get_save_editor_data, list_save_backups, list_save_files, restore_save_backup,
-    update_save_editor_data,
+    update_child, update_save_editor_data,
 };
 use crate::smapi::{check_smapi_status, install_smapi, uninstall_smapi};
 use crate::updater::check_for_updates;
@@ -286,6 +287,7 @@ pub fn run() {
             open_in_file_manager,
             path_exists,
             get_game_version,
+            get_animal_game_data,
             get_bundle_game_data,
             get_calendar_game_data,
             get_crop_game_data,
@@ -310,7 +312,10 @@ pub fn run() {
             check_game_running,
             get_save_editor_data,
             update_save_editor_data,
+            get_children_data,
+            update_child,
             get_planted_crops,
+            get_save_animals,
             list_profiles,
             save_profile,
             delete_profile,

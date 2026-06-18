@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 
 use super::super::image_utils::{Pixel, Texture};
 use super::{
-    load_xnb_payload, require_reader, RawCropData, RawLocationFishingData, RawObjectData,
-    RawToolData, RawWeaponData,
+    load_xnb_payload, require_reader, RawCropData, RawFarmAnimalData, RawLocationFishingData,
+    RawObjectData, RawToolData, RawWeaponData,
 };
 use super::primitives::XnbPayloadReader;
 
@@ -65,6 +65,38 @@ pub fn load_objects_xnb(path: &Path) -> Result<HashMap<String, RawObjectData>, S
         objects.insert(key, value);
     }
     Ok(objects)
+}
+
+pub fn load_farm_animals_xnb(path: &Path) -> Result<HashMap<String, RawFarmAnimalData>, String> {
+    let payload = load_xnb_payload(path)?;
+    let mut reader = XnbPayloadReader::new(&payload);
+    let type_readers = reader.read_type_readers()?;
+    let root_reader = reader.read_7bit_usize()?;
+    if root_reader == 0 {
+        return Ok(HashMap::new());
+    }
+    require_reader(&type_readers, root_reader, "DictionaryReader")?;
+
+    let count = reader.read_i32()?.max(0) as usize;
+    let mut animals = HashMap::with_capacity(count);
+    for _ in 0..count {
+        let key = reader.read_object_string(&type_readers)?;
+        let value_reader = reader.read_7bit_usize()?;
+        if value_reader == 0 {
+            continue;
+        }
+        require_reader(&type_readers, value_reader, "ReflectiveReader")
+            .map_err(|e| format!("Failed to parse animal '{}' reader: {}", key, e))?;
+        let start_pos = reader.pos;
+        let value = reader.read_farm_animal_data().map_err(|e| {
+            format!(
+                "Failed to parse animal '{}' at byte {}: {}",
+                key, start_pos, e
+            )
+        })?;
+        animals.insert(key, value);
+    }
+    Ok(animals)
 }
 
 pub fn load_location_fishing_xnb(

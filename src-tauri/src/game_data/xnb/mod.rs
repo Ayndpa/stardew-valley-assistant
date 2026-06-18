@@ -9,7 +9,7 @@ use std::fs;
 use std::path::Path;
 
 pub use loaders::{
-    get_lang_suffix, load_crops_xnb, load_int_string_dictionary_best_effort,
+    get_lang_suffix, load_crops_xnb, load_farm_animals_xnb, load_int_string_dictionary_best_effort,
     load_int_string_dictionary_xnb, load_localized_string_tables_with_lang,
     load_location_fishing_xnb, load_objects_xnb, load_string_dictionary_best_effort,
     load_string_dictionary_xnb, load_tools_xnb, load_weapons_xnb, load_xnb_texture,
@@ -88,6 +88,33 @@ pub struct RawLocationFishEntry {
 pub struct RawLocationFishingData {
     pub fish_areas: HashMap<String, RawLocationFishArea>,
     pub fish: Vec<RawLocationFishEntry>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RawFarmAnimalProduce {
+    pub item_id: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct RawFarmAnimalData {
+    pub display_name: String,
+    pub house: String,
+    pub purchase_price: i32,
+    pub sell_price: i32,
+    pub days_to_mature: i32,
+    pub days_to_produce: i32,
+    pub can_get_pregnant: bool,
+    pub harvest_type: i32,
+    pub harvest_tool: String,
+    pub produce_items: Vec<RawFarmAnimalProduce>,
+    pub deluxe_produce_items: Vec<RawFarmAnimalProduce>,
+    pub deluxe_produce_min_friendship: i32,
+    pub can_swim: bool,
+    pub can_eat_golden_crackers: bool,
+    pub texture: String,
+    pub baby_texture: String,
+    pub sprite_width: i32,
+    pub sprite_height: i32,
 }
 
 pub fn require_reader(

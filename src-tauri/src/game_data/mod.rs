@@ -1,3 +1,4 @@
+pub mod animals;
 pub mod bundles;
 pub mod calendar;
 pub mod crops;
@@ -14,6 +15,7 @@ use crate::game::find_stardew_valley;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+pub use animals::get_animal_game_data;
 pub use bundles::get_bundle_game_data;
 pub use calendar::get_calendar_game_data;
 pub use crops::get_crop_game_data;
@@ -244,6 +246,570 @@ mod tests {
             .loved_items
             .iter()
             .all(|item| !item.contains("[LocalizedText")));
+    }
+
+    #[test]
+    fn reads_farm_animals_from_dev_source() {
+        let Some(content) = dev_content_dir() else {
+            return;
+        };
+        let animals =
+            xnb::load_farm_animals_xnb(&content.join("Data").join("FarmAnimals.xnb")).unwrap();
+        assert!(animals.len() >= 10, "Expected at least 10 animal types, got {}", animals.len());
+        eprintln!("Loaded {} animal types", animals.len());
+
+        let wc = animals.get("White Chicken").expect("White Chicken should exist");
+        assert_eq!(wc.house, "Coop");
+        assert_eq!(wc.purchase_price, 400);
+        assert_eq!(wc.sell_price, 800);
+        assert_eq!(wc.days_to_mature, 3);
+        assert_eq!(wc.days_to_produce, 1);
+        assert!(!wc.produce_items.is_empty());
+        assert_eq!(wc.produce_items[0].item_id, "176");
+        eprintln!("White Chicken: house={} price={} produce={:?}", wc.house, wc.purchase_price, wc.produce_items);
+
+        let goat = animals.get("Goat").expect("Goat should exist");
+        assert_eq!(goat.house, "Barn");
+        eprintln!("Goat: house={} price={}", goat.house, goat.purchase_price);
+
+        let pig = animals.get("Pig").expect("Pig should exist");
+        assert_eq!(pig.house, "Barn");
+        assert_eq!(pig.harvest_type, 2); // DigUp
+        eprintln!("Pig: house={} harvest_type={}", pig.house, pig.harvest_type);
+
+        // List all animal types
+        let mut names: Vec<_> = animals.keys().collect();
+        names.sort();
+        for name in &names {
+            let a = &animals[*name];
+            eprintln!("  {}: house={} price={} produce_items={} deluxe={}", name, a.house, a.purchase_price, a.produce_items.len(), a.deluxe_produce_items.len());
+        }
+    }
+
+    #[test]
+    fn debug_white_cow() {
+        let Some(content) = dev_content_dir() else {
+            return;
+        };
+        let payload =
+            xnb::load_xnb_payload(&content.join("Data").join("FarmAnimals.xnb")).unwrap();
+        let mut reader = xnb::XnbPayloadReader::new(&payload);
+        let type_readers = reader.read_type_readers().unwrap();
+        let _root = reader.read_7bit_usize().unwrap();
+        let count = reader.read_i32().unwrap();
+
+        // Parse all animals until we find White Cow
+        for _ in 0..count {
+            let key = reader.read_object_string(&type_readers).unwrap();
+            let vr = reader.read_7bit_usize().unwrap();
+            let start = reader.pos;
+
+            if key == "White Cow" {
+                eprintln!("=== White Cow starts at {} ===", start);
+
+                // Read all fields up to Skins using the corrected reader
+                // But skip with manual reads to track position
+
+                // Strings
+                for field in &["DisplayName", "House"] {
+                    let v = reader.read_object_string_any().unwrap();
+                    eprintln!("  {}: {:?} pos={}", field, v, reader.pos);
+                }
+                // i32s
+                for field in &["Gender", "PurchasePrice", "SellPrice"] {
+                    let v = reader.read_i32().unwrap();
+                    eprintln!("  {}: {} pos={}", field, v, reader.pos);
+                }
+                // ShopTexture
+                let st = reader.read_object_string_any().unwrap();
+                eprintln!("  ShopTexture: {:?} pos={}", st, reader.pos);
+                // Rectangle
+                for field in &["SrcX", "SrcY", "SrcW", "SrcH"] {
+                    let v = reader.read_i32().unwrap();
+                    eprintln!("  {}: {} pos={}", field, v, reader.pos);
+                }
+                // More strings
+                for field in &["ShopDisplayName", "ShopDescription", "ShopMissingBuildingDesc", "RequiredBuilding", "UnlockCondition"] {
+                    let v = reader.read_object_string_any().unwrap();
+                    eprintln!("  {}: {:?} pos={}", field, if v.len() > 40 { format!("{}...", &v[..40]) } else { v.clone() }, reader.pos);
+                }
+                // AlternatePurchaseTypes
+                let alt_r = reader.read_7bit_usize().unwrap();
+                eprintln!("  AltPurchase reader={} pos={}", alt_r, reader.pos);
+                if alt_r != 0 {
+                    let ac = reader.read_i32().unwrap();
+                    eprintln!("  AltPurchase count={} pos={}", ac, reader.pos);
+                    for j in 0..ac {
+                        let er = reader.read_7bit_usize().unwrap();
+                        if er == 0 { continue; }
+                        let id = reader.read_object_string_any().unwrap();
+                        let cond = reader.read_object_string_any().unwrap();
+                        eprintln!("    alt[{}] Id={:?} Cond={:?} pos={}", j, id, cond, reader.pos);
+                        let air = reader.read_7bit_usize().unwrap();
+                        if air != 0 {
+                            let aic = reader.read_i32().unwrap();
+                            for k in 0..aic {
+                                let aid = reader.read_object_string_any().unwrap();
+                                eprintln!("      AnimalId[{}]={:?}", k, aid);
+                            }
+                        }
+                        eprintln!("    alt[{}] done pos={}", j, reader.pos);
+                    }
+                }
+                // EggItemIds
+                let egg_r = reader.read_7bit_usize().unwrap();
+                eprintln!("  EggItemIds reader={} pos={}", egg_r, reader.pos);
+                if egg_r != 0 {
+                    let ec = reader.read_i32().unwrap();
+                    for j in 0..ec { let _ = reader.read_object_string_any().unwrap(); }
+                    eprintln!("  EggItemIds done pos={}", reader.pos);
+                }
+                // More fields
+                let it = reader.read_i32().unwrap();
+                eprintln!("  IncubationTime: {} pos={}", it, reader.pos);
+                let ipso = reader.read_i32().unwrap();
+                eprintln!("  IncubatorParentSheetOffset: {} pos={}", ipso, reader.pos);
+                let bt = reader.read_object_string_any().unwrap();
+                eprintln!("  BirthText: {:?} pos={}", bt, reader.pos);
+                let dtm = reader.read_i32().unwrap();
+                eprintln!("  DaysToMature: {} pos={}", dtm, reader.pos);
+                let cgp = reader.read_bool().unwrap();
+                eprintln!("  CanGetPregnant: {} pos={}", cgp, reader.pos);
+                let dtp = reader.read_i32().unwrap();
+                eprintln!("  DaysToProduce: {} pos={}", dtp, reader.pos);
+                let ht = reader.read_i32().unwrap();
+                eprintln!("  HarvestType: {} pos={}", ht, reader.pos);
+                let htool = reader.read_object_string_any().unwrap();
+                eprintln!("  HarvestTool: {:?} pos={}", htool, reader.pos);
+
+                // ProduceItemIds
+                let pi_r = reader.read_7bit_usize().unwrap();
+                eprintln!("  ProduceItemIds reader={} pos={}", pi_r, reader.pos);
+                if pi_r != 0 {
+                    let pc = reader.read_i32().unwrap();
+                    for j in 0..pc {
+                        let er = reader.read_7bit_usize().unwrap();
+                        if er == 0 { continue; }
+                        let _ = reader.read_object_string_any().unwrap();
+                        let _ = reader.read_object_string_any().unwrap();
+                        let _ = reader.read_i32().unwrap();
+                        let _ = reader.read_object_string_any().unwrap();
+                    }
+                    eprintln!("  ProduceItemIds done pos={}", reader.pos);
+                }
+                // DeluxeProduceItemIds
+                let dp_r = reader.read_7bit_usize().unwrap();
+                eprintln!("  DeluxeProduceItemIds reader={} pos={}", dp_r, reader.pos);
+                if dp_r != 0 {
+                    let dc = reader.read_i32().unwrap();
+                    for j in 0..dc {
+                        let er = reader.read_7bit_usize().unwrap();
+                        if er == 0 { continue; }
+                        let _ = reader.read_object_string_any().unwrap();
+                        let _ = reader.read_object_string_any().unwrap();
+                        let _ = reader.read_i32().unwrap();
+                        let _ = reader.read_object_string_any().unwrap();
+                    }
+                    eprintln!("  DeluxeProduceItemIds done pos={}", reader.pos);
+                }
+
+                let pom = reader.read_bool().unwrap();
+                eprintln!("  ProduceOnMature: {} pos={}", pom, reader.pos);
+                let fffp = reader.read_i32().unwrap();
+                eprintln!("  FriendshipForFasterProduce: {} pos={}", fffp, reader.pos);
+                let dpmf = reader.read_i32().unwrap();
+                eprintln!("  DeluxeProduceMinFriendship: {} pos={}", dpmf, reader.pos);
+                let dpd = reader.read_f32().unwrap();
+                eprintln!("  DeluxeProduceCareDivisor: {} pos={}", dpd, reader.pos);
+                let dplm = reader.read_f32().unwrap();
+                eprintln!("  DeluxeProduceLuckMultiplier: {} pos={}", dplm, reader.pos);
+                let cegc = reader.read_bool().unwrap();
+                eprintln!("  CanEatGoldenCrackers: {} pos={}", cegc, reader.pos);
+                let phb = reader.read_i32().unwrap();
+                eprintln!("  ProfessionForHappinessBoost: {} pos={}", phb, reader.pos);
+                let pqb = reader.read_i32().unwrap();
+                eprintln!("  ProfessionForQualityBoost: {} pos={}", pqb, reader.pos);
+                let pfp = reader.read_i32().unwrap();
+                eprintln!("  ProfessionForFasterProduce: {} pos={}", pfp, reader.pos);
+                let snd = reader.read_object_string_any().unwrap();
+                eprintln!("  Sound: {:?} pos={}", snd, reader.pos);
+                let bsnd = reader.read_object_string_any().unwrap();
+                eprintln!("  BabySound: {:?} pos={}", bsnd, reader.pos);
+                let tex = reader.read_object_string_any().unwrap();
+                eprintln!("  Texture: {:?} pos={}", tex, reader.pos);
+                let htex = reader.read_object_string_any().unwrap();
+                eprintln!("  HarvestedTexture: {:?} pos={}", htex, reader.pos);
+                let btex = reader.read_object_string_any().unwrap();
+                eprintln!("  BabyTexture: {:?} pos={}", btex, reader.pos);
+                let ufrfl = reader.read_bool().unwrap();
+                eprintln!("  UseFlippedRightForLeft: {} pos={}", ufrfl, reader.pos);
+                let sw = reader.read_i32().unwrap();
+                eprintln!("  SpriteWidth: {} pos={}", sw, reader.pos);
+                let sh = reader.read_i32().unwrap();
+                eprintln!("  SpriteHeight: {} pos={}", sh, reader.pos);
+                let uda = reader.read_bool().unwrap();
+                eprintln!("  UseDoubleUniqueAnimFrames: {} pos={}", uda, reader.pos);
+                let sf = reader.read_i32().unwrap();
+                eprintln!("  SleepFrame: {} pos={}", sf, reader.pos);
+                let ex = reader.read_i32().unwrap();
+                let ey = reader.read_i32().unwrap();
+                eprintln!("  EmoteOffset: ({},{}) pos={}", ex, ey, reader.pos);
+                let sx = reader.read_i32().unwrap();
+                let sy = reader.read_i32().unwrap();
+                eprintln!("  SwimOffset: ({},{}) pos={}", sx, sy, reader.pos);
+
+                // Skins - try reading as reader_idx (7-bit) + count (i32)
+                // If reader_idx is 0, it's null. If non-zero, read count.
+                let skin_r = reader.read_7bit_usize().unwrap();
+                eprintln!("  Skins reader={} pos={}", skin_r, reader.pos);
+                if skin_r != 0 {
+                    let sc = reader.read_i32().unwrap();
+                    eprintln!("  Skins count={} pos={}", sc, reader.pos);
+                    for j in 0..sc {
+                        let er = reader.read_7bit_usize().unwrap();
+                        if er == 0 { continue; }
+                        let _ = reader.read_object_string_any().unwrap();
+                        let _ = reader.read_f32().unwrap();
+                        let _ = reader.read_object_string_any().unwrap();
+                        let _ = reader.read_object_string_any().unwrap();
+                        let _ = reader.read_object_string_any().unwrap();
+                    }
+                }
+                eprintln!("  After Skins pos={}", reader.pos);
+
+                // Dump bytes at current position
+                eprintln!("  Bytes at pos {}:", reader.pos);
+                for i in 0..20 {
+                    let p = reader.pos + i;
+                    if p < reader.data.len() {
+                        eprintln!("    [{}+{}]: 0x{:02x} ({})", p, i, reader.data[p], reader.data[p]);
+                    }
+                }
+
+                // Find White Cow Texture and BabyTexture fields
+                let cow_texture = b"Animals\\White Cow";
+                let baby_cow_texture = b"Animals\\BabyWhite Cow";
+                for i in 0..reader.data.len() - cow_texture.len() {
+                    if &reader.data[i..i + cow_texture.len()] == cow_texture {
+                        eprintln!("\n  'Animals\\White Cow' at byte {} (len={})", i, cow_texture.len());
+                        // The string data starts at i, the reader_idx byte is at i-2, the 7-bit len byte is at i-1
+                        eprintln!("  reader_idx byte at {}: 0x{:02x}", i-2, reader.data[i-2]);
+                        eprintln!("  len byte at {}: 0x{:02x} = {}", i-1, reader.data[i-1], reader.data[i-1]);
+                        break;
+                    }
+                }
+                for i in 0..reader.data.len() - baby_cow_texture.len() {
+                    if &reader.data[i..i + baby_cow_texture.len()] == baby_cow_texture {
+                        eprintln!("  'Animals\\BabyWhite Cow' at byte {} (len={})", i, baby_cow_texture.len());
+                        eprintln!("  reader_idx byte at {}: 0x{:02x}", i-2, reader.data[i-2]);
+                        eprintln!("  len byte at {}: 0x{:02x} = {}", i-1, reader.data[i-1], reader.data[i-1]);
+                        // After BabyTexture, the fields are:
+                        // UseFlippedRightForLeft (bool), SpriteWidth (i32), SpriteHeight (i32)
+                        // UseDoubleUniqueAnimationFrames (bool), SleepFrame (i32)
+                        // EmoteOffset (Point=i32+i32), SwimOffset (Point=i32+i32)
+                        // Skins (List), ShadowWhenBabySwims, ShadowWhenBaby, ShadowWhenAdultSwims, ShadowWhenAdult, Shadow
+                        // Let me read each field manually and verify
+                        let after_baby = i + baby_cow_texture.len();
+                        let mut p = after_baby;
+                        // UseFlippedRightForLeft: bool
+                        eprintln!("  UseFlippedRightForLeft: byte[{}]=0x{:02x} ({})", p, reader.data[p], reader.data[p]);
+                        p += 1;
+                        // SpriteWidth: i32
+                        let sw = i32::from_le_bytes([reader.data[p], reader.data[p+1], reader.data[p+2], reader.data[p+3]]);
+                        eprintln!("  SpriteWidth: bytes[{}..{}]=0x{:02x}{:02x}{:02x}{:02x} = {}", p, p+3, reader.data[p], reader.data[p+1], reader.data[p+2], reader.data[p+3], sw);
+                        p += 4;
+                        // SpriteHeight: i32
+                        let sh = i32::from_le_bytes([reader.data[p], reader.data[p+1], reader.data[p+2], reader.data[p+3]]);
+                        eprintln!("  SpriteHeight: bytes[{}..{}]=0x{:02x}{:02x}{:02x}{:02x} = {}", p, p+3, reader.data[p], reader.data[p+1], reader.data[p+2], reader.data[p+3], sh);
+                        p += 4;
+                        // UseDoubleUniqueAnimationFrames: bool
+                        eprintln!("  UseDoubleUniqueAnimFrames: byte[{}]=0x{:02x} ({})", p, reader.data[p], reader.data[p]);
+                        p += 1;
+                        // SleepFrame: i32
+                        let sf = i32::from_le_bytes([reader.data[p], reader.data[p+1], reader.data[p+2], reader.data[p+3]]);
+                        eprintln!("  SleepFrame: bytes[{}..{}]=0x{:02x}{:02x}{:02x}{:02x} = {}", p, p+3, reader.data[p], reader.data[p+1], reader.data[p+2], reader.data[p+3], sf);
+                        p += 4;
+                        // EmoteOffset: i32+i32
+                        let ex = i32::from_le_bytes([reader.data[p], reader.data[p+1], reader.data[p+2], reader.data[p+3]]);
+                        let ey = i32::from_le_bytes([reader.data[p+4], reader.data[p+5], reader.data[p+6], reader.data[p+7]]);
+                        eprintln!("  EmoteOffset: ({},{}) at {}", ex, ey, p);
+                        p += 8;
+                        // SwimOffset: i32+i32
+                        let sx = i32::from_le_bytes([reader.data[p], reader.data[p+1], reader.data[p+2], reader.data[p+3]]);
+                        let sy = i32::from_le_bytes([reader.data[p+4], reader.data[p+5], reader.data[p+6], reader.data[p+7]]);
+                        eprintln!("  SwimOffset: ({},{}) at {}", sx, sy, p);
+                        p += 8;
+                        // Dump bytes BEFORE the Skins area to check alignment
+                        eprintln!("  Bytes before Skins area ({} to {}):", p-5, p+5);
+                        for j in -5..5i32 {
+                            let bp = (p as i32 + j) as usize;
+                            if bp < reader.data.len() {
+                                let b = reader.data[bp];
+                                let ch = if b >= 32 && b < 127 { b as char } else { '.' };
+                                eprintln!("    [{:4}] 0x{:02x} {:3} '{}'", bp, b, b, ch);
+                            }
+                        }
+
+                        // Search for the White Cow entry in the XNB dictionary
+                        // The key "White Cow" should be right before the value data
+                        let cow_key = b"White Cow";
+                        for i in 0..reader.data.len() - cow_key.len() {
+                            if &reader.data[i..i + cow_key.len()] == cow_key {
+                                eprintln!("\n  'White Cow' key found at byte {}", i);
+                                // The key is a string: reader_idx (7-bit) + len (7-bit) + data
+                                // reader_idx is at i-2, len at i-1
+                                eprintln!("  key reader_idx byte at {}: 0x{:02x}", i-2, reader.data[i-2]);
+                                eprintln!("  key len byte at {}: 0x{:02x} = {}", i-1, reader.data[i-1], reader.data[i-1]);
+                                // After the key comes the value reader index
+                                let after_key = i + cow_key.len();
+                                eprintln!("  value reader_idx at {}: 0x{:02x}", after_key, reader.data[after_key]);
+                                // Then the FarmAnimalData fields start
+                                let data_start = after_key + 1;
+                                eprintln!("  FarmAnimalData starts at {}", data_start);
+                                break;
+                            }
+                        }
+
+                        // Find the NEXT animal key after White Cow to determine boundary
+                        // Look for "Brown Cow" key
+                        let brown_cow = b"Brown Cow";
+                        for i in 0..reader.data.len() - brown_cow.len() {
+                            if &reader.data[i..i + brown_cow.len()] == brown_cow {
+                                // Check if this is a key (reader_idx byte before it should be 0x02)
+                                if i >= 2 && reader.data[i-2] == 0x02 {
+                                    eprintln!("  'Brown Cow' key found at byte {}", i);
+                                    eprintln!("  Brown Cow data should start at {}", i + brown_cow.len() + 1);
+                                    // The White Cow data ends just before the Brown Cow key
+                                    // The key is: reader_idx(0x02) + len + "Brown Cow"
+                                    let cow_data_end = i - 2; // reader_idx byte
+                                    eprintln!("  White Cow data ends before byte {} (key reader_idx)", cow_data_end);
+                                    // Dump bytes from Skins area to the end
+                                    eprintln!("  Bytes from Skins to Brown Cow key:");
+                                    for j in 8930..cow_data_end + 5 {
+                                        let b = reader.data[j];
+                                        let ch = if b >= 32 && b < 127 { b as char } else { '.' };
+                                        eprintln!("    [{:4}] 0x{:02x} {:3} '{}'", j, b, b, ch);
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                        break;
+                    }
+                }
+
+                eprintln!("=== DONE ===");
+                break;
+            } else {
+                // Skip this animal
+                let _ = reader.read_farm_animal_data();
+            }
+        }
+    }
+
+    #[test]
+    fn debug_farm_animals_xnb_shape() {
+        let Some(content) = dev_content_dir() else {
+            return;
+        };
+        let payload =
+            xnb::load_xnb_payload(&content.join("Data").join("FarmAnimals.xnb")).unwrap();
+        let mut reader = xnb::XnbPayloadReader::new(&payload);
+        let type_readers = reader.read_type_readers().unwrap();
+        eprintln!("=== FarmAnimals.xnb type readers ===");
+        for (idx, name) in type_readers.iter().enumerate() {
+            eprintln!("  {}: {}", idx + 1, name);
+        }
+        let root = reader.read_7bit_usize().unwrap();
+        let count = reader.read_i32().unwrap();
+        eprintln!("root {} count {} pos {}", root, count, reader.pos);
+
+        let key = reader.read_object_string(&type_readers).unwrap();
+        eprintln!("key {:?} pos {}", key, reader.pos);
+
+        let value_reader = reader.read_7bit_usize().unwrap();
+        eprintln!("value_reader {} pos {}", value_reader, reader.pos);
+
+        // Now read field by field with explicit position tracking
+        let mut p = reader.pos;
+        macro_rules! s {
+            () => {{
+                let v = reader.read_object_string_any().unwrap();
+                eprintln!("  [{}] str = {:?}", p, v);
+                p = reader.pos;
+                v
+            }};
+        }
+        macro_rules! i {
+            () => {{
+                let v = reader.read_i32().unwrap();
+                eprintln!("  [{}] i32 = {}", p, v);
+                p = reader.pos;
+                v
+            }};
+        }
+        macro_rules! f {
+            () => {{
+                let v = reader.read_f32().unwrap();
+                eprintln!("  [{}] f32 = {}", p, v);
+                p = reader.pos;
+                v
+            }};
+        }
+        macro_rules! b {
+            () => {{
+                let v = reader.read_bool().unwrap();
+                eprintln!("  [{}] bool = {}", p, v);
+                p = reader.pos;
+                v
+            }};
+        }
+
+        // FarmAnimalData fields in declaration order
+        eprintln!("--- FarmAnimalData ---");
+        eprintln!("DisplayName:"); s!();
+        eprintln!("House:"); s!();
+        eprintln!("Gender:"); i!();
+        eprintln!("PurchasePrice:"); i!();
+        eprintln!("SellPrice:"); i!();
+        eprintln!("ShopTexture:"); s!();
+        eprintln!("ShopSourceRect (Rectangle):"); i!(); i!(); i!(); i!();
+        eprintln!("ShopDisplayName:"); s!();
+        eprintln!("ShopDescription:"); s!();
+        eprintln!("ShopMissingBuildingDescription:"); s!();
+        eprintln!("RequiredBuilding:"); s!();
+        eprintln!("UnlockCondition:"); s!();
+
+        // AlternatePurchaseTypes
+        eprintln!("AlternatePurchaseTypes count:");
+        let alt_count = i!();
+        for idx in 0..alt_count {
+            eprintln!("  alt[{}]:", idx);
+            eprintln!("    Id:"); s!();
+            eprintln!("    Condition:"); s!();
+            eprintln!("    AnimalIds count:");
+            let aid_count = i!();
+            for j in 0..aid_count {
+                eprintln!("    AnimalIds[{}]:", j); s!();
+            }
+        }
+
+        // EggItemIds
+        eprintln!("EggItemIds count:");
+        let egg_count = i!();
+        for idx in 0..egg_count {
+            eprintln!("  egg[{}]:", idx); s!();
+        }
+
+        eprintln!("IncubationTime:"); i!();
+        eprintln!("IncubatorParentSheetOffset:"); i!();
+        eprintln!("BirthText:"); s!();
+        eprintln!("DaysToMature:"); i!();
+        eprintln!("CanGetPregnant:"); b!();
+        eprintln!("DaysToProduce:"); i!();
+        eprintln!("HarvestType:"); i!();
+        eprintln!("HarvestTool:"); s!();
+
+        // ProduceItemIds
+        eprintln!("ProduceItemIds count:");
+        let pi_count = i!();
+        for idx in 0..pi_count {
+            eprintln!("  produce[{}]:", idx);
+            eprintln!("    Id:"); s!();
+            eprintln!("    Condition:"); s!();
+            eprintln!("    MinimumFriendship:"); i!();
+            eprintln!("    ItemId:"); s!();
+        }
+
+        // DeluxeProduceItemIds
+        eprintln!("DeluxeProduceItemIds count:");
+        let dp_count = i!();
+        for idx in 0..dp_count {
+            eprintln!("  deluxe[{}]:", idx);
+            eprintln!("    Id:"); s!();
+            eprintln!("    Condition:"); s!();
+            eprintln!("    MinimumFriendship:"); i!();
+            eprintln!("    ItemId:"); s!();
+        }
+
+        eprintln!("ProduceOnMature:"); b!();
+        eprintln!("FriendshipForFasterProduce:"); i!();
+        eprintln!("DeluxeProduceMinimumFriendship:"); i!();
+        eprintln!("DeluxeProduceCareDivisor:"); f!();
+        eprintln!("DeluxeProduceLuckMultiplier:"); f!();
+        eprintln!("CanEatGoldenCrackers:"); b!();
+        eprintln!("ProfessionForHappinessBoost:"); i!();
+        eprintln!("ProfessionForQualityBoost:"); i!();
+        eprintln!("ProfessionForFasterProduce:"); i!();
+        eprintln!("Sound:"); s!();
+        eprintln!("BabySound:"); s!();
+        eprintln!("Texture:"); s!();
+        eprintln!("HarvestedTexture:"); s!();
+        eprintln!("BabyTexture:"); s!();
+        eprintln!("UseFlippedRightForLeft:"); b!();
+        eprintln!("SpriteWidth:"); i!();
+        eprintln!("SpriteHeight:"); i!();
+        eprintln!("UseDoubleUniqueAnimationFrames:"); b!();
+        eprintln!("SleepFrame:"); i!();
+        eprintln!("EmoteOffset (Point):"); i!(); i!();
+        eprintln!("SwimOffset (Point):"); i!(); i!();
+
+        // Skins
+        eprintln!("Skins count:");
+        let skin_count = i!();
+        for idx in 0..skin_count {
+            eprintln!("  skin[{}]:", idx);
+            eprintln!("    Id:"); s!();
+            eprintln!("    Weight:"); f!();
+            eprintln!("    Texture:"); s!();
+            eprintln!("    HarvestedTexture:"); s!();
+            eprintln!("    BabyTexture:"); s!();
+        }
+
+        // Shadows
+        for name in &["ShadowWhenBabySwims", "ShadowWhenBaby", "ShadowWhenAdultSwims", "ShadowWhenAdult", "Shadow"] {
+            eprintln!("{}:", name);
+            let present = b!();
+            if present {
+                eprintln!("  Visible:"); b!();
+                let has_offset = b!();
+                if has_offset { eprintln!("  Offset:"); i!(); i!(); }
+                let has_scale = b!();
+                if has_scale { eprintln!("  Scale:"); f!(); }
+            }
+        }
+
+        eprintln!("CanSwim:"); b!();
+        eprintln!("BabiesFollowAdults:"); b!();
+        eprintln!("GrassEatAmount:"); i!();
+        eprintln!("HappinessDrain:"); i!();
+        eprintln!("UpDownPetHitboxTileSize:"); f!(); f!();
+        eprintln!("LeftRightPetHitboxTileSize:"); f!(); f!();
+        eprintln!("BabyUpDownPetHitboxTileSize:"); f!(); f!();
+        eprintln!("BabyLeftRightPetHitboxTileSize:"); f!(); f!();
+
+        // StatToIncrementOnProduce
+        eprintln!("StatToIncrementOnProduce count:");
+        let stat_count = i!();
+        for idx in 0..stat_count {
+            eprintln!("  stat[{}]:", idx);
+            eprintln!("    Id:"); s!();
+            eprintln!("    RequiredItemId:"); s!();
+            eprintln!("    RequiredTags count:");
+            let tag_count = i!();
+            for j in 0..tag_count { eprintln!("    tag[{}]:", j); s!(); }
+            eprintln!("    StatName:"); s!();
+        }
+
+        eprintln!("ShowInSummitCredits:"); b!();
+        eprintln!("CustomFields count:");
+        let cf_count = i!();
+        for idx in 0..cf_count {
+            eprintln!("  cf[{}] key:", idx); s!();
+            eprintln!("  cf[{}] value:", idx); s!();
+        }
+
+        eprintln!("=== DONE at pos {} ===", reader.pos);
     }
 
     #[test]

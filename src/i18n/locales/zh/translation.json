@@ -5,9 +5,11 @@
     "crops": "作物管理",
     "items": "物品百科",
     "bundles": "收集包",
+    "animals": "动物管理",
     "npcs": "村民关系",
     "calendar": "节日日历",
     "fishingMap": "游戏地图",
+    "children": "孩子管理",
     "saveEditor": "存档编辑",
     "saveBackups": "存档备份",
     "mods": "模组管理",
@@ -395,6 +397,15 @@
         "sat": "周六",
         "sun": "周日"
       }
+    }
+  },
+  "animals": {
+    "title": "动物管理",
+    "description": "管理农场动物，查看百科信息和收益计算",
+    "tabs": {
+      "myAnimals": "我的动物",
+      "encyclopedia": "动物百科",
+      "profit": "收益计算"
     }
   },
   "crops": {
@@ -922,6 +933,48 @@
     "noMatchingFish": "没有符合条件的鱼",
     "priceLabel": "金币",
     "trapFish": "蟹笼"
+  },
+  "children": {
+    "title": "孩子管理",
+    "description": "查看并编辑当前存档中所有孩子的属性信息",
+    "loading": "正在读取孩子数据...",
+    "noSaveTitle": "孩子管理",
+    "noSaveDesc": "请选择一个本地存档后查看和管理孩子。",
+    "childCount": "共 {{count}} 个孩子",
+    "hasCrib": "有婴儿床",
+    "reload": "重新读取",
+    "noChildren": "当前存档没有孩子",
+    "noChildrenDesc": "当玩家结婚并拥有婴儿床后，孩子会自然出生并出现在这里。",
+    "unnamed": "未命名",
+    "daysOldLabel": "已出生 {{days}} 天",
+    "stageLabel": "当前阶段：{{stage}}",
+    "unsaved": "未保存",
+    "saveChild": "保存修改",
+    "resetChild": "重置",
+    "stages": {
+      "newborn": "新生儿",
+      "baby": "婴儿",
+      "crawler": "爬行期",
+      "toddler": "幼儿期"
+    },
+    "genderMale": "男孩",
+    "genderFemale": "女孩",
+    "skinLight": "浅色皮肤",
+    "skinDark": "深色皮肤",
+    "fields": {
+      "name": "孩子姓名",
+      "namePlaceholder": "输入孩子的名字",
+      "daysOld": "出生天数",
+      "daysOldHint": "影响成长阶段",
+      "gender": "性别",
+      "skinTone": "肤色"
+    },
+    "toast": {
+      "loadError": "读取孩子数据失败。",
+      "webModeError": "Web 模式下不能修改存档数据。",
+      "saveSuccess": "已保存 {{name}} 的数据，并自动生成备份。",
+      "saveError": "保存孩子数据失败，请检查输入。"
+    }
   },
   "saveEditor": {
     "warningTitle": "存档编辑警告",

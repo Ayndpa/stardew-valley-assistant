@@ -10,6 +10,8 @@ import { Calendar } from "@/pages/Calendar"
 import { GameMap } from "@/pages/GameMap"
 import { SaveEditor } from "@/pages/SaveEditor"
 import { SaveBackups } from "@/pages/SaveBackups"
+import { Children } from "@/pages/Children"
+import { Animals } from "@/pages/Animals"
 import { Settings } from "@/pages/Settings"
 import { Mods } from "@/pages/Mods"
 import { Downloads } from "@/pages/Downloads"
@@ -25,7 +27,7 @@ import { useNxmDeepLink } from "@/hooks/useNxmDeepLink"
 import { useGlobalDragAndDrop } from "@/hooks/useGlobalDragAndDrop"
 import "./index.css"
 
-export type Page = "dashboard" | "collections" | "crops" | "items" | "npcs" | "calendar" | "fishingMap" | "saveEditor" | "saveBackups" | "settings" | "mods" | "onlineMods" | "downloads" | "bundles"
+export type Page = "dashboard" | "collections" | "crops" | "items" | "npcs" | "calendar" | "fishingMap" | "saveEditor" | "saveBackups" | "settings" | "mods" | "onlineMods" | "downloads" | "bundles" | "children" | "animals"
 
 export interface SaveSummary {
   id: string
@@ -102,12 +104,20 @@ function App() {
         if (!parsed.includes("bundles")) {
           parsed.push("bundles")
         }
+        // 迁移：新增的 children 功能需要补上
+        if (!parsed.includes("children")) {
+          parsed.push("children")
+        }
+        // 迁移：新增的 animals 功能需要补上
+        if (!parsed.includes("animals")) {
+          parsed.push("animals")
+        }
         return parsed
       } catch (e) {
         // ignore
       }
     }
-    return ["collections", "crops", "items", "npcs", "calendar", "bundles", "fishingMap", "saveEditor", "saveBackups", "mods", "onlineMods", "downloads"]
+    return ["collections", "crops", "items", "npcs", "calendar", "bundles", "animals", "fishingMap", "children", "saveEditor", "saveBackups", "mods", "onlineMods", "downloads"]
   })
 
   const updateEnabledFeatures = useCallback((value: Page[]) => {
@@ -393,6 +403,15 @@ function App() {
             onSavesChanged={fetchSavesList}
           />
         )
+      case "children":
+        return (
+          <Children
+            selectedSaveId={selectedSaveId}
+            onShowToast={showGlobalToast}
+          />
+        )
+      case "animals":
+        return <Animals selectedSaveId={selectedSaveId} />
       case "saveEditor":
         return (
           <SaveEditor

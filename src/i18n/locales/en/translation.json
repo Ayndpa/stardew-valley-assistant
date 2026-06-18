@@ -5,9 +5,11 @@
     "crops": "Crops",
     "items": "Items Wiki",
     "bundles": "Bundles",
+    "animals": "Animals",
     "npcs": "NPC Relationships",
     "calendar": "Calendar",
     "fishingMap": "Game Map",
+    "children": "Children",
     "saveEditor": "Save Editor",
     "saveBackups": "Save Backups",
     "mods": "Mod Manager",
@@ -395,6 +397,15 @@
         "sat": "Sat",
         "sun": "Sun"
       }
+    }
+  },
+  "animals": {
+    "title": "Animal Management",
+    "description": "Manage farm animals, view encyclopedia and profit calculator",
+    "tabs": {
+      "myAnimals": "My Animals",
+      "encyclopedia": "Animal Encyclopedia",
+      "profit": "Profit Calculator"
     }
   },
   "crops": {
@@ -1051,6 +1062,48 @@
       "WizardHouse": "Wizard's Tower",
       "WizardHouseBasement": "Wizard's Tower Basement",
       "Woods": "Secret Woods"
+    }
+  },
+  "children": {
+    "title": "Children Management",
+    "description": "View and edit all children attributes in your current save",
+    "loading": "Loading children data...",
+    "noSaveTitle": "Children Management",
+    "noSaveDesc": "Please select a local save to view and manage children.",
+    "childCount": "{{count}} children",
+    "hasCrib": "Has Crib",
+    "reload": "Reload",
+    "noChildren": "No children in this save",
+    "noChildrenDesc": "Children will appear here after marriage and when a crib is available.",
+    "unnamed": "Unnamed",
+    "daysOldLabel": "Born {{days}} days ago",
+    "stageLabel": "Current stage: {{stage}}",
+    "unsaved": "Unsaved",
+    "saveChild": "Save Changes",
+    "resetChild": "Reset",
+    "stages": {
+      "newborn": "Newborn",
+      "baby": "Baby",
+      "crawler": "Crawler",
+      "toddler": "Toddler"
+    },
+    "genderMale": "Boy",
+    "genderFemale": "Girl",
+    "skinLight": "Light Skin",
+    "skinDark": "Dark Skin",
+    "fields": {
+      "name": "Child Name",
+      "namePlaceholder": "Enter child's name",
+      "daysOld": "Days Old",
+      "daysOldHint": "Affects growth stage",
+      "gender": "Gender",
+      "skinTone": "Skin Tone"
+    },
+    "toast": {
+      "loadError": "Failed to load children data.",
+      "webModeError": "Cannot modify save data in web mode.",
+      "saveSuccess": "Saved {{name}}'s data. Backup created automatically.",
+      "saveError": "Failed to save child data. Please check your input."
     }
   },
   "saveEditor": {

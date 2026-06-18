@@ -18,6 +18,7 @@ import {
   ListChecks,
   Sliders,
   Trophy,
+  PawPrint,
 } from "lucide-react"
 
 interface FeaturesCardProps {
@@ -36,6 +37,7 @@ export function FeaturesCard({
     { id: "crops", icon: Sprout },
     { id: "items", icon: Package },
     { id: "bundles", icon: PackageOpen },
+    { id: "animals", icon: PawPrint },
     { id: "npcs", icon: Users },
     { id: "calendar", icon: CalendarDays },
     { id: "fishingMap", icon: Fish },

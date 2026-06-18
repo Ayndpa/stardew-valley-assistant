@@ -5,7 +5,10 @@ use super::super::calendar::{
 };
 use super::super::npc::NpcProfile;
 use super::primitives::XnbPayloadReader;
-use super::{RawCropData, RawLocationFishingData, RawObjectData, RawToolData, RawWeaponData};
+use super::{
+    RawCropData, RawFarmAnimalData, RawFarmAnimalProduce, RawLocationFishingData, RawObjectData,
+    RawToolData, RawWeaponData,
+};
 
 impl<'a> XnbPayloadReader<'a> {
     pub fn read_crop_data(&mut self) -> Result<RawCropData, String> {
@@ -346,5 +349,227 @@ impl<'a> XnbPayloadReader<'a> {
         self.skip_nullable_string_dictionary()?;
 
         Ok(RawLocationFishingData { fish_areas, fish })
+    }
+
+    pub fn read_farm_animal_data(&mut self) -> Result<RawFarmAnimalData, String> {
+        // Field order matches FarmAnimalData.cs declaration order for XNA ReflectiveReader.
+        // Lists in XNB are serialized as: reader_index (7-bit) + count (i32) + elements.
+        let _display_name_raw = self.read_object_string_any()?;
+        let house = self.read_object_string_any()?;
+        let _gender = self.read_i32()?; // FarmAnimalGender enum
+        let purchase_price = self.read_i32()?;
+        let sell_price = self.read_i32()?;
+        let _shop_texture = self.read_object_string_any()?;
+        // ShopSourceRect is a Rectangle (struct, not nullable)
+        let _shop_src_x = self.read_i32()?;
+        let _shop_src_y = self.read_i32()?;
+        let _shop_src_w = self.read_i32()?;
+        let _shop_src_h = self.read_i32()?;
+        let _shop_display_name = self.read_object_string_any()?;
+        let _shop_description = self.read_object_string_any()?;
+        let _shop_missing_building_desc = self.read_object_string_any()?;
+        let _required_building = self.read_object_string_any()?;
+        let _unlock_condition = self.read_object_string_any()?;
+        // AlternatePurchaseTypes: List<AlternatePurchaseAnimals>
+        self.skip_alternate_purchase_list()?;
+        // EggItemIds: List<string>
+        self.skip_xnb_string_list()?;
+        let _incubation_time = self.read_i32()?;
+        let _incubator_parent_sheet_offset = self.read_i32()?;
+        let _birth_text = self.read_object_string_any()?;
+        let days_to_mature = self.read_i32()?;
+        let can_get_pregnant = self.read_bool()?;
+        let days_to_produce = self.read_i32()?;
+        let harvest_type = self.read_i32()?; // FarmAnimalHarvestType enum
+        let harvest_tool = self.read_object_string_any()?;
+        // ProduceItemIds: List<FarmAnimalProduce>
+        let produce_items = self.read_farm_animal_produce_list()?;
+        // DeluxeProduceItemIds: List<FarmAnimalProduce>
+        let deluxe_produce_items = self.read_farm_animal_produce_list()?;
+        let _produce_on_mature = self.read_bool()?;
+        let _friendship_for_faster_produce = self.read_i32()?;
+        let deluxe_produce_min_friendship = self.read_i32()?;
+        let _deluxe_produce_care_divisor = self.read_f32()?;
+        let _deluxe_produce_luck_multiplier = self.read_f32()?;
+        let can_eat_golden_crackers = self.read_bool()?;
+        let _profession_happiness_boost = self.read_i32()?;
+        let _profession_quality_boost = self.read_i32()?;
+        let _profession_faster_produce = self.read_i32()?;
+        let _sound = self.read_object_string_any()?;
+        let _baby_sound = self.read_object_string_any()?;
+        let texture = self.read_object_string_any()?;
+        let _harvested_texture = self.read_object_string_any()?;
+        let baby_texture = self.read_object_string_any()?;
+        let _use_flipped_right_for_left = self.read_bool()?;
+        let sprite_width = self.read_i32()?;
+        let sprite_height = self.read_i32()?;
+        let _use_double_unique_anim = self.read_bool()?;
+        let _sleep_frame = self.read_i32()?;
+        // EmoteOffset: Point (struct)
+        let _emote_x = self.read_i32()?;
+        let _emote_y = self.read_i32()?;
+        // SwimOffset: Point (struct)
+        let _swim_x = self.read_i32()?;
+        let _swim_y = self.read_i32()?;
+        // Skins: List<FarmAnimalSkin>
+        self.skip_farm_animal_skin_list()?;
+        // ShadowWhenBabySwims: nullable FarmAnimalShadowData
+        self.skip_nullable_shadow_data()?;
+        // ShadowWhenBaby: nullable FarmAnimalShadowData
+        self.skip_nullable_shadow_data()?;
+        // ShadowWhenAdultSwims: nullable FarmAnimalShadowData
+        self.skip_nullable_shadow_data()?;
+        // ShadowWhenAdult: nullable FarmAnimalShadowData
+        self.skip_nullable_shadow_data()?;
+        // Shadow: nullable FarmAnimalShadowData
+        self.skip_nullable_shadow_data()?;
+        let can_swim = self.read_bool()?;
+        let _babies_follow_adults = self.read_bool()?;
+        let _grass_eat_amount = self.read_i32()?;
+        let _happiness_drain = self.read_i32()?;
+        // UpDownPetHitboxTileSize: Vector2
+        let _pet_hitbox_ud_x = self.read_f32()?;
+        let _pet_hitbox_ud_y = self.read_f32()?;
+        // LeftRightPetHitboxTileSize: Vector2
+        let _pet_hitbox_lr_x = self.read_f32()?;
+        let _pet_hitbox_lr_y = self.read_f32()?;
+        // BabyUpDownPetHitboxTileSize: Vector2
+        let _baby_hitbox_ud_x = self.read_f32()?;
+        let _baby_hitbox_ud_y = self.read_f32()?;
+        // BabyLeftRightPetHitboxTileSize: Vector2
+        let _baby_hitbox_lr_x = self.read_f32()?;
+        let _baby_hitbox_lr_y = self.read_f32()?;
+        // StatToIncrementOnProduce: List<StatIncrement>
+        self.skip_stat_increment_list()?;
+        let _show_in_summit_credits = self.read_bool()?;
+        // CustomFields: Dictionary<string, string>
+        self.skip_nullable_string_dictionary()?;
+
+        Ok(RawFarmAnimalData {
+            display_name: _display_name_raw,
+            house,
+            purchase_price,
+            sell_price,
+            days_to_mature,
+            days_to_produce,
+            can_get_pregnant,
+            harvest_type,
+            harvest_tool,
+            produce_items,
+            deluxe_produce_items,
+            deluxe_produce_min_friendship,
+            can_swim,
+            can_eat_golden_crackers,
+            texture,
+            baby_texture,
+            sprite_width,
+            sprite_height,
+        })
+    }
+
+    /// Skip a List<string> in XNB format: reader_index (7-bit) + count (i32) + strings.
+    fn skip_xnb_string_list(&mut self) -> Result<(), String> {
+        if self.read_7bit_usize()? == 0 {
+            return Ok(());
+        }
+        let count = self.read_i32()?.max(0) as usize;
+        for _ in 0..count {
+            let _ = self.read_object_string_any()?;
+        }
+        Ok(())
+    }
+
+    fn read_farm_animal_produce_list(
+        &mut self,
+    ) -> Result<Vec<RawFarmAnimalProduce>, String> {
+        if self.read_7bit_usize()? == 0 {
+            return Ok(Vec::new());
+        }
+        let count = self.read_i32()?.max(0) as usize;
+        let mut items = Vec::with_capacity(count);
+        for _ in 0..count {
+            // Per-element reader index (ReflectiveReader)
+            if self.read_7bit_usize()? == 0 {
+                continue;
+            }
+            let _id = self.read_object_string_any()?;
+            let _condition = self.read_object_string_any()?;
+            let _minimum_friendship = self.read_i32()?;
+            let item_id = self.read_object_string_any()?;
+            items.push(RawFarmAnimalProduce { item_id });
+        }
+        Ok(items)
+    }
+
+    fn skip_alternate_purchase_list(&mut self) -> Result<(), String> {
+        if self.read_7bit_usize()? == 0 {
+            return Ok(());
+        }
+        let count = self.read_i32()?.max(0) as usize;
+        for _ in 0..count {
+            // Per-element reader index (ReflectiveReader)
+            if self.read_7bit_usize()? == 0 {
+                continue;
+            }
+            let _id = self.read_object_string_any()?;
+            let _condition = self.read_object_string_any()?;
+            // AnimalIds: List<string>
+            self.skip_xnb_string_list()?;
+        }
+        Ok(())
+    }
+
+    fn skip_farm_animal_skin_list(&mut self) -> Result<(), String> {
+        if self.read_7bit_usize()? == 0 {
+            return Ok(());
+        }
+        let count = self.read_i32()?.max(0) as usize;
+        for _ in 0..count {
+            // Per-element reader index (ReflectiveReader)
+            if self.read_7bit_usize()? == 0 {
+                continue;
+            }
+            let _id = self.read_object_string_any()?;
+            let _weight = self.read_f32()?;
+            let _texture = self.read_object_string_any()?;
+            let _harvested_texture = self.read_object_string_any()?;
+            let _baby_texture = self.read_object_string_any()?;
+        }
+        Ok(())
+    }
+
+    fn skip_nullable_shadow_data(&mut self) -> Result<(), String> {
+        if self.read_bool()? {
+            let _visible = self.read_bool()?;
+            // Offset: nullable Point
+            if self.read_bool()? {
+                let _x = self.read_i32()?;
+                let _y = self.read_i32()?;
+            }
+            // Scale: nullable float
+            if self.read_bool()? {
+                let _ = self.read_f32()?;
+            }
+        }
+        Ok(())
+    }
+
+    fn skip_stat_increment_list(&mut self) -> Result<(), String> {
+        if self.read_7bit_usize()? == 0 {
+            return Ok(());
+        }
+        let count = self.read_i32()?.max(0) as usize;
+        for _ in 0..count {
+            // Per-element reader index (ReflectiveReader)
+            if self.read_7bit_usize()? == 0 {
+                continue;
+            }
+            let _id = self.read_object_string_any()?;
+            let _required_item_id = self.read_object_string_any()?;
+            // RequiredTags: List<string>
+            self.skip_xnb_string_list()?;
+            let _stat_name = self.read_object_string_any()?;
+        }
+        Ok(())
     }
 }
