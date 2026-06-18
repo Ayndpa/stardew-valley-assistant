@@ -40,7 +40,6 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
             let timeout = std::time::Instant::now() + std::time::Duration::from_secs(180);
             let mut cf_shown = false;
             let mut last_title = String::new();
-            let mut details_ready_count: u32 = 0;
 
             let eval_js = |win: &tauri::WebviewWindow, js: &str| -> Option<String> {
                 eval_js_timeout(win, js, 2)
@@ -122,8 +121,6 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
                             const ogDescription = document.querySelector("meta[property='og:description']")?.getAttribute("content") || "";
                             const hasNexusDetailMarker =
                                 !!document.querySelector("#description-content, #section-mod-description, .mod-description, .tab-description, #pagetitle h1, meta[property='og:title'], meta[property='og:description']");
-                            const hasRichContent =
-                                !!document.querySelector(".statitem, ul.thumbgallery.gallery, .sideitems");
                             const hasNexusPageMarker =
                                 location.hostname.endsWith("nexusmods.com") &&
                                 hasNexusDetailMarker &&
@@ -152,7 +149,6 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
                             return {
                                 readyState: document.readyState,
                                 hasDetails: hasNexusPageMarker,
-                                hasRichContent,
                                 errorPageType,
                                 html
                             };
@@ -160,7 +156,6 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
                             return {
                                 readyState: "error",
                                 hasDetails: false,
-                                hasRichContent: false,
                                 errorPageType: null,
                                 html: "",
                                 error: String(error)
@@ -170,7 +165,7 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
                 "##,
                 ) {
                     None => {
-                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
                         continue;
                     }
                     Some(s) => s,
@@ -179,7 +174,7 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
                 let snapshot: serde_json::Value = match serde_json::from_str(&snapshot_json) {
                     Ok(value) => value,
                     Err(_) => {
-                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
                         continue;
                     }
                 };
@@ -192,10 +187,6 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
                     .get("hasDetails")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
-                let has_rich_content = snapshot
-                    .get("hasRichContent")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
                 let html = snapshot
                     .get("html")
                     .and_then(|v| v.as_str())
@@ -204,8 +195,10 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
 
                 let error_page_type = snapshot.get("errorPageType").and_then(|v| v.as_str());
 
+                let is_ready = ready_state == "interactive" || ready_state == "complete";
+
                 // Detect Nexus error pages early and notify frontend
-                if !is_challenge && ready_state == "complete" && error_page_type.is_some() {
+                if !is_challenge && is_ready && error_page_type.is_some() {
                     let error_msg = match error_page_type.unwrap() {
                         "not_found" => "该模组不存在，可能是 ID 错误或模组已被删除。",
                         "removed" => "该模组已被作者从 NexusMods 移除，无法查看。",
@@ -228,45 +221,25 @@ pub async fn open_scraper_window(app: tauri::AppHandle, mod_id: String) -> Resul
                     return;
                 }
 
-                if !is_challenge && ready_state == "complete" && has_details {
-                    if has_rich_content {
-                        let _ = poll_window.set_title("Nexus 信息已获取");
-                        info!(
-                            "[Scraper] Got HTML with rich content for mod_id={}, length={}",
-                            poll_mod_id,
-                            html.len()
-                        );
-                        let _ = poll_handle.emit(
-                            "respond-nexus-html",
-                            serde_json::json!({
-                                "modId": poll_mod_id.clone(),
-                                "html": html
-                            }),
-                        );
-                        let _ = poll_window.destroy();
-                        return;
-                    }
-                    details_ready_count += 1;
-                    if details_ready_count >= 12 {
-                        let _ = poll_window.set_title("Nexus 信息已获取");
-                        info!(
-                            "[Scraper] Got HTML fallback for mod_id={}, length={}",
-                            poll_mod_id,
-                            html.len()
-                        );
-                        let _ = poll_handle.emit(
-                            "respond-nexus-html",
-                            serde_json::json!({
-                                "modId": poll_mod_id.clone(),
-                                "html": html
-                            }),
-                        );
-                        let _ = poll_window.destroy();
-                        return;
-                    }
+                if !is_challenge && is_ready && has_details {
+                    let _ = poll_window.set_title("Nexus 信息已获取");
+                    info!(
+                        "[Scraper] Got HTML for mod_id={}, length={}",
+                        poll_mod_id,
+                        html.len()
+                    );
+                    let _ = poll_handle.emit(
+                        "respond-nexus-html",
+                        serde_json::json!({
+                            "modId": poll_mod_id.clone(),
+                            "html": html
+                        }),
+                    );
+                    let _ = poll_window.destroy();
+                    return;
                 }
 
-                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
             }
         });
     });
