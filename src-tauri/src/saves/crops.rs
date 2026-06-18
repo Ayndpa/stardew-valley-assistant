@@ -23,6 +23,34 @@ pub struct PlantedCrop {
     pub phase_days: Vec<i32>,
 }
 
+/// Find the position of the matching `</tag>` closing tag for an opening `<tag>` at `open_pos`,
+/// properly handling nested tags with the same name.
+fn find_matching_close_tag(xml: &str, open_pos: usize, tag: &str) -> Option<usize> {
+    let open_pat = format!("<{}>", tag);
+    let close_pat = format!("</{}>", tag);
+    let mut depth = 1usize;
+    let mut pos = open_pos + open_pat.len();
+    while pos < xml.len() {
+        let next_open = xml[pos..].find(&open_pat).map(|i| pos + i);
+        let next_close = xml[pos..].find(&close_pat).map(|i| pos + i);
+        match (next_open, next_close) {
+            (_, None) => return None,
+            (Some(o), Some(c)) if o < c => {
+                depth += 1;
+                pos = o + open_pat.len();
+            }
+            (_, Some(c)) => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(c);
+                }
+                pos = c + close_pat.len();
+            }
+        }
+    }
+    None
+}
+
 fn extract_game_location_blocks(xml: &str) -> Vec<&str> {
     let Some(locations_start) = xml.find("<locations>") else {
         eprintln!("[get_planted_crops] no <locations> section found");
@@ -204,7 +232,7 @@ fn get_planted_crops_sync(id: String) -> Result<Vec<PlantedCrop>, String> {
                 }
 
                 if let Some(val_start) = item_xml.find("<value>") {
-                    if let Some(val_end) = item_xml.find("</value>") {
+                    if let Some(val_end) = find_matching_close_tag(item_xml, val_start, "value") {
                         let val_xml = &item_xml[val_start..val_end];
 
                         let mut is_watered = false;
