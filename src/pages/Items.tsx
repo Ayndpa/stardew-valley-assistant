@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
-import { BookOpen, ChevronLeft, ChevronRight, Clock, Coins, Fish, Gift, Package, Search, Soup, Tag, Trash2 } from "lucide-react"
+import { BookOpen, ChevronLeft, ChevronRight, Clock, Coins, Fish, Gift, MapPin, Package, Search, Soup, Tag, Trash2 } from "lucide-react"
 import {
   ItemEntry,
   ItemGameDataOverview,
@@ -441,6 +441,19 @@ export function Items({ navigationTarget, onNavigationHandled }: ItemsProps) {
                             >
                               <Clock className="h-2.5 w-2.5" />
                               {formatTime(start)}–{formatTime(end)}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {fc.locations.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {fc.locations.map((loc) => (
+                            <span
+                              key={loc}
+                              className="inline-flex items-center gap-1 rounded-full border border-rose-500/30 bg-rose-500/15 px-2 py-0.5 text-[10px] font-medium text-rose-400"
+                            >
+                              <MapPin className="h-2.5 w-2.5" />
+                              {loc}
                             </span>
                           ))}
                         </div>

@@ -9,9 +9,10 @@ use serde::{Deserialize, Serialize};
 use super::calendar::resolve_localized_text;
 use super::fishing::parse_fish_conditions;
 use super::image_utils::render_object_icon;
+use super::map_names::{map_display_name, map_display_name_zh};
 use super::xnb::{
-    load_localized_string_tables_with_lang, load_objects_xnb, load_string_dictionary_best_effort,
-    load_string_dictionary_xnb, RawObjectData,
+    load_localized_string_tables_with_lang, load_location_fishing_xnb, load_objects_xnb,
+    load_string_dictionary_best_effort, load_string_dictionary_xnb, RawObjectData,
 };
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -22,6 +23,7 @@ pub struct FishConditions {
     pub weather: String,
     pub min_level: i32,
     pub is_trap: bool,
+    pub locations: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -240,6 +242,9 @@ fn build_item_snapshot(content_dir: PathBuf, lang: Option<&str>) -> Result<ItemS
     let fish_data = load_string_dictionary_xnb(&content_dir.join("Data").join("Fish.xnb"))
         .unwrap_or_default();
 
+    // Build reverse index: fish_id -> list of location display names
+    let fish_locations_map = build_fish_locations_map(&content_dir, is_zh);
+
     let mut encyclopedia = Vec::with_capacity(objects.len());
 
     for (id, object) in objects {
@@ -256,12 +261,17 @@ fn build_item_snapshot(content_dir: PathBuf, lang: Option<&str>) -> Result<ItemS
         let fish_conditions = fish_data.get(&id).map(|raw_str| {
             let (seasons, time_ranges, weather, min_level, is_trap) =
                 parse_fish_conditions(raw_str);
+            let locations = fish_locations_map
+                .get(&id)
+                .cloned()
+                .unwrap_or_default();
             FishConditions {
                 seasons,
                 time_ranges,
                 weather,
                 min_level,
                 is_trap,
+                locations,
             }
         });
 
@@ -321,6 +331,57 @@ fn build_item_snapshot(content_dir: PathBuf, lang: Option<&str>) -> Result<ItemS
         categories,
         item_types,
     })
+}
+
+/// Build a reverse index from fish item ID to a list of location display names
+/// where that fish can be caught, derived from Locations.xnb.
+fn build_fish_locations_map(content_dir: &std::path::Path, is_zh: bool) -> HashMap<String, Vec<String>> {
+    let location_data = match load_location_fishing_xnb(&content_dir.join("Data").join("Locations.xnb")) {
+        Ok(data) => data,
+        Err(_) => return HashMap::new(),
+    };
+
+    let resolve_name = if is_zh {
+        map_display_name_zh
+    } else {
+        map_display_name
+    };
+
+    let mut map: HashMap<String, Vec<String>> = HashMap::new();
+
+    for (location_key, location) in &location_data {
+        let display_name = resolve_name(location_key)
+            .map(str::to_string)
+            .unwrap_or_else(|| location_key.clone());
+
+        for fish_entry in &location.fish {
+            for item_id in &fish_entry.item_ids {
+                if let Some(fish_id) = normalize_fish_item_id(item_id) {
+                    let locations = map.entry(fish_id).or_default();
+                    if !locations.contains(&display_name) {
+                        locations.push(display_name.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    map
+}
+
+/// Normalize an item ID from Locations.xnb fish entries to a plain numeric ID.
+fn normalize_fish_item_id(item_id: &str) -> Option<String> {
+    let trimmed = item_id.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if let Some(id) = trimmed.strip_prefix("(O)") {
+        return Some(id.to_string());
+    }
+    if trimmed.chars().all(|ch| ch.is_ascii_digit()) {
+        return Some(trimmed.to_string());
+    }
+    None
 }
 
 fn matches_item(

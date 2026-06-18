@@ -4,6 +4,7 @@ export interface FishConditions {
   weather: string
   minLevel: number
   isTrap: boolean
+  locations: string[]
 }
 
 export interface ItemEntry {
