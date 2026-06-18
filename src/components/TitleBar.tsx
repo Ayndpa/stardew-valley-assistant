@@ -2,6 +2,7 @@ import { type MouseEvent, useEffect, useMemo, useState } from "react"
 import { Minus, Square, SquareStack, X } from "lucide-react"
 import appIcon from "@/assets/app-icon.png"
 import { useTranslation } from "react-i18next"
+import type { Page, SaveSummary } from "@/App"
 
 type WindowApi = {
   minimize: () => Promise<void>
@@ -62,7 +63,12 @@ function useWindowControls() {
   return { windowApi, isMaximized }
 }
 
-export function TitleBar() {
+interface TitleBarProps {
+  currentPage: Page
+  currentSave?: SaveSummary
+}
+
+export function TitleBar({ currentPage, currentSave }: TitleBarProps) {
   const { t } = useTranslation()
   const { windowApi, isMaximized } = useWindowControls()
   const [isWindows, setIsWindows] = useState(false)
@@ -138,34 +144,43 @@ export function TitleBar() {
     </div>
   )
 
-  const brand = (
-    <div className="titlebar-brand flex max-w-full items-center gap-2 px-2 py-1">
-      <img
-        src={appIcon}
-        alt={t("titlebar.brand")}
-        className="h-4.5 w-4.5 rounded-sm object-cover"
-        draggable={false}
-      />
-      <p className="truncate text-[12px] font-medium text-foreground">{t("titlebar.brand")}</p>
-    </div>
-  )
+  const pageLabel = t(`sidebar.${currentPage}`)
+  const saveLabel = currentSave
+    ? t("sidebar.farmNameSuffix", { name: currentSave.farmName })
+    : t("sidebar.noSaveSelected")
 
   return (
     <header
-      className="titlebar absolute inset-x-0 top-0 z-50 flex h-13 items-center border-b border-border/60 px-3"
+      className="titlebar relative z-20 flex h-13 shrink-0 items-center gap-3 border-b border-border/60 px-4"
       onMouseDown={(event) => void handleDragMouseDown(event)}
     >
-      <div className="flex min-w-0 flex-1 items-center">
+      <div className="flex min-w-0 flex-1 items-center gap-3">
         {!isWindows && <div className="w-20 shrink-0">{controls}</div>}
+        <div className="titlebar-brand flex min-w-0 items-center gap-3 px-1 py-1">
+          <img
+            src={appIcon}
+            alt={t("titlebar.brand")}
+            className="h-8 w-8 rounded-lg object-cover"
+            draggable={false}
+          />
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-foreground">{t("titlebar.brand")}</p>
+            <div className="flex min-w-0 items-center gap-2 text-[11px] text-muted-foreground">
+              <span className="truncate">{pageLabel}</span>
+              <span className="shrink-0 text-border">/</span>
+              <span className="truncate">{currentSave ? currentSave.playerName : saveLabel}</span>
+              {currentSave && (
+                <>
+                  <span className="shrink-0 text-border">/</span>
+                  <span className="truncate">{saveLabel}</span>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div
-        className="pointer-events-none absolute inset-x-0 top-0 flex h-full items-center justify-center px-30"
-      >
-        {brand}
-      </div>
-
-      <div className="flex min-w-0 flex-1 items-center justify-end">
+      <div className="flex min-w-0 items-center justify-end">
         {isWindows ? <div className="w-20 shrink-0">{controls}</div> : <div className="w-20 shrink-0" />}
       </div>
     </header>

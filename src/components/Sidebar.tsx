@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import type { Page, SaveSummary } from "@/App"
-import appIcon from "@/assets/app-icon.png"
 import { useTranslation } from "react-i18next"
 import {
   LayoutDashboard,
@@ -154,44 +153,19 @@ export function Sidebar({
   }
 
   return (
-    <aside className={cn(
-      "app-sidebar border-r border-sidebar-border/70 flex flex-col pt-13 transition-all duration-300",
-      collapsed ? "w-16" : "w-64"
-    )}>
-      {/* Logo */}
-      <div className={cn("flex items-center gap-3 py-5 transition-all duration-300", collapsed ? "px-3 justify-center" : "px-6")}>
-        <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg border border-sidebar-border/60 bg-card shadow-sm shrink-0">
-          <img
-            src={appIcon}
-            alt={t("sidebar.version")}
-            className="h-full w-full object-cover"
-            draggable={false}
-          />
-        </div>
-        {!collapsed && (
-          <div className="overflow-hidden min-w-0 flex-1">
-            <div className="flex flex-col">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-bold leading-tight text-sidebar-foreground truncate">
-                  {t("sidebar.appName")}
-                </span>
-                {appVersion && (
-                  <span className="shrink-0 rounded border border-sidebar-border/60 bg-sidebar-accent/40 px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                    v{appVersion}
-                  </span>
-                )}
-              </div>
-              {t("sidebar.appNameSubtitle") && (
-                <span className="text-xs font-medium leading-tight text-muted-foreground truncate">
-                  {t("sidebar.appNameSubtitle")}
-                </span>
-              )}
-            </div>
+    <aside
+      className={cn(
+        "app-sidebar h-full shrink-0 border-r border-sidebar-border/60 flex flex-col transition-all duration-300",
+        collapsed ? "w-16" : "w-64"
+      )}
+    >
+      {!collapsed && appVersion && (
+        <div className="px-4 py-2.5">
+          <div className="rounded-full border border-sidebar-border/60 bg-sidebar-accent/20 px-3 py-1 text-[10px] font-medium tracking-wide text-muted-foreground">
+            v{appVersion}
           </div>
-        )}
-      </div>
-
-      <Separator className="bg-sidebar-border" />
+        </div>
+      )}
 
       {/* Save File Selector */}
       {saves.length > 0 && (
@@ -279,7 +253,7 @@ export function Sidebar({
               </div>
             )}
           </div>
-          <Separator className="bg-sidebar-border" />
+          <Separator className="bg-sidebar-border/70" />
         </>
       )}
 
@@ -376,43 +350,43 @@ export function Sidebar({
           {navItems
             .filter((item) => item.id === "dashboard" || item.id === "settings" || enabledFeatures.includes(item.id))
             .map((item) => {
-            const showDownloadCount = item.id === "downloads" && activeDownloadCount > 0
-            return (
-              <Button
-                key={item.id}
-                variant={currentPage === item.id ? "secondary" : "ghost"}
-                className={cn(
-                  "gap-3 h-10 text-sm font-medium transition-all duration-200 relative",
-                  collapsed ? "justify-center px-2" : "justify-start px-3",
-                  currentPage === item.id
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                    : "text-sidebar-foreground hover:bg-sidebar-accent/50"
-                )}
-                onClick={() => onNavigate(item.id)}
-                title={collapsed ? t(`sidebar.${item.id}`) : undefined}
-              >
-                <span className="shrink-0">{item.icon}</span>
-                {!collapsed && (
-                  <>
-                    <span className="min-w-0 flex-1 text-left">{t(`sidebar.${item.id}`)}</span>
-                    {showDownloadCount && (
-                      <span className="ml-auto min-w-5 rounded-full bg-primary px-1.5 text-center text-[10px] font-bold leading-5 text-primary-foreground">
-                        {activeDownloadCount}
-                      </span>
-                    )}
-                  </>
-                )}
-                {collapsed && showDownloadCount && (
-                  <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-primary" />
-                )}
-              </Button>
-            )
-          })}
+              const showDownloadCount = item.id === "downloads" && activeDownloadCount > 0
+              return (
+                <Button
+                  key={item.id}
+                  variant={currentPage === item.id ? "secondary" : "ghost"}
+                  className={cn(
+                    "gap-3 h-10 text-sm font-medium transition-all duration-200 relative",
+                    collapsed ? "justify-center px-2" : "justify-start px-3",
+                    currentPage === item.id
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                      : "text-sidebar-foreground hover:bg-sidebar-accent/50"
+                  )}
+                  onClick={() => onNavigate(item.id)}
+                  title={collapsed ? t(`sidebar.${item.id}`) : undefined}
+                >
+                  <span className="shrink-0">{item.icon}</span>
+                  {!collapsed && (
+                    <>
+                      <span className="min-w-0 flex-1 text-left">{t(`sidebar.${item.id}`)}</span>
+                      {showDownloadCount && (
+                        <span className="ml-auto min-w-5 rounded-full bg-primary px-1.5 text-center text-[10px] font-bold leading-5 text-primary-foreground">
+                          {activeDownloadCount}
+                        </span>
+                      )}
+                    </>
+                  )}
+                  {collapsed && showDownloadCount && (
+                    <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-primary" />
+                  )}
+                </Button>
+              )
+            })}
         </nav>
       </ScrollArea>
 
       {/* Collapse Toggle */}
-      <div className={cn("border-t border-sidebar-border py-2", collapsed ? "px-2" : "px-4")}>
+      <div className={cn("border-t border-sidebar-border/70 py-2", collapsed ? "px-2" : "px-4")}>
         <button
           onClick={onToggleCollapse}
           className={cn(
@@ -425,7 +399,6 @@ export function Sidebar({
           {!collapsed && <span className="text-xs">{t("sidebar.collapseSidebar")}</span>}
         </button>
       </div>
-
     </aside>
   )
 }

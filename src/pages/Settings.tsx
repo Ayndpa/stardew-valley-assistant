@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { useTheme } from "@/lib/theme-provider"
 import { useNexus } from "@/lib/nexus-provider"
+import { BackdropType } from "@/lib/backdrop-provider"
 import { useTranslation } from "react-i18next"
 import {
   Bell,
@@ -80,12 +81,26 @@ export function Settings({
   enabledFeatures,
   onEnabledFeaturesChange,
   onUpdateFound,
+  backdropType,
+  backdropOpacity,
+  backgroundImage,
+  onBackdropTypeChange,
+  onBackdropOpacityChange,
+  onBackgroundImageChange,
+  onBackgroundImageClear,
 }: {
   selectedSaveId: string
   onRestartOnboarding?: () => void
   enabledFeatures: Page[]
   onEnabledFeaturesChange: (features: Page[]) => void
   onUpdateFound?: (info: any) => void
+  backdropType: BackdropType
+  backdropOpacity: number
+  backgroundImage: string
+  onBackdropTypeChange: (type: BackdropType) => void
+  onBackdropOpacityChange: (opacity: number) => void
+  onBackgroundImageChange: (path: string) => void
+  onBackgroundImageClear: () => void
 }) {
   const { t } = useTranslation()
   const { themeMode, themeSeason, setThemeMode, setThemeSeason } = useTheme()
@@ -291,6 +306,13 @@ export function Settings({
           themeSeason={themeSeason}
           setThemeMode={setThemeMode}
           setThemeSeason={setThemeSeason}
+          backdropType={backdropType}
+          opacity={backdropOpacity}
+          backgroundImage={backgroundImage}
+          setBackdropType={onBackdropTypeChange}
+          setOpacity={onBackdropOpacityChange}
+          setBackgroundImage={onBackgroundImageChange}
+          clearBackgroundImage={onBackgroundImageClear}
         />
 
         <FeaturesCard

@@ -33,6 +33,12 @@
 }
 
 :root {
+  --panel-opacity: 100;
+  --card-opacity: min(100, calc(var(--panel-opacity) + 40));
+  --titlebar-opacity: min(100, calc(var(--panel-opacity) + 24));
+  --frame-opacity: min(100, calc(var(--panel-opacity) + 18));
+  --bg-rgb: 255, 255, 255;
+  --card-rgb: 255, 255, 255;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -62,6 +68,8 @@
 }
 
 .dark {
+  --bg-rgb: 10, 10, 10;
+  --card-rgb: 22, 22, 22;
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.2 0 0);
@@ -203,8 +211,8 @@
     overflow: hidden;
   }
   body {
-    /* Solid fallback for Windows 10 where Acrylic may not render behind transparent areas */
-    background: #181c20;
+    /* Transparent to show native window effects (Mica/Acrylic/Blur) */
+    background: transparent;
     color: var(--foreground);
     font-family: system-ui, -apple-system, sans-serif;
   }
@@ -214,21 +222,57 @@
 }
 
 .app-shell {
-  background: var(--background);
+  background: transparent;
+}
+
+.app-frame {
+  background: rgba(var(--card-rgb), calc(var(--frame-opacity) / 100));
+  overflow: hidden;
+}
+
+.app-workspace {
+  background: color-mix(in oklab, var(--background) 26%, transparent);
 }
 
 .app-panel {
-  background: var(--background);
+  background: rgba(var(--bg-rgb), calc(var(--panel-opacity) / 100)) !important;
 }
 
+.titlebar,
 .app-sidebar {
-  background: var(--sidebar);
+  background: rgba(var(--card-rgb), calc(var(--titlebar-opacity) / 100)) !important;
+}
+
+.app-panel,
+.app-sidebar {
+  position: relative;
+  z-index: 1;
 }
 
 .titlebar {
-  user-select: none;
-  background: color-mix(in oklab, var(--background) 78%, transparent);
-  backdrop-filter: blur(18px) saturate(1.08);
+  backdrop-filter: blur(24px) saturate(1.08);
+}
+
+.bg-card {
+  background-color: rgba(var(--card-rgb), calc(var(--card-opacity) / 100)) !important;
+}
+
+/* Background image layer */
+.bg-image-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  opacity: 0.15;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+/* When backdrop is "none", lean more on the custom background image */
+[data-backdrop="none"] .bg-image-layer {
+  opacity: 1;
 }
 
 .titlebar-brand {
@@ -237,6 +281,17 @@
 
 .titlebar-brand img {
   box-shadow: 0 0 0 1px rgb(255 255 255 / 0.08);
+}
+
+.app-sidebar::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 1px;
+  background: color-mix(in oklab, var(--border) 72%, transparent);
+  pointer-events: none;
 }
 
 .titlebar-control {

@@ -25,9 +25,7 @@
       "csp": null,
       "assetProtocol": {
         "enable": true,
-        "scope": [
-          "C:\\Users\\Administrator\\Downloads\\ODF.png"
-        ]
+        "scope": ["**"]
       }
     }
   },

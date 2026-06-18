@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import { ThemeProvider } from "./lib/theme-provider";
+import { BackdropProvider } from "./lib/backdrop-provider";
 import { NexusProvider } from "./lib/nexus-provider";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { initLogger } from "./lib/logger";
@@ -14,9 +15,11 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <ErrorBoundary>
       <ThemeProvider>
-        <NexusProvider>
-          <App />
-        </NexusProvider>
+        <BackdropProvider>
+          <NexusProvider>
+            <App />
+          </NexusProvider>
+        </BackdropProvider>
       </ThemeProvider>
     </ErrorBoundary>
   </React.StrictMode>,

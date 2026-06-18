@@ -25,7 +25,37 @@ import { useSavesList } from "@/hooks/useSavesList"
 import { useGameLauncher } from "@/hooks/useGameLauncher"
 import { useNxmDeepLink } from "@/hooks/useNxmDeepLink"
 import { useGlobalDragAndDrop } from "@/hooks/useGlobalDragAndDrop"
+import { useBackdrop } from "@/lib/backdrop-provider"
 import "./index.css"
+
+function BackgroundImageLayer({ filePath }: { filePath: string }) {
+  const [src, setSrc] = useState("")
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      try {
+        const { convertFileSrc } = await import("@tauri-apps/api/core")
+        if (!cancelled) {
+          setSrc(convertFileSrc(filePath))
+        }
+      } catch (err) {
+        console.error("Failed to convert file path:", err)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [filePath])
+
+  if (!src) return null
+
+  return (
+    <div
+      className="bg-image-layer"
+      style={{ backgroundImage: `url('${src}')` }}
+    />
+  )
+}
 
 export type Page = "dashboard" | "collections" | "crops" | "items" | "npcs" | "calendar" | "fishingMap" | "saveEditor" | "saveBackups" | "settings" | "mods" | "onlineMods" | "downloads" | "bundles" | "children" | "animals"
 
@@ -72,6 +102,17 @@ function App() {
 
   // Custom Hooks
   const { saves, selectedSaveId, fetchSavesList, handleSaveChange } = useSavesList()
+
+  // Backdrop settings
+  const {
+    backdropType,
+    opacity,
+    backgroundImage,
+    setBackdropType,
+    setOpacity,
+    setBackgroundImage,
+    clearBackgroundImage,
+  } = useBackdrop()
 
   // --- Sidebar collapsed state (synced across windows) ---
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -350,6 +391,8 @@ function App() {
     }
   }, [currentPage, enabledFeatures])
 
+  const currentSave = saves.find((save) => save.id === selectedSaveId) || saves[0]
+
   const renderPage = () => {
     switch (currentPage) {
       case "dashboard":
@@ -416,6 +459,13 @@ function App() {
           enabledFeatures={enabledFeatures}
           onEnabledFeaturesChange={updateEnabledFeatures}
           onUpdateFound={setUpdateDialogInfo}
+          backdropType={backdropType}
+          backdropOpacity={opacity}
+          backgroundImage={backgroundImage}
+          onBackdropTypeChange={setBackdropType}
+          onBackdropOpacityChange={setOpacity}
+          onBackgroundImageChange={setBackgroundImage}
+          onBackgroundImageClear={clearBackgroundImage}
           />
         )
       case "saveBackups":
@@ -492,58 +542,64 @@ function App() {
 
   return (
     <div ref={containerRef} className="app-shell relative flex h-screen overflow-hidden">
-      <TitleBar />
-      <div className="flex min-h-0 flex-1 overflow-hidden">
-        <Sidebar
-          currentPage={currentPage}
-          onNavigate={setCurrentPage}
-          saves={saves}
-          selectedSaveId={selectedSaveId}
-          onSaveChange={handleSaveChange}
-          collapsed={sidebarCollapsed}
-          onToggleCollapse={toggleSidebarCollapsed}
-          onLaunchGame={handleLaunchGame}
-          isGameRunning={isGameRunning}
-          downloadStats={downloadStats}
-          enabledFeatures={enabledFeatures}
-        />
-        <main
-          className="app-panel relative flex-1 overflow-auto pt-13"
-          onDragEnter={handleGlobalDragEnter}
-          onDragOver={handleGlobalDragOver}
-          onDragLeave={handleGlobalDragLeave}
-          onDrop={handleGlobalDrop}
-        >
-          {isGlobalDragOver && (
-            <div className="fixed inset-0 z-40 border-4 border-dashed border-primary bg-primary/10 backdrop-blur-sm pointer-events-none">
-              <div className="flex h-full w-full items-center justify-center">
-                <div className="rounded-2xl border border-primary bg-card/95 px-6 py-4 shadow-2xl">
-                  <p className="text-sm font-semibold text-primary">松开鼠标，安装该 .zip 模组</p>
-                  <p className="mt-1 text-xs text-muted-foreground">全局支持 .zip 拖拽安装，安装后将刷新模组列表</p>
+      <div className="app-frame relative flex min-h-0 flex-1 flex-col overflow-hidden">
+        {/* Background Image Layer */}
+        {backgroundImage && (
+          <BackgroundImageLayer filePath={backgroundImage} />
+        )}
+        <TitleBar currentPage={currentPage} currentSave={currentSave} />
+        <div className="app-workspace flex min-h-0 flex-1 overflow-hidden">
+          <Sidebar
+            currentPage={currentPage}
+            onNavigate={setCurrentPage}
+            saves={saves}
+            selectedSaveId={selectedSaveId}
+            onSaveChange={handleSaveChange}
+            collapsed={sidebarCollapsed}
+            onToggleCollapse={toggleSidebarCollapsed}
+            onLaunchGame={handleLaunchGame}
+            isGameRunning={isGameRunning}
+            downloadStats={downloadStats}
+            enabledFeatures={enabledFeatures}
+          />
+          <main
+            className="app-panel relative flex-1 overflow-auto"
+            onDragEnter={handleGlobalDragEnter}
+            onDragOver={handleGlobalDragOver}
+            onDragLeave={handleGlobalDragLeave}
+            onDrop={handleGlobalDrop}
+          >
+            {isGlobalDragOver && (
+              <div className="fixed inset-0 z-40 border-4 border-dashed border-primary bg-primary/10 backdrop-blur-sm pointer-events-none">
+                <div className="flex h-full w-full items-center justify-center">
+                  <div className="rounded-2xl border border-primary bg-card/95 px-6 py-4 shadow-2xl">
+                    <p className="text-sm font-semibold text-primary">松开鼠标，安装该 .zip 模组</p>
+                    <p className="mt-1 text-xs text-muted-foreground">全局支持 .zip 拖拽安装，安装后将刷新模组列表</p>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {globalToast && (
-            <div
-              className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-xl border px-5 py-4 shadow-xl ${
-                globalToast.type === "success"
-                  ? "border-green-200 bg-green-50/90 text-green-800 dark:border-green-800 dark:bg-green-950/80 dark:text-green-200"
-                  : globalToast.type === "warning"
-                    ? "border-amber-200 bg-amber-50/90 text-amber-800 dark:border-amber-800 dark:bg-amber-950/80 dark:text-amber-200"
-                    : "border-blue-200 bg-blue-50/90 text-blue-800 dark:border-blue-800 dark:bg-blue-950/80 dark:text-blue-200"
-              }`}
-            >
-              <div className="pr-4 text-sm font-medium">{globalToast.message}</div>
-              <button onClick={() => setGlobalToast(null)} className="ml-auto rounded-lg p-1 transition-colors hover:bg-black/10 dark:hover:bg-white/10">
-                ×
-              </button>
-            </div>
-          )}
+            {globalToast && (
+              <div
+                className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-xl border px-5 py-4 shadow-xl ${
+                  globalToast.type === "success"
+                    ? "border-green-200 bg-green-50/90 text-green-800 dark:border-green-800 dark:bg-green-950/80 dark:text-green-200"
+                    : globalToast.type === "warning"
+                      ? "border-amber-200 bg-amber-50/90 text-amber-800 dark:border-amber-800 dark:bg-amber-950/80 dark:text-amber-200"
+                      : "border-blue-200 bg-blue-50/90 text-blue-800 dark:border-blue-800 dark:bg-blue-950/80 dark:text-blue-200"
+                }`}
+              >
+                <div className="pr-4 text-sm font-medium">{globalToast.message}</div>
+                <button onClick={() => setGlobalToast(null)} className="ml-auto rounded-lg p-1 transition-colors hover:bg-black/10 dark:hover:bg-white/10">
+                  ×
+                </button>
+              </div>
+            )}
 
-          {renderPage()}
-        </main>
+            {renderPage()}
+          </main>
+        </div>
       </div>
       {showOnboarding && (
         <Onboarding

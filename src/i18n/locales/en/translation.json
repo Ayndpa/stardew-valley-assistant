@@ -166,7 +166,23 @@
       "fall": "Fall Maple",
       "fallDesc": "Red and orange maple leaves, the joy of harvest",
       "winter": "Winter Frost",
-      "winterDesc": "Quiet cold frost blue, peaceful and pure"
+      "winterDesc": "Quiet cold frost blue, peaceful and pure",
+      "backdrop": {
+        "title": "Transparency Effects",
+        "description": "Choose window background transparency effect to show desktop wallpaper",
+        "mica": "Mica",
+        "acrylic": "Acrylic",
+        "tabbed": "Tabbed",
+        "none": "None",
+        "opacity": "Panel Opacity",
+        "opacityDesc": "Adjust the background opacity of titlebar, sidebar and content area"
+      },
+      "backgroundImage": {
+        "title": "Custom Background Image",
+        "description": "Select an image as the application background",
+        "select": "Select Image",
+        "clear": "Clear"
+      }
     },
     "features": {
       "title": "Sidebar Features",
