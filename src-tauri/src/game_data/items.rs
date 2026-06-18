@@ -12,7 +12,8 @@ use super::image_utils::render_object_icon;
 use super::map_names::{map_display_name, map_display_name_zh};
 use super::xnb::{
     load_localized_string_tables_with_lang, load_location_fishing_xnb, load_objects_xnb,
-    load_string_dictionary_best_effort, load_string_dictionary_xnb, RawObjectData,
+    load_string_dictionary_best_effort, load_string_dictionary_xnb, load_tools_xnb,
+    load_weapons_xnb, RawObjectData,
 };
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -232,7 +233,14 @@ fn build_item_snapshot(content_dir: PathBuf, lang: Option<&str>) -> Result<ItemS
     let objects = load_objects_xnb(&content_dir.join("Data").join("Objects.xnb"))?;
     let localized_tables = load_localized_string_tables_with_lang(
         &content_dir,
-        &["Objects", "1_6_Strings", "StringsFromCSFiles", "NPCNames"],
+        &[
+            "Objects",
+            "1_6_Strings",
+            "StringsFromCSFiles",
+            "NPCNames",
+            "Tools",
+            "Weapons",
+        ],
         Some(&lang_str),
     );
     let recipe_sources =
@@ -303,6 +311,126 @@ fn build_item_snapshot(content_dir: PathBuf, lang: Option<&str>) -> Result<ItemS
             recipe_sources: item_recipe_sources,
             raw_object: object,
             fish_conditions,
+        });
+    }
+
+    // ── Load weapons from Data/Weapons.xnb (tolerate if missing) ──
+    let weapons = load_weapons_xnb(&content_dir.join("Data").join("Weapons.xnb"))
+        .unwrap_or_default();
+    for (id, weapon) in weapons {
+        let name = resolve_localized_text(&weapon.display_name, &localized_tables);
+        let description = resolve_localized_text(&weapon.description, &localized_tables);
+        let (item_type_key, item_type) = classify_weapon_type_localized(weapon.weapon_type, is_zh);
+        let (category_key, category) = classify_weapon_category_localized(weapon.weapon_type, is_zh);
+        let sprite_index = weapon.sprite_index.max(0);
+        let texture = if weapon.texture.trim().is_empty() {
+            "TileSheets/weapons".to_string()
+        } else {
+            weapon.texture.clone()
+        };
+        let raw_object = RawObjectData {
+            name: weapon.name.clone(),
+            display_name: weapon.display_name.clone(),
+            description: weapon.description.clone(),
+            object_type: String::new(),
+            category: 0,
+            price: 0,
+            texture,
+            sprite_index,
+            edibility: -300,
+            can_be_given_as_gift: false,
+            can_be_trashed: false,
+        };
+        encyclopedia.push(IndexedItemEntry {
+            id: format!("(W){}", id),
+            name: if name.trim().is_empty() {
+                weapon.name.clone()
+            } else {
+                name
+            },
+            internal_name: weapon.name.clone(),
+            description: if description.trim().is_empty() {
+                if is_zh {
+                    "游戏内容未提供描述。".to_string()
+                } else {
+                    "No description provided by game content.".to_string()
+                }
+            } else {
+                description
+            },
+            item_type,
+            item_type_key,
+            category,
+            category_key,
+            sell_price: 0,
+            edibility: None,
+            can_be_given_as_gift: false,
+            can_be_trashed: false,
+            recipe_sources: Vec::new(),
+            raw_object,
+            fish_conditions: None,
+        });
+    }
+
+    // ── Load tools from Data/Tools.xnb (tolerate if missing) ──
+    let tools = load_tools_xnb(&content_dir.join("Data").join("Tools.xnb"))
+        .unwrap_or_default();
+    for (id, tool) in tools {
+        let name = resolve_localized_text(&tool.display_name, &localized_tables);
+        let description = resolve_localized_text(&tool.description, &localized_tables);
+        let (item_type_key, item_type) = ("tool".to_string(), if is_zh { "工具" } else { "Tool" }.to_string());
+        let (category_key, category) = classify_tool_category_localized(&tool.class_name, is_zh);
+        let sprite_index = if tool.menu_sprite_index >= 0 {
+            tool.menu_sprite_index
+        } else {
+            tool.sprite_index.max(0)
+        };
+        let texture = if tool.texture.trim().is_empty() {
+            "TileSheets/tools".to_string()
+        } else {
+            tool.texture.clone()
+        };
+        let raw_object = RawObjectData {
+            name: tool.name.clone(),
+            display_name: tool.display_name.clone(),
+            description: tool.description.clone(),
+            object_type: String::new(),
+            category: 0,
+            price: tool.sale_price.max(0),
+            texture,
+            sprite_index,
+            edibility: -300,
+            can_be_given_as_gift: false,
+            can_be_trashed: false,
+        };
+        encyclopedia.push(IndexedItemEntry {
+            id: format!("(T){}", id),
+            name: if name.trim().is_empty() {
+                tool.name.clone()
+            } else {
+                name
+            },
+            internal_name: tool.name.clone(),
+            description: if description.trim().is_empty() {
+                if is_zh {
+                    "游戏内容未提供描述。".to_string()
+                } else {
+                    "No description provided by game content.".to_string()
+                }
+            } else {
+                description
+            },
+            item_type,
+            item_type_key,
+            category,
+            category_key,
+            sell_price: tool.sale_price.max(0),
+            edibility: None,
+            can_be_given_as_gift: false,
+            can_be_trashed: false,
+            recipe_sources: Vec::new(),
+            raw_object,
+            fish_conditions: None,
         });
     }
 
@@ -704,7 +832,91 @@ fn translate_object_type_label(key: &str, is_zh: bool) -> String {
             "Special Item"
         }
         .to_string(),
+        "weapon" => if is_zh { "武器" } else { "Weapon" }.to_string(),
+        "tool" => if is_zh { "工具" } else { "Tool" }.to_string(),
         _ => key.to_string(),
+    }
+}
+
+fn classify_weapon_type_localized(weapon_type: i32, is_zh: bool) -> (String, String) {
+    (
+        "weapon".to_string(),
+        if is_zh { "武器" } else { "Weapon" }.to_string(),
+    )
+}
+
+fn classify_weapon_category_localized(weapon_type: i32, is_zh: bool) -> (String, String) {
+    match weapon_type {
+        0 => (
+            "sword".to_string(),
+            if is_zh { "剑" } else { "Sword" }.to_string(),
+        ),
+        1 => (
+            "dagger".to_string(),
+            if is_zh { "匕首" } else { "Dagger" }.to_string(),
+        ),
+        2 => (
+            "club".to_string(),
+            if is_zh { "锤" } else { "Club" }.to_string(),
+        ),
+        3 => (
+            "defense_sword".to_string(),
+            if is_zh { "防御剑" } else { "Defense Sword" }.to_string(),
+        ),
+        _ => (
+            "weapon_other".to_string(),
+            if is_zh { "其他武器" } else { "Other Weapon" }.to_string(),
+        ),
+    }
+}
+
+fn classify_tool_category_localized(class_name: &str, is_zh: bool) -> (String, String) {
+    let normalized = class_name.trim().to_ascii_lowercase();
+    match normalized.as_str() {
+        "axe" => (
+            "axe".to_string(),
+            if is_zh { "斧" } else { "Axe" }.to_string(),
+        ),
+        "pickaxe" => (
+            "pickaxe".to_string(),
+            if is_zh { "镐" } else { "Pickaxe" }.to_string(),
+        ),
+        "hoe" => (
+            "hoe".to_string(),
+            if is_zh { "锄头" } else { "Hoe" }.to_string(),
+        ),
+        "wateringcan" => (
+            "watering_can".to_string(),
+            if is_zh { "洒水壶" } else { "Watering Can" }.to_string(),
+        ),
+        "fishingrod" => (
+            "fishing_rod".to_string(),
+            if is_zh { "鱼竿" } else { "Fishing Rod" }.to_string(),
+        ),
+        "milkpail" => (
+            "milk_pail".to_string(),
+            if is_zh { "挤奶桶" } else { "Milk Pail" }.to_string(),
+        ),
+        "shears" => (
+            "shears".to_string(),
+            if is_zh { "剪刀" } else { "Shears" }.to_string(),
+        ),
+        "pan" => (
+            "pan".to_string(),
+            if is_zh { "淘盘" } else { "Pan" }.to_string(),
+        ),
+        "wand" => (
+            "wand".to_string(),
+            if is_zh { "回程魔杖" } else { "Return Scepter" }.to_string(),
+        ),
+        "slingshot" => (
+            "slingshot".to_string(),
+            if is_zh { "弹弓" } else { "Slingshot" }.to_string(),
+        ),
+        _ => (
+            "tool_other".to_string(),
+            if is_zh { "其他工具" } else { "Other Tool" }.to_string(),
+        ),
     }
 }
 
@@ -918,6 +1130,8 @@ fn item_type_order(key: &str) -> i32 {
         "interactive" => 9,
         "quest" => 10,
         "asdf" => 11,
+        "weapon" => 12,
+        "tool" => 13,
         _ => 99,
     }
 }
@@ -938,6 +1152,9 @@ fn category_order(key: &str) -> i32 {
         "metal_resource" => 11,
         "building_resource" => 12,
         "monster_loot" => 13,
+        "sword" | "dagger" | "club" | "defense_sword" | "weapon_other" => 14,
+        "axe" | "pickaxe" | "hoe" | "watering_can" | "fishing_rod" | "milk_pail"
+        | "shears" | "pan" | "wand" | "slingshot" | "tool_other" => 15,
         _ => 99,
     }
 }

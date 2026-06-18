@@ -533,6 +533,55 @@ impl<'a> XnbPayloadReader<'a> {
         Ok(())
     }
 
+    // ── Weapon / Tool type skippers ───────────────────────────────────
+
+    pub(crate) fn skip_nullable_weapon_projectile_list(&mut self) -> Result<(), String> {
+        if self.read_7bit_usize()? == 0 {
+            return Ok(());
+        }
+        let count = self.read_i32()?.max(0) as usize;
+        for _ in 0..count {
+            if self.read_7bit_usize()? == 0 {
+                continue;
+            }
+            let _id = self.read_object_string_any()?;
+            let _damage = self.read_i32()?;
+            let _explodes = self.read_bool()?;
+            let _bounces = self.read_i32()?;
+            let _max_distance = self.read_i32()?;
+            let _velocity = self.read_i32()?;
+            let _rotation_velocity = self.read_i32()?;
+            let _tail_length = self.read_i32()?;
+            let _fire_sound = self.read_object_string_any()?;
+            let _bounce_sound = self.read_object_string_any()?;
+            let _collision_sound = self.read_object_string_any()?;
+            let _min_angle_offset = self.read_f32()?;
+            let _max_angle_offset = self.read_f32()?;
+            let _sprite_index = self.read_i32()?;
+            // Item (GenericSpawnItemData) - nullable
+            self.skip_generic_spawn_item_data()?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn skip_nullable_tool_upgrade_data_list(&mut self) -> Result<(), String> {
+        if self.read_7bit_usize()? == 0 {
+            return Ok(());
+        }
+        let count = self.read_i32()?.max(0) as usize;
+        for _ in 0..count {
+            if self.read_7bit_usize()? == 0 {
+                continue;
+            }
+            let _condition = self.read_object_string_any()?;
+            let _price = self.read_i32()?;
+            let _require_tool_id = self.read_object_string_any()?;
+            let _trade_item_id = self.read_object_string_any()?;
+            let _trade_item_amount = self.read_i32()?;
+        }
+        Ok(())
+    }
+
     // ── Character data tail skippers ───────────────────────────────────
 
     pub(crate) fn skip_character_data_tail(&mut self) -> Result<(), String> {

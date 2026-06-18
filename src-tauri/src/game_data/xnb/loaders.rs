@@ -2,7 +2,10 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use super::super::image_utils::{Pixel, Texture};
-use super::{load_xnb_payload, require_reader, RawCropData, RawLocationFishingData, RawObjectData};
+use super::{
+    load_xnb_payload, require_reader, RawCropData, RawLocationFishingData, RawObjectData,
+    RawToolData, RawWeaponData,
+};
 use super::primitives::XnbPayloadReader;
 
 pub fn load_crops_xnb(path: &Path) -> Result<HashMap<String, RawCropData>, String> {
@@ -92,6 +95,70 @@ pub fn load_location_fishing_xnb(
         locations.insert(key, value);
     }
     Ok(locations)
+}
+
+pub fn load_weapons_xnb(path: &Path) -> Result<HashMap<String, RawWeaponData>, String> {
+    let payload = load_xnb_payload(path)?;
+    let mut reader = XnbPayloadReader::new(&payload);
+    let type_readers = reader.read_type_readers()?;
+    let root_reader = reader.read_7bit_usize()?;
+    if root_reader == 0 {
+        return Ok(HashMap::new());
+    }
+    require_reader(&type_readers, root_reader, "DictionaryReader")?;
+
+    let count = reader.read_i32()?.max(0) as usize;
+    let mut weapons = HashMap::with_capacity(count);
+    for _ in 0..count {
+        let key = reader.read_object_string(&type_readers)?;
+        let value_reader = reader.read_7bit_usize()?;
+        if value_reader == 0 {
+            continue;
+        }
+        require_reader(&type_readers, value_reader, "ReflectiveReader")
+            .map_err(|e| format!("Failed to parse weapon '{}' reader: {}", key, e))?;
+        let start_pos = reader.pos;
+        let value = reader.read_weapon_data().map_err(|e| {
+            format!(
+                "Failed to parse weapon '{}' at byte {}: {}",
+                key, start_pos, e
+            )
+        })?;
+        weapons.insert(key, value);
+    }
+    Ok(weapons)
+}
+
+pub fn load_tools_xnb(path: &Path) -> Result<HashMap<String, RawToolData>, String> {
+    let payload = load_xnb_payload(path)?;
+    let mut reader = XnbPayloadReader::new(&payload);
+    let type_readers = reader.read_type_readers()?;
+    let root_reader = reader.read_7bit_usize()?;
+    if root_reader == 0 {
+        return Ok(HashMap::new());
+    }
+    require_reader(&type_readers, root_reader, "DictionaryReader")?;
+
+    let count = reader.read_i32()?.max(0) as usize;
+    let mut tools = HashMap::with_capacity(count);
+    for _ in 0..count {
+        let key = reader.read_object_string(&type_readers)?;
+        let value_reader = reader.read_7bit_usize()?;
+        if value_reader == 0 {
+            continue;
+        }
+        require_reader(&type_readers, value_reader, "ReflectiveReader")
+            .map_err(|e| format!("Failed to parse tool '{}' reader: {}", key, e))?;
+        let start_pos = reader.pos;
+        let value = reader.read_tool_data().map_err(|e| {
+            format!(
+                "Failed to parse tool '{}' at byte {}: {}",
+                key, start_pos, e
+            )
+        })?;
+        tools.insert(key, value);
+    }
+    Ok(tools)
 }
 
 pub fn load_string_dictionary_best_effort(paths: &[PathBuf]) -> HashMap<String, String> {

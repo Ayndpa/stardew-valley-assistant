@@ -5,7 +5,7 @@ use super::super::calendar::{
 };
 use super::super::npc::NpcProfile;
 use super::primitives::XnbPayloadReader;
-use super::{RawCropData, RawLocationFishingData, RawObjectData};
+use super::{RawCropData, RawLocationFishingData, RawObjectData, RawToolData, RawWeaponData};
 
 impl<'a> XnbPayloadReader<'a> {
     pub fn read_crop_data(&mut self) -> Result<RawCropData, String> {
@@ -76,6 +76,71 @@ impl<'a> XnbPayloadReader<'a> {
             edibility,
             can_be_given_as_gift,
             can_be_trashed,
+        })
+    }
+
+    pub fn read_weapon_data(&mut self) -> Result<RawWeaponData, String> {
+        let name = self.read_object_string_any()?;
+        let display_name = self.read_object_string_any()?;
+        let description = self.read_object_string_any()?;
+        let min_damage = self.read_i32()?;
+        let max_damage = self.read_i32()?;
+        let _knockback = self.read_f32()?;
+        let _speed = self.read_i32()?;
+        let _precision = self.read_i32()?;
+        let _defense = self.read_i32()?;
+        let weapon_type = self.read_i32()?;
+        let _mine_base_level = self.read_i32()?;
+        let _mine_min_level = self.read_i32()?;
+        let _area_of_effect = self.read_i32()?;
+        let _crit_chance = self.read_f32()?;
+        let _crit_multiplier = self.read_f32()?;
+        let _can_be_lost_on_death = self.read_bool()?;
+        let texture = self.read_object_string_any()?;
+        let sprite_index = self.read_i32()?;
+        self.skip_nullable_weapon_projectile_list()?;
+        self.skip_nullable_string_dictionary()?;
+
+        Ok(RawWeaponData {
+            name,
+            display_name,
+            description,
+            min_damage,
+            max_damage,
+            weapon_type,
+            texture,
+            sprite_index,
+        })
+    }
+
+    pub fn read_tool_data(&mut self) -> Result<RawToolData, String> {
+        let class_name = self.read_object_string_any()?;
+        let name = self.read_object_string_any()?;
+        let attachment_slots = self.read_i32()?;
+        let sale_price = self.read_i32()?;
+        let display_name = self.read_object_string_any()?;
+        let description = self.read_object_string_any()?;
+        let texture = self.read_object_string_any()?;
+        let sprite_index = self.read_i32()?;
+        let menu_sprite_index = self.read_i32()?;
+        let upgrade_level = self.read_i32()?;
+        let _conventional_upgrade_from = self.read_object_string_any()?;
+        self.skip_nullable_tool_upgrade_data_list()?;
+        let _can_be_lost_on_death = self.read_bool()?;
+        self.skip_nullable_string_dictionary()?; // SetProperties
+        self.skip_nullable_string_dictionary()?; // ModData
+        self.skip_nullable_string_dictionary()?; // CustomFields
+
+        Ok(RawToolData {
+            class_name,
+            name,
+            display_name,
+            description,
+            texture,
+            sprite_index,
+            menu_sprite_index,
+            upgrade_level,
+            sale_price,
         })
     }
 

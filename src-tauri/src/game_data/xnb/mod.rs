@@ -12,7 +12,7 @@ pub use loaders::{
     get_lang_suffix, load_crops_xnb, load_int_string_dictionary_best_effort,
     load_int_string_dictionary_xnb, load_localized_string_tables_with_lang,
     load_location_fishing_xnb, load_objects_xnb, load_string_dictionary_best_effort,
-    load_string_dictionary_xnb, load_xnb_texture,
+    load_string_dictionary_xnb, load_tools_xnb, load_weapons_xnb, load_xnb_texture,
 };
 pub use primitives::XnbPayloadReader;
 
@@ -43,6 +43,31 @@ pub struct RawObjectData {
     pub edibility: i32,
     pub can_be_given_as_gift: bool,
     pub can_be_trashed: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct RawWeaponData {
+    pub name: String,
+    pub display_name: String,
+    pub description: String,
+    pub min_damage: i32,
+    pub max_damage: i32,
+    pub weapon_type: i32,
+    pub texture: String,
+    pub sprite_index: i32,
+}
+
+#[derive(Debug, Clone)]
+pub struct RawToolData {
+    pub class_name: String,
+    pub name: String,
+    pub display_name: String,
+    pub description: String,
+    pub texture: String,
+    pub sprite_index: i32,
+    pub menu_sprite_index: i32,
+    pub upgrade_level: i32,
+    pub sale_price: i32,
 }
 
 #[derive(Debug, Clone)]
