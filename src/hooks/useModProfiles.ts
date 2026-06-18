@@ -2,6 +2,28 @@ import { useCallback } from "react"
 import { Mod } from "@/components/mods/ModList"
 import { ModStateEntry } from "@/components/mods/ModProfiles"
 
+/** Strip the disabled ('.' prefix) from the last segment of a folder path.
+ *  e.g. "美化类/.xxxMod" -> "美化类/xxxMod", ".xxxMod" -> "xxxMod" */
+function stripDisabledPrefix(folderName: string): string {
+  const parts = folderName.split("/")
+  const last = parts[parts.length - 1]
+  if (last.startsWith(".")) {
+    parts[parts.length - 1] = last.slice(1)
+  }
+  return parts.join("/")
+}
+
+/** Add the disabled ('.' prefix) to the last segment of a folder path.
+ *  e.g. "美化类/xxxMod" -> "美化类/.xxxMod", "xxxMod" -> ".xxxMod" */
+function addDisabledPrefix(folderName: string): string {
+  const parts = folderName.split("/")
+  const last = parts[parts.length - 1]
+  if (!last.startsWith(".")) {
+    parts[parts.length - 1] = `.${last}`
+  }
+  return parts.join("/")
+}
+
 async function getTauriInvoke() {
   if (typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__) {
     try {
@@ -33,10 +55,11 @@ export function useModProfiles({ ensureCanModify, setMods }: UseModProfilesOptio
         const stateMap = new Map(modStates.map((s) => [s.folderName, s.isEnabled]))
         setMods((prev) =>
           prev.map((m) => {
-            const cleanFolder = m.folderName.replace(/^\./, "")
+            // Strip '.' from the last segment only for nested paths
+            const cleanFolder = stripDisabledPrefix(m.folderName)
             const wantEnabled = stateMap.get(cleanFolder)
             if (wantEnabled !== undefined && m.isEnabled !== wantEnabled) {
-              const newFolderName = wantEnabled ? cleanFolder : `.${cleanFolder}`
+              const newFolderName = wantEnabled ? cleanFolder : addDisabledPrefix(cleanFolder)
               return { ...m, isEnabled: wantEnabled, folderName: newFolderName, localPath: `Mods/${newFolderName}` }
             }
             return m
@@ -50,7 +73,7 @@ export function useModProfiles({ ensureCanModify, setMods }: UseModProfilesOptio
       const stateMap = new Map(modStates.map((s) => [s.folderName, s.isEnabled]))
       setMods((prev) =>
         prev.map((m) => {
-          const cleanFolder = m.folderName.replace(/^\./, "")
+          const cleanFolder = stripDisabledPrefix(m.folderName)
           const wantEnabled = stateMap.get(cleanFolder)
           if (wantEnabled !== undefined) {
             return { ...m, isEnabled: wantEnabled }

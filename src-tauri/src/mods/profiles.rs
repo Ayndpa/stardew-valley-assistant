@@ -109,29 +109,48 @@ pub fn apply_profile(
     let mut results = Vec::new();
 
     for entry in &mod_states {
-        let clean_name = entry.folder_name.trim_start_matches('.').to_string();
+        let folder_name = &entry.folder_name;
 
-        // Try both enabled and disabled forms
-        let enabled_path = mods_dir.join(&clean_name);
-        let disabled_path = mods_dir.join(format!(".{}", clean_name));
+        // Split into parent path and last segment for nested paths
+        // e.g. "美化类/.xxxMod" -> parent="美化类", last="xxxMod"
+        let path = std::path::Path::new(folder_name.as_str());
+        let last_name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| folder_name.clone());
+        let clean_last = last_name.trim_start_matches('.').to_string();
+        let parent = path.parent().filter(|p| !p.as_os_str().is_empty());
+
+        // Build enabled/disabled folder names (only the last segment gets the '.' prefix)
+        let enabled_folder = match parent {
+            Some(p) => format!("{}/{}", p.to_string_lossy(), clean_last),
+            None => clean_last.clone(),
+        };
+        let disabled_folder = match parent {
+            Some(p) => format!("{}/.{}", p.to_string_lossy(), clean_last),
+            None => format!(".{}", clean_last),
+        };
+
+        let enabled_path = mods_dir.join(&enabled_folder);
+        let disabled_path = mods_dir.join(&disabled_folder);
 
         if entry.is_enabled {
             // Want enabled: if disabled exists, rename to enabled
             if disabled_path.exists() && !enabled_path.exists() {
                 if let Err(e) = fs::rename(&disabled_path, &enabled_path) {
-                    println!("Failed to enable {}: {}", clean_name, e);
+                    println!("Failed to enable {}: {}", enabled_folder, e);
                     continue;
                 }
-                results.push((clean_name, "enabled".to_string()));
+                results.push((enabled_folder, "enabled".to_string()));
             }
         } else {
             // Want disabled: if enabled exists, rename to disabled
             if enabled_path.exists() && !disabled_path.exists() {
                 if let Err(e) = fs::rename(&enabled_path, &disabled_path) {
-                    println!("Failed to disable {}: {}", clean_name, e);
+                    println!("Failed to disable {}: {}", enabled_folder, e);
                     continue;
                 }
-                results.push((clean_name, "disabled".to_string()));
+                results.push((disabled_folder, "disabled".to_string()));
             }
         }
     }

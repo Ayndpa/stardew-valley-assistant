@@ -34,16 +34,21 @@ struct ManifestDependency {
     unique_id: Option<String>,
 }
 
-#[tauri::command]
-pub fn list_installed_mods(game_dir: String) -> Result<Vec<Mod>, String> {
-    let mods_dir = Path::new(&game_dir).join("Mods");
-    if !mods_dir.exists() {
-        return Ok(Vec::new());
-    }
-
-    let mut installed_mods = Vec::new();
+/// Recursively scan a directory for mods (folders containing manifest.json).
+/// `relative_path` is the path relative to the Mods/ root (e.g. "美化类/xxx美化Mod").
+fn scan_mods_recursive(
+    dir: &Path,
+    mods_root: &Path,
+    results: &mut Vec<Mod>,
+) -> Result<(), String> {
     let entries =
-        fs::read_dir(&mods_dir).map_err(|e| format!("Failed to read Mods folder: {}", e))?;
+        fs::read_dir(dir).map_err(|e| format!("Failed to read folder {:?}: {}", dir, e))?;
+
+    let mut has_manifest = false;
+    let manifest_path = dir.join("manifest.json");
+    if manifest_path.exists() {
+        has_manifest = true;
+    }
 
     for entry in entries {
         let entry = match entry {
@@ -56,127 +61,195 @@ pub fn list_installed_mods(game_dir: String) -> Result<Vec<Mod>, String> {
             continue;
         }
 
-        let folder_name = entry.file_name().to_string_lossy().to_string();
-        let is_enabled = !folder_name.starts_with('.');
+        let dir_name = entry.file_name().to_string_lossy().to_string();
 
-        let manifest_path = path.join("manifest.json");
-        if !manifest_path.exists() {
+        // If this directory has a manifest.json, parse it as a mod
+        // and do NOT recurse further (it's a mod folder, not a category folder)
+        if path.join("manifest.json").exists() {
+            has_manifest = true;
+            match parse_mod_folder(&path, mods_root) {
+                Ok(mod_entry) => results.push(mod_entry),
+                Err(e) => println!("Skipping mod folder {:?}: {}", path, e),
+            }
             continue;
         }
 
-        let manifest_file = File::open(&manifest_path)
-            .map_err(|e| format!("Failed to open manifest.json in {}: {}", folder_name, e))?;
-
-        let manifest: Manifest = match serde_json::from_reader(BufReader::new(manifest_file)) {
-            Ok(m) => m,
-            Err(e) => {
-                println!("Error parsing manifest.json in {}: {}", folder_name, e);
-                continue;
-            }
-        };
-
-        let id = manifest
-            .unique_id
-            .clone()
-            .unwrap_or_else(|| folder_name.clone());
-        let name = manifest.name.clone().unwrap_or_else(|| folder_name.clone());
-        let english_name = folder_name.trim_start_matches('.').to_string();
-        let version = manifest
-            .version
-            .clone()
-            .unwrap_or_else(|| "1.0.0".to_string());
-        let author = manifest.author.unwrap_or_else(|| "Unknown".to_string());
-        let description = manifest
-            .description
-            .unwrap_or_else(|| "No description provided.".to_string());
-
-        let mut nexus_id = None;
-        if let Some(keys) = manifest.update_keys {
-            for key in keys {
-                if key.to_lowercase().starts_with("nexus:") {
-                    if let Some(id_str) = key.split(':').nth(1) {
-                        if let Ok(id_num) = id_str.trim().parse::<u64>() {
-                            nexus_id = Some(id_num);
-                        }
-                    }
-                }
-            }
-        }
-
-        let mut dependencies = Vec::new();
-        if let Some(deps) = manifest.dependencies {
-            for dep in deps {
-                if let Some(dep_id) = dep.unique_id {
-                    dependencies.push(dep_id);
-                }
-            }
-        }
-
-        let mut config_fields = Vec::new();
-        let config_path = path.join("config.json");
-        if config_path.exists() {
-            if let Ok(config_file) = File::open(&config_path) {
-                if let Ok(config_val) =
-                    serde_json::from_reader::<_, serde_json::Value>(BufReader::new(config_file))
-                {
-                    if let Some(obj) = config_val.as_object() {
-                        for (k, v) in obj {
-                            let r#type = match v {
-                                serde_json::Value::Bool(_) => "boolean".to_string(),
-                                serde_json::Value::Number(_) => "number".to_string(),
-                                serde_json::Value::String(_) => "string".to_string(),
-                                _ => "string".to_string(),
-                            };
-                            config_fields.push(ModConfigField {
-                                key: k.clone(),
-                                label: k.clone(),
-                                r#type,
-                                value: v.clone(),
-                                description: String::new(),
-                            });
-                        }
-                    }
-                }
-            }
-        }
-
-        let mut category = "utility".to_string();
-        let id_lower = id.to_lowercase();
-        if id_lower == "pathoschild.contentpatcher" {
-            category = "core".to_string();
-        } else if id_lower.contains("contentpatcher")
-            || dependencies
-                .iter()
-                .any(|d| d.to_lowercase().contains("contentpatcher"))
-        {
-            category = "content".to_string();
-        } else if id_lower.contains("expansion")
-            || id_lower.contains("sve")
-            || folder_name.to_lowercase().contains("expansion")
-        {
-            category = "expansion".to_string();
-        }
-
-        let local_path = format!("Mods/{}", folder_name);
-
-        installed_mods.push(Mod {
-            id,
-            name,
-            english_name,
-            version: version.clone(),
-            latest_version: version,
-            author,
-            description,
-            category,
-            is_enabled,
-            nexus_id,
-            local_path,
-            folder_name,
-            dependencies,
-            config: config_fields,
-        });
+        // No manifest.json — treat as a category/group folder, recurse into it
+        scan_mods_recursive(&path, mods_root, results)?;
     }
 
+    // If the directory itself has a manifest.json but we already processed it above
+    // (shouldn't happen since we check before the loop), handle edge case
+    if has_manifest && results.last().map_or(true, |m| {
+        let rel = dir.strip_prefix(mods_root).unwrap_or(dir);
+        let expected = rel.to_string_lossy().replace('\\', "/");
+        m.folder_name != expected
+    }) {
+        // The dir itself is a mod folder but wasn't picked up in the loop
+        // (this handles the case where the dir has manifest.json AND subdirectories)
+        match parse_mod_folder(dir, mods_root) {
+            Ok(mod_entry) => {
+                // Avoid duplicate if already added
+                if !results.iter().any(|m| m.folder_name == mod_entry.folder_name) {
+                    results.push(mod_entry);
+                }
+            }
+            Err(e) => println!("Skipping mod folder {:?}: {}", dir, e),
+        }
+    }
+
+    Ok(())
+}
+
+/// Parse a single mod folder into a Mod struct.
+/// `mod_dir` must contain a manifest.json.
+fn parse_mod_folder(mod_dir: &Path, mods_root: &Path) -> Result<Mod, String> {
+    let relative = mod_dir
+        .strip_prefix(mods_root)
+        .unwrap_or(mod_dir)
+        .to_string_lossy()
+        .replace('\\', "/");
+    let folder_name = relative.clone();
+
+    // is_enabled: check if ANY segment of the path starts with '.'
+    let is_enabled = !folder_name.split('/').any(|seg| seg.starts_with('.'));
+
+    let manifest_path = mod_dir.join("manifest.json");
+    let manifest_file = File::open(&manifest_path)
+        .map_err(|e| format!("Failed to open manifest.json: {}", e))?;
+
+    let manifest: Manifest = serde_json::from_reader(BufReader::new(manifest_file))
+        .map_err(|e| format!("Failed to parse manifest.json: {}", e))?;
+
+    let display_folder_name = mod_dir
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| folder_name.clone());
+
+    let id = manifest
+        .unique_id
+        .clone()
+        .unwrap_or_else(|| display_folder_name.clone());
+    let name = manifest
+        .name
+        .clone()
+        .unwrap_or_else(|| display_folder_name.clone());
+    let english_name = display_folder_name.trim_start_matches('.').to_string();
+    let version = manifest
+        .version
+        .clone()
+        .unwrap_or_else(|| "1.0.0".to_string());
+    let author = manifest.author.unwrap_or_else(|| "Unknown".to_string());
+    let description = manifest
+        .description
+        .unwrap_or_else(|| "No description provided.".to_string());
+
+    let mut nexus_id = None;
+    if let Some(keys) = manifest.update_keys {
+        for key in keys {
+            if key.to_lowercase().starts_with("nexus:") {
+                if let Some(id_str) = key.split(':').nth(1) {
+                    if let Ok(id_num) = id_str.trim().parse::<u64>() {
+                        nexus_id = Some(id_num);
+                    }
+                }
+            }
+        }
+    }
+
+    let mut dependencies = Vec::new();
+    if let Some(deps) = manifest.dependencies {
+        for dep in deps {
+            if let Some(dep_id) = dep.unique_id {
+                dependencies.push(dep_id);
+            }
+        }
+    }
+
+    let mut config_fields = Vec::new();
+    let config_path = mod_dir.join("config.json");
+    if config_path.exists() {
+        if let Ok(config_file) = File::open(&config_path) {
+            if let Ok(config_val) =
+                serde_json::from_reader::<_, serde_json::Value>(BufReader::new(config_file))
+            {
+                if let Some(obj) = config_val.as_object() {
+                    for (k, v) in obj {
+                        let r#type = match v {
+                            serde_json::Value::Bool(_) => "boolean".to_string(),
+                            serde_json::Value::Number(_) => "number".to_string(),
+                            serde_json::Value::String(_) => "string".to_string(),
+                            _ => "string".to_string(),
+                        };
+                        config_fields.push(ModConfigField {
+                            key: k.clone(),
+                            label: k.clone(),
+                            r#type,
+                            value: v.clone(),
+                            description: String::new(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    let mut category = "utility".to_string();
+    let id_lower = id.to_lowercase();
+    if id_lower == "pathoschild.contentpatcher" {
+        category = "core".to_string();
+    } else if id_lower.contains("contentpatcher")
+        || dependencies
+            .iter()
+            .any(|d| d.to_lowercase().contains("contentpatcher"))
+    {
+        category = "content".to_string();
+    } else if id_lower.contains("expansion")
+        || id_lower.contains("sve")
+        || folder_name.to_lowercase().contains("expansion")
+    {
+        category = "expansion".to_string();
+    }
+
+    // parent_path: the directory containing the mod, relative to Mods/
+    // e.g. for "美化类/xxx美化Mod" -> "美化类"
+    // for top-level mods -> ""
+    let parent_path = mod_dir
+        .parent()
+        .and_then(|p| p.strip_prefix(mods_root).ok())
+        .map(|p| p.to_string_lossy().replace('\\', "/"))
+        .unwrap_or_default();
+
+    let local_path = format!("Mods/{}", folder_name);
+
+    Ok(Mod {
+        id,
+        name,
+        english_name,
+        version: version.clone(),
+        latest_version: version,
+        author,
+        description,
+        category,
+        is_enabled,
+        nexus_id,
+        local_path,
+        folder_name,
+        parent_path,
+        dependencies,
+        config: config_fields,
+    })
+}
+
+#[tauri::command]
+pub fn list_installed_mods(game_dir: String) -> Result<Vec<Mod>, String> {
+    let mods_dir = Path::new(&game_dir).join("Mods");
+    if !mods_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut installed_mods = Vec::new();
+    scan_mods_recursive(&mods_dir, &mods_dir, &mut installed_mods)?;
     Ok(installed_mods)
 }
 
@@ -187,27 +260,51 @@ pub fn toggle_mod(game_dir: String, folder_name: String, enable: bool) -> Result
         return Err("Mods folder does not exist".to_string());
     }
 
+    // Reject path traversal
+    if folder_name.contains("..") {
+        return Err("非法的模组文件夹名".to_string());
+    }
+
     let src_path = mods_dir.join(&folder_name);
     if !src_path.exists() {
         return Err(format!("Mod folder {} does not exist", folder_name));
     }
 
-    let new_folder_name = if enable {
-        if folder_name.starts_with('.') {
-            folder_name.trim_start_matches('.').to_string()
+    // Split into parent segments and the last (actual mod) folder name
+    // e.g. "美化类/.xxxMod" -> parent="美化类", last=".xxxMod"
+    let path = Path::new(&folder_name);
+    let last_name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| folder_name.clone());
+    let parent = path.parent().filter(|p| !p.as_os_str().is_empty());
+
+    let new_last_name = if enable {
+        if last_name.starts_with('.') {
+            last_name.trim_start_matches('.').to_string()
         } else {
-            folder_name.clone()
+            last_name.clone()
         }
     } else {
-        if !folder_name.starts_with('.') {
-            format!(".{}", folder_name)
+        if !last_name.starts_with('.') {
+            format!(".{}", last_name)
         } else {
-            folder_name.clone()
+            last_name.clone()
         }
+    };
+
+    let new_folder_name = match parent {
+        Some(p) => format!("{}/{}", p.to_string_lossy(), new_last_name),
+        None => new_last_name.clone(),
     };
 
     if new_folder_name != folder_name {
         let dest_path = mods_dir.join(&new_folder_name);
+        // Ensure parent directories exist (they should, but be safe)
+        if let Some(parent_dir) = dest_path.parent() {
+            fs::create_dir_all(parent_dir)
+                .map_err(|e| format!("Failed to create parent directory: {}", e))?;
+        }
         fs::rename(&src_path, &dest_path).map_err(|e| {
             format!(
                 "Failed to rename folder from {} to {}: {}",
@@ -231,7 +328,16 @@ pub fn delete_mod(game_dir: String, folder_name: String) -> Result<(), String> {
         return Err("Mods 文件夹不存在".to_string());
     }
 
-    if folder_name.contains("..") || folder_name.contains(std::path::MAIN_SEPARATOR) {
+    // Allow nested paths (e.g. "美化类/xxxMod") but reject path traversal
+    if folder_name.contains("..") {
+        return Err("非法的模组文件夹名".to_string());
+    }
+    // Reject absolute paths
+    if folder_name.starts_with('/') || folder_name.starts_with('\\') {
+        return Err("非法的模组文件夹名".to_string());
+    }
+    // On Windows, also reject drive letters like C:\
+    if folder_name.len() >= 2 && folder_name.as_bytes()[1] == b':' {
         return Err("非法的模组文件夹名".to_string());
     }
 

@@ -46,6 +46,8 @@ pub struct Mod {
     pub nexus_id: Option<u64>,
     pub local_path: String,
     pub folder_name: String,
+    /// Relative parent path from Mods/ (e.g. "美化类"), empty for top-level mods
+    pub parent_path: String,
     pub dependencies: Vec<String>,
     pub config: Vec<ModConfigField>,
 }

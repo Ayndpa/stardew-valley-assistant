@@ -280,7 +280,7 @@ export function Mods({ onNavigate, refreshSignal, isGameRunning = false, onQueue
           />
           {/* Mod Profiles Section */}
           <ModProfiles
-            currentMods={mods.map((m) => ({ folderName: m.folderName.replace(/^\./, ""), isEnabled: m.isEnabled, name: m.name }))}
+            currentMods={mods.map((m) => ({ folderName: m.folderName.replace(/(^|\/)\./g, "$1"), isEnabled: m.isEnabled, name: m.name }))}
             onApplyProfile={handleApplyProfile}
             showToast={showToast}
             isGameRunning={isGameRunning}
