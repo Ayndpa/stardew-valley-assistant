@@ -42,6 +42,7 @@ import { AppearanceCard } from "@/components/settings/AppearanceCard"
 import { LanguageCard } from "@/components/settings/LanguageCard"
 import { AboutCard } from "@/components/settings/AboutCard"
 import { FeaturesCard } from "@/components/settings/FeaturesCard"
+import { LogCard } from "@/components/settings/LogCard"
 import type { Page } from "@/App"
 
 const MOCK_SAVE_DETAIL: SaveDetail = {
@@ -298,6 +299,8 @@ export function Settings({
         />
 
         <LanguageCard />
+
+        <LogCard />
 
         <Card>
           <CardHeader>

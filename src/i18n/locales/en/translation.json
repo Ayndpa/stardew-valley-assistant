@@ -211,6 +211,22 @@
         "close": "Close",
         "dismissVersion": "Don't remind me about version {{version}}"
       }
+    },
+    "log": {
+      "title": "Application Logs",
+      "description": "View application logs, keeping the latest 3 log files",
+      "refresh": "Refresh",
+      "openFolder": "Open Folder",
+      "clear": "Clear",
+      "clearConfirmTitle": "Clear Logs",
+      "clearConfirm": "Are you sure you want to clear all log files? This action cannot be undone.",
+      "clearConfirmBtn": "Clear",
+      "export": "Export",
+      "noLogs": "No log entries yet",
+      "webModeNotice": "Log persistence is not available in Web mode",
+      "loading": "Loading logs...",
+      "file": "Log file",
+      "entries": "entries"
     }
   },
   "seasons": {

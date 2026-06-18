@@ -2,6 +2,7 @@ mod download_control;
 mod farmer_avatar;
 mod game;
 mod game_data;
+mod log_persist;
 mod mods;
 mod saves;
 mod smapi;
@@ -39,6 +40,7 @@ use crate::saves::{
     get_save_editor_data, list_save_backups, list_save_files, restore_save_backup,
     update_child, update_save_editor_data,
 };
+use crate::log_persist::{clear_log_files, get_log_dir_path, read_log_files, write_log_entries};
 use crate::smapi::{check_smapi_status, install_smapi, uninstall_smapi};
 use crate::updater::check_for_updates;
 use crate::utils::{open_in_file_manager, path_exists};
@@ -437,7 +439,11 @@ pub fn run() {
             install_bundled_assistant_mod,
             auto_upgrade_bundled_mod,
             get_npc_portraits,
-            check_for_updates
+            check_for_updates,
+            write_log_entries,
+            read_log_files,
+            get_log_dir_path,
+            clear_log_files
         ])
         .setup(|app| {
             let app_handle = app.handle();

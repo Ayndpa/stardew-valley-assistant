@@ -211,6 +211,22 @@
         "close": "关闭",
         "dismissVersion": "不再提醒 {{version}} 版本"
       }
+    },
+    "log": {
+      "title": "应用日志",
+      "description": "查看应用运行日志，保留近期 3 个日志文件",
+      "refresh": "刷新",
+      "openFolder": "打开目录",
+      "clear": "清空",
+      "clearConfirmTitle": "清空日志",
+      "clearConfirm": "确定要清空所有日志文件吗？此操作不可恢复。",
+      "clearConfirmBtn": "清空",
+      "export": "导出",
+      "noLogs": "暂无日志记录",
+      "webModeNotice": "Web 模式下不支持日志持久化",
+      "loading": "加载日志中...",
+      "file": "日志文件",
+      "entries": "条记录"
     }
   },
   "seasons": {
