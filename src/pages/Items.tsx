@@ -4,8 +4,9 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
-import { BookOpen, ChevronLeft, ChevronRight, Clock, Coins, Fish, Gift, MapPin, Package, Search, Soup, Tag, Trash2 } from "lucide-react"
+import { BookOpen, ChevronLeft, ChevronRight, Clock, Coins, Fish, Gift, MapPin, Package, Search, Soup, Tag, Trash2, Zap } from "lucide-react"
 import {
   ItemEntry,
   ItemGameDataOverview,
@@ -14,6 +15,7 @@ import {
   readCache,
   writeCache,
 } from "./items/types"
+import { CodeFlowGenerator } from "./items/CodeFlowGenerator"
 
 interface ItemsProps {
   navigationTarget?: string | null
@@ -34,6 +36,10 @@ export function Items({ navigationTarget, onNavigationHandled }: ItemsProps) {
   const [error, setError] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
+  const [activeTab, setActiveTab] = useState("encyclopedia")
+
+  // Code flow selected item IDs
+  const [codeFlowSelected, setCodeFlowSelected] = useState<string[]>([])
 
   const activeLang = i18n.resolvedLanguage || i18n.language || "zh"
   const allLabel = activeLang.toLowerCase().startsWith("zh") ? "全部" : "All"
@@ -142,6 +148,7 @@ export function Items({ navigationTarget, onNavigationHandled }: ItemsProps) {
     setActiveCategory(allLabel)
     setActiveType(allLabel)
     setPage(1)
+    setActiveTab("encyclopedia")
     onNavigationHandled?.()
   }, [navigationTarget, onNavigationHandled, allLabel])
 
@@ -219,6 +226,83 @@ export function Items({ navigationTarget, onNavigationHandled }: ItemsProps) {
   const pageStart = totalCount === 0 ? 0 : (page - 1) * PAGE_SIZE + 1
   const pageEnd = Math.min(totalCount, page * PAGE_SIZE)
 
+  const handleToggleCodeFlowItem = (id: string) => {
+    setCodeFlowSelected((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    )
+  }
+
+  // Shared search + filters + pagination panel
+  const renderFilters = () => (
+    <div className="space-y-4">
+      <div className="relative max-w-md">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          className="pl-10"
+          placeholder={t("items.searchPlaceholder")}
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.currentTarget.value)}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex flex-wrap gap-2">
+          {itemTypes.map((itemType) => (
+            <Button
+              key={itemType}
+              size="sm"
+              variant={activeType === itemType ? "default" : "outline"}
+              onClick={() => setActiveType(itemType)}
+            >
+              {itemType}
+            </Button>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {categories.map((category) => (
+            <Button
+              key={category}
+              size="sm"
+              variant={activeCategory === category ? "default" : "outline"}
+              onClick={() => setActiveCategory(category)}
+            >
+              {category}
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+        <span>
+          {totalCount === 0 ? t("items.noResults") : t("items.itemsCountLabel", { start: pageStart, end: pageEnd, total: totalCount })}
+        </span>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setPage((current) => Math.max(1, current - 1))}
+            disabled={loading || page <= 1}
+          >
+            <ChevronLeft className="h-4 w-4" />
+            {t("items.prevPage")}
+          </Button>
+          <span className="min-w-20 text-center text-xs">
+            {page} / {totalPages}
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+            disabled={loading || page >= totalPages}
+          >
+            {t("items.nextPage")}
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+
   return (
     <div className="p-8 space-y-6">
       <div>
@@ -228,271 +312,235 @@ export function Items({ navigationTarget, onNavigationHandled }: ItemsProps) {
         </p>
       </div>
 
-      <div className="space-y-4">
-        <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            className="pl-10"
-            placeholder={t("items.searchPlaceholder")}
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.currentTarget.value)}
-          />
-        </div>
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList>
+          <TabsTrigger value="encyclopedia">
+            <Package className="mr-1.5 h-4 w-4" />
+            {t("items.tabEncyclopedia")}
+          </TabsTrigger>
+          <TabsTrigger value="codeFlow">
+            <Zap className="mr-1.5 h-4 w-4" />
+            {t("items.tabCodeFlow")}
+          </TabsTrigger>
+        </TabsList>
 
-        <div className="space-y-2">
-          <div className="flex flex-wrap gap-2">
-            {itemTypes.map((itemType) => (
-              <Button
-                key={itemType}
-                size="sm"
-                variant={activeType === itemType ? "default" : "outline"}
-                onClick={() => setActiveType(itemType)}
-              >
-                {itemType}
-              </Button>
-            ))}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {categories.map((category) => (
-              <Button
-                key={category}
-                size="sm"
-                variant={activeCategory === category ? "default" : "outline"}
-                onClick={() => setActiveCategory(category)}
-              >
-                {category}
-              </Button>
-            ))}
-          </div>
-        </div>
+        {/* Encyclopedia Tab */}
+        <TabsContent value="encyclopedia">
+          {renderFilters()}
 
-        <div className="flex flex-col gap-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-          <span>
-            {totalCount === 0 ? t("items.noResults") : t("items.itemsCountLabel", { start: pageStart, end: pageEnd, total: totalCount })}
-          </span>
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
-              disabled={loading || page <= 1}
-            >
-              <ChevronLeft className="h-4 w-4" />
-              {t("items.prevPage")}
-            </Button>
-            <span className="min-w-20 text-center text-xs">
-              {page} / {totalPages}
-            </span>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
-              disabled={loading || page >= totalPages}
-            >
-              {t("items.nextPage")}
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      </div>
+          {(loading || error) && (
+            <div className="text-xs text-muted-foreground mt-4">
+              {loading
+                ? t("items.loadingOverview")
+                : t("items.loadError", { error })}
+            </div>
+          )}
 
-      {(loading || error) && (
-        <div className="text-xs text-muted-foreground">
-          {loading
-            ? t("items.loadingOverview")
-            : t("items.loadError", { error })}
-        </div>
-      )}
-
-      {items.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-            <Package className="mb-4 h-12 w-12 text-muted-foreground/40" />
-            <p className="text-lg font-semibold">
-              {totalCount === 0 ? t("items.noData") : t("items.noMatches")}
-            </p>
-            <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-              {totalCount === 0
-                ? t("items.noDataDesc")
-                : t("items.noMatchesDesc")}
-            </p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {items.map((item) => (
-            <Card
-              key={item.id}
-              id={`item-card-${item.id}`}
-              className={`transition-all ${
-                highlightedItemId === item.id
-                  ? "ring-2 ring-primary shadow-md"
-                  : "hover:shadow-md"
-              }`}
-            >
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border bg-accent/40">
-                      {item.icon ? (
-                        <img
-                          src={item.icon}
-                          alt=""
-                          className="h-9 w-9 object-contain"
-                          style={{ imageRendering: "pixelated" }}
-                        />
-                      ) : (
-                        <Package className="h-5 w-5 text-muted-foreground" />
-                      )}
-                    </div>
-                    <div className="min-w-0">
-                      <CardTitle className="truncate text-base">{item.name}</CardTitle>
-                      <p className="mt-1 truncate text-xs text-muted-foreground">
-                        #{item.id} · {item.internalName}
-                      </p>
-                    </div>
-                  </div>
-                  <Badge variant="secondary">{item.category}</Badge>
-                </div>
-              </CardHeader>
-
-              <CardContent className="space-y-4">
-                <p className="line-clamp-3 min-h-[3.75rem] text-sm leading-6 text-muted-foreground">
-                  {item.description}
+          {items.length === 0 ? (
+            <Card className="mt-4">
+              <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+                <Package className="mb-4 h-12 w-12 text-muted-foreground/40" />
+                <p className="text-lg font-semibold">
+                  {totalCount === 0 ? t("items.noData") : t("items.noMatches")}
                 </p>
-
-                {item.recipeSources.length > 0 && (
-                  <div className="space-y-2 rounded-md border border-border/70 bg-accent/20 px-3 py-2">
-                    <div className="flex items-center gap-2 text-xs font-medium text-foreground">
-                      <BookOpen className="h-3.5 w-3.5" />
-                      <span>{t("items.recipeSourcesLabel")}</span>
-                    </div>
-                    <div className="space-y-1">
-                      {item.recipeSources.map((source) => (
-                        <p key={source} className="text-xs leading-5 text-muted-foreground">
-                          {source}
-                        </p>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Fish conditions block */}
-                {item.fishConditions && (() => {
-                  const fc = item.fishConditions
-                  const seasonColors: Record<string, string> = {
-                    spring: "bg-green-500/15 text-green-400 border-green-500/30",
-                    summer: "bg-yellow-500/15 text-yellow-400 border-yellow-500/30",
-                    fall: "bg-orange-500/15 text-orange-400 border-orange-500/30",
-                    winter: "bg-blue-400/15 text-blue-400 border-blue-400/30",
-                  }
-                  const formatTime = (n: number) => {
-                    const h = Math.floor(n / 100)
-                    const m = n % 100
-                    const hour = h > 12 ? h - 12 : h === 0 ? 12 : h
-                    const ampm = h >= 12 && h < 24 ? "PM" : "AM"
-                    return `${hour}:${m.toString().padStart(2, "0")} ${ampm}`
-                  }
-                  return (
-                    <div className="rounded-md border border-border/70 bg-accent/20 px-3 py-2 space-y-2">
-                      <div className="flex items-center gap-2 text-xs font-medium text-foreground">
-                        <Fish className="h-3.5 w-3.5 text-primary" />
-                        <span>{t("fishingMap.conditions")}</span>
-                        {fc.isTrap && (
-                          <span className="ml-auto inline-flex items-center rounded-full border border-teal-500/30 bg-teal-500/15 px-2 py-0.5 text-[9px] font-medium text-teal-400">
-                            {t("fishingMap.crabPot")}
-                          </span>
-                        )}
-                        {fc.minLevel > 0 && (
-                          <span className="inline-flex items-center rounded-full border border-purple-500/30 bg-purple-500/15 px-2 py-0.5 text-[9px] font-medium text-purple-400">
-                            {t("fishingMap.minLevel", { level: fc.minLevel })}
-                          </span>
-                        )}
-                      </div>
-                      {!fc.isTrap && (
-                        <div className="flex flex-wrap gap-1">
-                          {fc.seasons.map((season) => (
-                            <span
-                              key={season}
-                              className={cn(
-                                "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium",
-                                seasonColors[season] ?? "bg-muted/30 text-muted-foreground border-border/40"
-                              )}
-                            >
-                              {t(`fishingMap.${season}`, { defaultValue: season })}
-                            </span>
-                          ))}
-                          {fc.weather && fc.weather !== "both" && (
-                            <span
-                              className={cn(
-                                "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium",
-                                fc.weather === "rainy"
-                                  ? "bg-blue-500/15 text-blue-400 border-blue-500/30"
-                                  : "bg-amber-400/15 text-amber-400 border-amber-400/30"
-                              )}
-                            >
-                              {t(`fishingMap.${fc.weather}`, { defaultValue: fc.weather })}
-                            </span>
-                          )}
-                          {fc.timeRanges.map(([start, end], idx) => (
-                            <span
-                              key={idx}
-                              className="inline-flex items-center gap-1 rounded-full border border-border/40 bg-muted/30 px-2 py-0.5 text-[10px] font-medium text-muted-foreground"
-                            >
-                              <Clock className="h-2.5 w-2.5" />
-                              {formatTime(start)}–{formatTime(end)}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                      {fc.locations.length > 0 && (
-                        <div className="flex flex-wrap gap-1">
-                          {fc.locations.map((loc) => (
-                            <span
-                              key={loc}
-                              className="inline-flex items-center gap-1 rounded-full border border-rose-500/30 bg-rose-500/15 px-2 py-0.5 text-[10px] font-medium text-rose-400"
-                            >
-                              <MapPin className="h-2.5 w-2.5" />
-                              {loc}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )
-                })()}
-
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Tag className="h-3.5 w-3.5" />
-                    <span className="truncate">{item.itemType}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Coins className="h-3.5 w-3.5" />
-                    <span>{item.sellPrice}g</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Soup className="h-3.5 w-3.5" />
-                    <span>{item.edibility == null ? t("items.inedible") : t("items.edibleLabel", { energy: item.edibility })}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Gift className="h-3.5 w-3.5" />
-                    <span>{item.canBeGivenAsGift ? t("items.giftable") : t("items.ungiftable")}</span>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  <Badge variant="outline">{item.itemType}</Badge>
-                  <Badge variant="outline">
-                    <Trash2 className="mr-1 h-3 w-3" />
-                    {item.canBeTrashed ? t("items.trashable") : t("items.untrashable")}
-                  </Badge>
-                </div>
+                <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+                  {totalCount === 0
+                    ? t("items.noDataDesc")
+                    : t("items.noMatchesDesc")}
+                </p>
               </CardContent>
             </Card>
-          ))}
-        </div>
-      )}
+          ) : (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 mt-4">
+              {items.map((item) => (
+                <Card
+                  key={item.id}
+                  id={`item-card-${item.id}`}
+                  className={`transition-all ${
+                    highlightedItemId === item.id
+                      ? "ring-2 ring-primary shadow-md"
+                      : "hover:shadow-md"
+                  }`}
+                >
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border bg-accent/40">
+                          {item.icon ? (
+                            <img
+                              src={item.icon}
+                              alt=""
+                              className="h-9 w-9 object-contain"
+                              style={{ imageRendering: "pixelated" }}
+                            />
+                          ) : (
+                            <Package className="h-5 w-5 text-muted-foreground" />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <CardTitle className="truncate text-base">{item.name}</CardTitle>
+                          <p className="mt-1 truncate text-xs text-muted-foreground">
+                            #{item.id} · {item.internalName}
+                          </p>
+                        </div>
+                      </div>
+                      <Badge variant="secondary">{item.category}</Badge>
+                    </div>
+                  </CardHeader>
+
+                  <CardContent className="space-y-4">
+                    <p className="line-clamp-3 min-h-[3.75rem] text-sm leading-6 text-muted-foreground">
+                      {item.description}
+                    </p>
+
+                    {item.recipeSources.length > 0 && (
+                      <div className="space-y-2 rounded-md border border-border/70 bg-accent/20 px-3 py-2">
+                        <div className="flex items-center gap-2 text-xs font-medium text-foreground">
+                          <BookOpen className="h-3.5 w-3.5" />
+                          <span>{t("items.recipeSourcesLabel")}</span>
+                        </div>
+                        <div className="space-y-1">
+                          {item.recipeSources.map((source) => (
+                            <p key={source} className="text-xs leading-5 text-muted-foreground">
+                              {source}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Fish conditions block */}
+                    {item.fishConditions && (() => {
+                      const fc = item.fishConditions
+                      const seasonColors: Record<string, string> = {
+                        spring: "bg-green-500/15 text-green-400 border-green-500/30",
+                        summer: "bg-yellow-500/15 text-yellow-400 border-yellow-500/30",
+                        fall: "bg-orange-500/15 text-orange-400 border-orange-500/30",
+                        winter: "bg-blue-400/15 text-blue-400 border-blue-400/30",
+                      }
+                      const formatTime = (n: number) => {
+                        const h = Math.floor(n / 100)
+                        const m = n % 100
+                        const hour = h > 12 ? h - 12 : h === 0 ? 12 : h
+                        const ampm = h >= 12 && h < 24 ? "PM" : "AM"
+                        return `${hour}:${m.toString().padStart(2, "0")} ${ampm}`
+                      }
+                      return (
+                        <div className="rounded-md border border-border/70 bg-accent/20 px-3 py-2 space-y-2">
+                          <div className="flex items-center gap-2 text-xs font-medium text-foreground">
+                            <Fish className="h-3.5 w-3.5 text-primary" />
+                            <span>{t("fishingMap.conditions")}</span>
+                            {fc.isTrap && (
+                              <span className="ml-auto inline-flex items-center rounded-full border border-teal-500/30 bg-teal-500/15 px-2 py-0.5 text-[9px] font-medium text-teal-400">
+                                {t("fishingMap.crabPot")}
+                              </span>
+                            )}
+                            {fc.minLevel > 0 && (
+                              <span className="inline-flex items-center rounded-full border border-purple-500/30 bg-purple-500/15 px-2 py-0.5 text-[9px] font-medium text-purple-400">
+                                {t("fishingMap.minLevel", { level: fc.minLevel })}
+                              </span>
+                            )}
+                          </div>
+                          {!fc.isTrap && (
+                            <div className="flex flex-wrap gap-1">
+                              {fc.seasons.map((season) => (
+                                <span
+                                  key={season}
+                                  className={cn(
+                                    "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium",
+                                    seasonColors[season] ?? "bg-muted/30 text-muted-foreground border-border/40"
+                                  )}
+                                >
+                                  {t(`fishingMap.${season}`, { defaultValue: season })}
+                                </span>
+                              ))}
+                              {fc.weather && fc.weather !== "both" && (
+                                <span
+                                  className={cn(
+                                    "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium",
+                                    fc.weather === "rainy"
+                                      ? "bg-blue-500/15 text-blue-400 border-blue-500/30"
+                                      : "bg-amber-400/15 text-amber-400 border-amber-400/30"
+                                  )}
+                                >
+                                  {t(`fishingMap.${fc.weather}`, { defaultValue: fc.weather })}
+                                </span>
+                              )}
+                              {fc.timeRanges.map(([start, end], idx) => (
+                                <span
+                                  key={idx}
+                                  className="inline-flex items-center gap-1 rounded-full border border-border/40 bg-muted/30 px-2 py-0.5 text-[10px] font-medium text-muted-foreground"
+                                >
+                                  <Clock className="h-2.5 w-2.5" />
+                                  {formatTime(start)}–{formatTime(end)}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {fc.locations.length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                              {fc.locations.map((loc) => (
+                                <span
+                                  key={loc}
+                                  className="inline-flex items-center gap-1 rounded-full border border-rose-500/30 bg-rose-500/15 px-2 py-0.5 text-[10px] font-medium text-rose-400"
+                                >
+                                  <MapPin className="h-2.5 w-2.5" />
+                                  {loc}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })()}
+
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Tag className="h-3.5 w-3.5" />
+                        <span className="truncate">{item.itemType}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Coins className="h-3.5 w-3.5" />
+                        <span>{item.sellPrice}g</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Soup className="h-3.5 w-3.5" />
+                        <span>{item.edibility == null ? t("items.inedible") : t("items.edibleLabel", { energy: item.edibility })}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Gift className="h-3.5 w-3.5" />
+                        <span>{item.canBeGivenAsGift ? t("items.giftable") : t("items.ungiftable")}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      <Badge variant="outline">{item.itemType}</Badge>
+                      <Badge variant="outline">
+                        <Trash2 className="mr-1 h-3 w-3" />
+                        {item.canBeTrashed ? t("items.trashable") : t("items.untrashable")}
+                      </Badge>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* Code Flow Generator Tab */}
+        <TabsContent value="codeFlow">
+          <div className="mt-4 space-y-4">
+            <CodeFlowGenerator
+              items={items}
+              loading={loading}
+              selectedIds={codeFlowSelected}
+              onToggleItem={handleToggleCodeFlowItem}
+              onClearSelected={() => setCodeFlowSelected([])}
+            />
+            {renderFilters()}
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

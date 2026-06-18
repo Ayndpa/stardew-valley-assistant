@@ -533,7 +533,31 @@
     "giftable": "Giftable",
     "ungiftable": "Not Giftable",
     "trashable": "Trashable",
-    "untrashable": "Not Trashable"
+    "untrashable": "Not Trashable",
+    "tabEncyclopedia": "Encyclopedia",
+    "tabCodeFlow": "Code Flow"
+  },
+  "codeFlow": {
+    "infoTitle": "What is Code Flow?",
+    "infoDesc": "Exploit a text parsing glitch to write item IDs in [ID] format into character/animal names. When an NPC says your name, the corresponding items spawn directly into your inventory.",
+    "platformWarning": "⚠️ This glitch only works on PC (Steam/GOG). Mobile and console versions have been patched.",
+    "clear": "Clear",
+    "selectedItems": "Selected Items",
+    "chars": "chars",
+    "noSelected": "Click items below to add them to the code",
+    "copied": "Copied",
+    "copy": "Copy Code",
+    "overLimit": "Code exceeds 20 character limit! It may not work in-game. Please remove some items.",
+    "usageTitle": "How to Use",
+    "usage1": "When buying an animal at Marnie's Ranch, paste the generated code as the name",
+    "usage2": "Or change your character name at the Shrine of Illusions in the Wizard's basement",
+    "usage3": "Items auto-enter your inventory after purchase/trigger — make sure you have space",
+    "pickItems": "Pick Items",
+    "showPicker": "Show Item List",
+    "hidePicker": "Hide Item List",
+    "searchPlaceholder": "Search by name, ID, or internal name...",
+    "loading": "Loading item data...",
+    "noItems": "No matching items found"
   },
   "npcs": {
     "title": "NPC Relationships",

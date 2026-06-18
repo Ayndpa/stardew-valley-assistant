@@ -533,7 +533,31 @@
     "giftable": "可送礼",
     "ungiftable": "不可送礼",
     "trashable": "可丢弃",
-    "untrashable": "不可丢弃"
+    "untrashable": "不可丢弃",
+    "tabEncyclopedia": "物品百科",
+    "tabCodeFlow": "代码流生成器"
+  },
+  "codeFlow": {
+    "infoTitle": "什么是代码流？",
+    "infoDesc": "利用游戏文本解析漏洞，将物品 ID 以 [ID] 格式写入角色/动物名字中。当 NPC 念出你的名字时，对应物品会凭空生成到背包里。",
+    "platformWarning": "⚠️ 该漏洞仅在 PC（Steam/GOG）端可用。手机端和主机端已修复。",
+    "clear": "清空",
+    "selectedItems": "已选物品",
+    "chars": "字符",
+    "noSelected": "点击下方物品添加到代码中",
+    "copied": "已复制",
+    "copy": "复制代码",
+    "overLimit": "代码超过 20 字符限制！在游戏中可能无法正常输入，请减少物品数量。",
+    "usageTitle": "使用方法",
+    "usage1": "在玛妮牧场购买动物时，将名字粘贴为生成的代码",
+    "usage2": "或在法师地下室的幻觉神龛中更改角色名字",
+    "usage3": "购买/触发后物品会自动进入背包，记得留出空位",
+    "pickItems": "选择物品",
+    "showPicker": "展开物品列表",
+    "hidePicker": "收起物品列表",
+    "searchPlaceholder": "搜索物品名称、ID 或内部名...",
+    "loading": "正在加载物品数据...",
+    "noItems": "未找到匹配的物品"
   },
   "npcs": {
     "title": "村民关系",
