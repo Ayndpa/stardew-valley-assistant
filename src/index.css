@@ -392,3 +392,8 @@
   color: var(--foreground);
   font-weight: 600;
 }
+
+.pixelated {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}

@@ -7,6 +7,7 @@ import type { Page } from "@/App"
 import {
   Sprout,
   Package,
+  PackageOpen,
   Users,
   CalendarDays,
   Fish,
@@ -34,6 +35,7 @@ export function FeaturesCard({
     { id: "collections", icon: Trophy },
     { id: "crops", icon: Sprout },
     { id: "items", icon: Package },
+    { id: "bundles", icon: PackageOpen },
     { id: "npcs", icon: Users },
     { id: "calendar", icon: CalendarDays },
     { id: "fishingMap", icon: Fish },

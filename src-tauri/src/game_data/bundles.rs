@@ -278,7 +278,22 @@ fn load_bundles_sync(
         let mut ingredients = Vec::new();
 
         for (item_id, stack, quality) in raw_ingredients {
-            if item_id.starts_with('-') {
+            if item_id == "-1" {
+                // Gold payment (Vault bundles)
+                let gold_name = if is_zh {
+                    format!("{}金", stack)
+                } else {
+                    format!("{}g", stack)
+                };
+                ingredients.push(BundleIngredient {
+                    item_id: item_id.clone(),
+                    name: gold_name,
+                    icon: None,
+                    stack,
+                    quality: 0,
+                    is_category: false,
+                });
+            } else if item_id.starts_with('-') {
                 // Category-based ingredient
                 let category_id = item_id.parse::<i32>().unwrap_or(0);
                 let cat_name = category_display_name(category_id, is_zh);
