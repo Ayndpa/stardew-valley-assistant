@@ -40,6 +40,7 @@ pub struct ItemEncyclopediaEntry {
     pub category_key: String,
     pub icon: Option<String>,
     pub sell_price: i32,
+    pub price_source: String,
     pub edibility: Option<i32>,
     pub can_be_given_as_gift: bool,
     pub can_be_trashed: bool,
@@ -83,6 +84,7 @@ struct IndexedItemEntry {
     category: String,
     category_key: String,
     sell_price: i32,
+    price_source: String,
     edibility: Option<i32>,
     can_be_given_as_gift: bool,
     can_be_trashed: bool,
@@ -253,6 +255,9 @@ fn build_item_snapshot(content_dir: PathBuf, lang: Option<&str>) -> Result<ItemS
     // Build reverse index: fish_id -> list of location display names
     let fish_locations_map = build_fish_locations_map(&content_dir, is_zh);
 
+    // Try to load mod prices (from SMAPI mod runtime snapshot)
+    let mod_prices = super::item_prices::read_realtime_item_prices();
+
     let mut encyclopedia = Vec::with_capacity(objects.len());
 
     for (id, object) in objects {
@@ -283,6 +288,12 @@ fn build_item_snapshot(content_dir: PathBuf, lang: Option<&str>) -> Result<ItemS
             }
         });
 
+        // Use mod price if available, otherwise fall back to XNB price
+        let (sell_price, price_source) = mod_prices
+            .as_ref()
+            .and_then(|mp| mp.get(&id).map(|&p| (p, "mod")))
+            .unwrap_or((object.price, "xnb"));
+
         encyclopedia.push(IndexedItemEntry {
             id,
             name: if name.trim().is_empty() {
@@ -304,7 +315,8 @@ fn build_item_snapshot(content_dir: PathBuf, lang: Option<&str>) -> Result<ItemS
             item_type_key,
             category,
             category_key,
-            sell_price: object.price,
+            sell_price,
+            price_source: price_source.to_string(),
             edibility,
             can_be_given_as_gift: object.can_be_given_as_gift,
             can_be_trashed: object.can_be_trashed,
@@ -363,6 +375,7 @@ fn build_item_snapshot(content_dir: PathBuf, lang: Option<&str>) -> Result<ItemS
             category,
             category_key,
             sell_price: 0,
+            price_source: "xnb".to_string(),
             edibility: None,
             can_be_given_as_gift: false,
             can_be_trashed: false,
@@ -425,6 +438,7 @@ fn build_item_snapshot(content_dir: PathBuf, lang: Option<&str>) -> Result<ItemS
             category,
             category_key,
             sell_price: tool.sale_price.max(0),
+            price_source: "xnb".to_string(),
             edibility: None,
             can_be_given_as_gift: false,
             can_be_trashed: false,
@@ -549,6 +563,7 @@ fn build_item_entry(
         category_key: item.category_key.clone(),
         icon: render_object_icon(content_dir, &item.raw_object, texture_cache).ok(),
         sell_price: item.sell_price,
+        price_source: item.price_source.clone(),
         edibility: item.edibility,
         can_be_given_as_gift: item.can_be_given_as_gift,
         can_be_trashed: item.can_be_trashed,

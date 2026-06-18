@@ -19,15 +19,16 @@ use crate::download_control::{pause_download_task, resume_download_task, Downloa
 use crate::farmer_avatar::get_npc_portraits;
 use crate::game::{auto_detect_game_dir, get_game_version, launch_game};
 use crate::game_data::{
-    get_animal_game_data, get_bundle_game_data, get_calendar_game_data, get_crop_game_data,
-    get_fishing_map_data, get_fishing_map_detail, get_item_game_data, get_item_game_data_overview,
-    get_npc_game_data, get_secret_notes_game_data, query_item_game_data,
+    check_item_prices_mod_running, get_animal_game_data, get_bundle_game_data,
+    get_calendar_game_data, get_crop_game_data, get_fishing_map_data, get_fishing_map_detail,
+    get_item_game_data, get_item_game_data_overview, get_item_prices_from_mod, get_npc_game_data,
+    get_secret_notes_game_data, query_item_game_data,
 };
 use crate::mods::{
     apply_profile, check_mod_updates, check_nexus_login_status, close_scraper_window, delete_mod,
     delete_profile, export_profile, export_profile_to_file, fetch_nexus_api_key,
     fetch_nexus_download_metadata, fetch_smapi_compatibility_mods, import_profile,
-    import_profile_from_file, install_bundled_npc_locations_mod, install_mod_from_zip,
+    import_profile_from_file, install_bundled_assistant_mod, install_mod_from_zip,
     install_nexus_mod, list_installed_mods, list_profiles, load_cached_mod_updates, logout_nexus,
     open_nexus_login_window, open_nexus_ranking_scraper, open_scraper_window, save_mod_config,
     save_profile, toggle_mod,
@@ -58,6 +59,8 @@ struct MainWindowState {
     y: i32,
     width: u32,
     height: u32,
+    #[serde(default)]
+    maximized: bool,
 }
 
 #[derive(Default)]
@@ -200,6 +203,26 @@ fn save_main_window_state(app: &AppHandle, window: &tauri::WebviewWindow) {
         None => return,
     };
 
+    let is_maximized = window.is_maximized().unwrap_or(false);
+
+    // When maximized, try to keep the previously saved non-maximized bounds
+    // so that unmaximizing restores to the correct size/position.
+    if is_maximized {
+        if let Some(prev) = load_main_window_state(app) {
+            let state = MainWindowState {
+                x: prev.x,
+                y: prev.y,
+                width: prev.width,
+                height: prev.height,
+                maximized: true,
+            };
+            if let Ok(serialized) = serde_json::to_vec_pretty(&state) {
+                let _ = fs::write(path, serialized);
+            }
+            return;
+        }
+    }
+
     let pos = match window.outer_position() {
         Ok(pos) => pos,
         Err(_) => return,
@@ -218,6 +241,7 @@ fn save_main_window_state(app: &AppHandle, window: &tauri::WebviewWindow) {
         y: pos.y,
         width: size.width,
         height: size.height,
+        maximized: false,
     };
 
     if let Ok(serialized) = serde_json::to_vec_pretty(&state) {
@@ -229,14 +253,28 @@ fn restore_main_window_state(app: &AppHandle, window: &tauri::WebviewWindow) {
     let Some(state) = load_main_window_state(app) else {
         return;
     };
-    let min_size = main_window_min_physical(window);
-    let width = state.width.max(min_size.width);
-    let height = state.height.max(min_size.height);
-    let (pos, size) = visible_window_bounds(window, state.x, state.y, width, height);
 
     RESTORING_WINDOW_STATE.store(true, Ordering::Release);
-    let _ = window.set_size(Size::Physical(size));
-    let _ = window.set_position(pos);
+
+    if state.maximized {
+        // Set a reasonable size first so unmaximize has sensible bounds,
+        // then maximize to fill the screen.
+        let min_size = main_window_min_physical(window);
+        let width = state.width.max(min_size.width);
+        let height = state.height.max(min_size.height);
+        let (pos, size) = visible_window_bounds(window, state.x, state.y, width, height);
+        let _ = window.set_size(Size::Physical(size));
+        let _ = window.set_position(pos);
+        let _ = window.maximize();
+    } else {
+        let min_size = main_window_min_physical(window);
+        let width = state.width.max(min_size.width);
+        let height = state.height.max(min_size.height);
+        let (pos, size) = visible_window_bounds(window, state.x, state.y, width, height);
+        let _ = window.set_size(Size::Physical(size));
+        let _ = window.set_position(pos);
+    }
+
     RESTORING_WINDOW_STATE.store(false, Ordering::Release);
 }
 
@@ -322,6 +360,8 @@ pub fn run() {
             get_npc_locations,
             get_npc_schedule,
             check_game_running,
+            get_item_prices_from_mod,
+            check_item_prices_mod_running,
             get_save_editor_data,
             update_save_editor_data,
             get_children_data,
@@ -348,7 +388,7 @@ pub fn run() {
             pause_download_task,
             resume_download_task,
             install_mod_from_zip,
-            install_bundled_npc_locations_mod,
+            install_bundled_assistant_mod,
             get_npc_portraits,
             check_for_updates
         ])

@@ -18,6 +18,7 @@ export interface ItemEntry {
   categoryKey: string
   icon?: string | null
   sellPrice: number
+  priceSource: string
   edibility?: number | null
   canBeGivenAsGift: boolean
   canBeTrashed: boolean

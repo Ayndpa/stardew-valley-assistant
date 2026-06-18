@@ -54,7 +54,7 @@ pub struct Mod {
 
 // Re-export commands for lib.rs
 pub use local::{
-    delete_mod, install_bundled_npc_locations_mod, install_mod_from_zip, list_installed_mods,
+    delete_mod, install_bundled_assistant_mod, install_mod_from_zip, list_installed_mods,
     save_mod_config, toggle_mod,
 };
 pub use nexus::{

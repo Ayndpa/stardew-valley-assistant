@@ -1,6 +1,7 @@
 export interface CropLookup {
   name: string
   sellPrice: number
+  priceSource: string
   regrows: boolean
   regrowDays?: number
   icon?: string | null
@@ -30,6 +31,7 @@ export interface Crop {
   seasons?: string[]
   growDays: number
   sellPrice: number
+  priceSource: string
   categoryKey?: string
   regrows: boolean
   regrowDays?: number

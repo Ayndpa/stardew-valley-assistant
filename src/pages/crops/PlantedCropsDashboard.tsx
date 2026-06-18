@@ -25,6 +25,7 @@ interface CropStatusInfo {
   shortStatusText: string
   statusType: "dead" | "ready" | "growing"
   sellPrice: number
+  priceSource: string
   regrows: boolean
 }
 
@@ -34,6 +35,7 @@ interface CropSummary {
   icon: string | null
   count: number
   sellPrice: number
+  priceSource: string
 }
 
 interface StatusGroup {
@@ -57,6 +59,7 @@ function getCropStatus(
   const key = crop.seedId || crop.harvestId || `${crop.location}-${crop.x}-${crop.y}`
   const name = lookup?.name || t("crops.unknownCrop", { id: crop.seedId || crop.harvestId || "" })
   const sellPrice = lookup?.sellPrice || 0
+  const priceSource = lookup?.priceSource || "xnb"
   const regrows = lookup?.regrows || false
   const icon = lookup?.icon || null
 
@@ -72,6 +75,7 @@ function getCropStatus(
       shortStatusText: t("crops.status.deadShort"),
       statusType: "dead",
       sellPrice,
+      priceSource,
       regrows,
     }
   }
@@ -88,6 +92,7 @@ function getCropStatus(
       shortStatusText: t("crops.status.readyShort"),
       statusType: "ready",
       sellPrice,
+      priceSource,
       regrows,
     }
   }
@@ -121,6 +126,7 @@ function getCropStatus(
       shortStatusText: t("crops.status.growingShort", { remaining: daysRemaining }),
       statusType: "growing",
       sellPrice,
+      priceSource,
       regrows,
     }
   }
@@ -136,6 +142,7 @@ function getCropStatus(
     shortStatusText: t("crops.status.growing"),
     statusType: "growing",
     sellPrice,
+    priceSource,
     regrows,
   }
 }
@@ -206,6 +213,7 @@ export function PlantedCropsDashboard({
             icon: info.icon,
             count: 1,
             sellPrice: info.sellPrice,
+            priceSource: info.priceSource,
           })
         }
 
@@ -231,6 +239,7 @@ export function PlantedCropsDashboard({
               icon: info.icon,
               count: 1,
               sellPrice: info.sellPrice,
+              priceSource: info.priceSource,
             })
           }
         } else {
@@ -250,6 +259,7 @@ export function PlantedCropsDashboard({
                 icon: info.icon,
                 count: 1,
                 sellPrice: info.sellPrice,
+                priceSource: info.priceSource,
               },
             ],
           })
@@ -478,6 +488,9 @@ export function PlantedCropsDashboard({
                         <span className="flex items-center gap-1">
                           <Coins className="h-3.5 w-3.5" />
                           {crop.sellPrice}g
+                          {crop.priceSource === "mod" && (
+                            <span className="text-xs px-1 py-0.5 rounded bg-orange-500/10 text-orange-500">Mod</span>
+                          )}
                         </span>
                       )}
                     </div>

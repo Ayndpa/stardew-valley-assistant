@@ -256,6 +256,7 @@ export function Collections({ selectedSaveId, onNavigateToItem }: CollectionsPro
       categoryKey: "note",
       icon: null,
       sellPrice: 0,
+      priceSource: "xnb",
       canBeGivenAsGift: false,
       canBeTrashed: false,
       recipeSources: n.discoveryHints,

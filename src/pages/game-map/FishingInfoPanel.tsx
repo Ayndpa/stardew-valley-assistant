@@ -277,6 +277,9 @@ export function FishingInfoPanel({
                       {fish.price > 0 && (
                         <span className="shrink-0 inline-flex items-center gap-0.5 rounded-full border border-yellow-500/30 bg-yellow-500/10 px-1.5 py-0.5 text-[9px] font-bold text-yellow-500">
                           🪙 {fish.price}{t("fishingMap.priceLabel")}
+                          {fish.priceSource === "mod" && (
+                            <span className="ml-0.5 text-orange-500">Mod</span>
+                          )}
                         </span>
                       )}
                     </div>

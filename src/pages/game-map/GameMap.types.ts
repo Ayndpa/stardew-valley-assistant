@@ -40,6 +40,7 @@ export interface FishingAreaFish {
   minLevel: number
   isTrap: boolean
   price: number
+  priceSource: string
   minDistanceFromShore: number
   maxDistanceFromShore: number
 }

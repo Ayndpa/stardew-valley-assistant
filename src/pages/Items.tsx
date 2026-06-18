@@ -502,6 +502,9 @@ export function Items({ navigationTarget, onNavigationHandled }: ItemsProps) {
                       <div className="flex items-center gap-2 text-muted-foreground">
                         <Coins className="h-3.5 w-3.5" />
                         <span>{item.sellPrice}g</span>
+                        {item.priceSource === "mod" && (
+                          <span className="text-xs px-1 py-0.5 rounded bg-orange-500/10 text-orange-500">Mod</span>
+                        )}
                       </div>
                       <div className="flex items-center gap-2 text-muted-foreground">
                         <Soup className="h-3.5 w-3.5" />

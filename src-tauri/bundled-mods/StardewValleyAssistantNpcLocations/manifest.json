@@ -1,9 +1,0 @@
-{
-  "Name": "Stardew Valley Assistant NPC Locations",
-  "Author": "Stardew Valley Assistant",
-  "Version": "1.0.0",
-  "Description": "Writes live villager locations for Stardew Valley Assistant.",
-  "UniqueID": "StardewValleyAssistant.NpcLocations",
-  "EntryDll": "StardewValleyAssistantNpcLocations.dll",
-  "MinimumApiVersion": "4.0.0"
-}

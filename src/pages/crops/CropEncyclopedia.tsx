@@ -139,6 +139,9 @@ export function CropEncyclopedia({
                   <div className="flex items-center gap-2 text-muted-foreground">
                     <Coins className="h-3.5 w-3.5" />
                     <span>{t("crops.encyclopedia.metrics.sellPrice", { price: crop.sellPrice })}</span>
+                    {crop.priceSource === "mod" && (
+                      <span className="text-xs px-1 py-0.5 rounded bg-orange-500/10 text-orange-500">Mod</span>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 text-muted-foreground">
                     <Droplets className="h-3.5 w-3.5" />

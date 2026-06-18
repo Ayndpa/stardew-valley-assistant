@@ -57,6 +57,7 @@ pub struct FishingAreaFish {
     pub min_level: i32,
     pub is_trap: bool,
     pub price: i32,
+    pub price_source: String,
     pub min_distance_from_shore: i32,
     pub max_distance_from_shore: i32,
 }
@@ -519,6 +520,9 @@ fn load_fishing_areas_for_map(
     );
     let mut texture_cache = HashMap::new();
 
+    // Try to load mod prices (from SMAPI mod runtime snapshot)
+    let mod_prices = super::item_prices::read_realtime_item_prices();
+
     let Some(location_key) = resolve_location_key(map_id, &location_data) else {
         return Ok(Vec::new());
     };
@@ -616,6 +620,12 @@ fn load_fishing_areas_for_map(
                         )
                     });
 
+                // Use mod price if available, otherwise fall back to XNB price
+                let (price, price_source) = mod_prices
+                    .as_ref()
+                    .and_then(|mp| mp.get(&object_id).map(|&p| (p, "mod")))
+                    .unwrap_or((object.price, "xnb"));
+
                 area.fish.push(FishingAreaFish {
                     id: object_id.clone(),
                     name: if name.trim().is_empty() {
@@ -634,7 +644,8 @@ fn load_fishing_areas_for_map(
                     weather,
                     min_level,
                     is_trap,
-                    price: object.price,
+                    price,
+                    price_source: price_source.to_string(),
                     min_distance_from_shore: fish_entry.min_distance_from_shore,
                     max_distance_from_shore: fish_entry.max_distance_from_shore,
                 });

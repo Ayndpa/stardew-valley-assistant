@@ -10,6 +10,7 @@ use super::xnb::{load_crops_xnb, load_objects_xnb, load_string_dictionary_best_e
 pub struct CropLookup {
     pub name: String,
     pub sell_price: i32,
+    pub price_source: String,
     pub regrows: bool,
     pub regrow_days: Option<i32>,
     pub icon: Option<String>,
@@ -27,6 +28,7 @@ pub struct CropEncyclopediaEntry {
     pub seasons: Vec<String>,
     pub grow_days: i32,
     pub sell_price: i32,
+    pub price_source: String,
     pub category_key: String,
     pub regrows: bool,
     pub regrow_days: Option<i32>,
@@ -85,6 +87,9 @@ pub fn get_crop_game_data(
     let mut lookup = HashMap::new();
     let mut texture_cache = HashMap::new();
 
+    // Try to load mod prices (from SMAPI mod runtime snapshot)
+    let mod_prices = super::item_prices::read_realtime_item_prices();
+
     for (seed_id, crop) in crops {
         let Some(obj) = objects.get(&crop.harvest_item_id) else {
             continue;
@@ -116,6 +121,13 @@ pub fn get_crop_game_data(
         };
         let icon = render_object_icon(&content_dir, obj, &mut texture_cache).ok();
 
+        // Use mod price if available, otherwise fall back to XNB price
+        let harvest_id = &crop.harvest_item_id;
+        let (sell_price, price_source) = mod_prices
+            .as_ref()
+            .and_then(|mp| mp.get(harvest_id).map(|&p| (p, "mod")))
+            .unwrap_or((obj.price, "xnb"));
+
         let entry = CropEncyclopediaEntry {
             seed_id: seed_id.clone(),
             harvest_id: crop.harvest_item_id.clone(),
@@ -125,7 +137,8 @@ pub fn get_crop_game_data(
             season,
             seasons,
             grow_days,
-            sell_price: obj.price,
+            sell_price,
+            price_source: price_source.to_string(),
             category_key: classify_crop_category_key(obj.category),
             regrows,
             regrow_days,
@@ -135,7 +148,8 @@ pub fn get_crop_game_data(
 
         let lookup_entry = CropLookup {
             name,
-            sell_price: obj.price,
+            sell_price,
+            price_source: price_source.to_string(),
             regrows,
             regrow_days,
             icon,
