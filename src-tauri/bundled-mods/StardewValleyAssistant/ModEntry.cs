@@ -1,8 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Pipes;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Threading;
+using System.Threading.Tasks;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
@@ -15,23 +20,18 @@ public sealed class ModEntry : Mod
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = true,
+        WriteIndented = false,
     };
 
-    private string? SnapshotDirectory;
-    private string? NpcLocationsPath;
-    private string? ItemPricesPath;
+    private const string PipeName = "stardew-valley-assistant";
+
+    private NamedPipeClientStream? PipeStream;
+    private StreamWriter? PipeWriter;
+    private CancellationTokenSource? CancellationToken;
+    private bool IsConnected;
 
     public override void Entry(IModHelper helper)
     {
-        this.SnapshotDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "StardewValley",
-            "StardewValleyAssistant"
-        );
-        this.NpcLocationsPath = Path.Combine(this.SnapshotDirectory, "npc-locations.json");
-        this.ItemPricesPath = Path.Combine(this.SnapshotDirectory, "item-prices.json");
-
         helper.Events.GameLoop.SaveLoaded += this.OnSaveLoaded;
         helper.Events.GameLoop.DayStarted += this.OnDayStarted;
         helper.Events.GameLoop.OneSecondUpdateTicked += this.OnOneSecondUpdateTicked;
@@ -40,40 +40,113 @@ public sealed class ModEntry : Mod
 
     private void OnSaveLoaded(object? sender, SaveLoadedEventArgs e)
     {
-        this.WriteAllSnapshots();
+        this.EnsureConnected();
+        this.SendAllData();
     }
 
     private void OnDayStarted(object? sender, DayStartedEventArgs e)
     {
-        this.WriteAllSnapshots();
+        this.SendItemPrices();
     }
 
     private void OnOneSecondUpdateTicked(object? sender, OneSecondUpdateTickedEventArgs e)
     {
-        this.WriteNpcLocationsSnapshot();
+        if (this.IsConnected)
+        {
+            this.SendNpcLocations();
+        }
     }
 
     private void OnReturnedToTitle(object? sender, ReturnedToTitleEventArgs e)
     {
-        this.DeleteSnapshot(this.NpcLocationsPath);
-        this.DeleteSnapshot(this.ItemPricesPath);
+        this.SendClear();
+        this.Disconnect();
     }
 
-    private void WriteAllSnapshots()
+    private void EnsureConnected()
     {
-        this.WriteNpcLocationsSnapshot();
-        this.WriteItemPricesSnapshot();
-    }
-
-    private void WriteNpcLocationsSnapshot()
-    {
-        if (!Context.IsWorldReady || this.NpcLocationsPath is null)
+        if (this.IsConnected && this.PipeStream?.IsConnected == true)
             return;
 
         try
         {
-            this.EnsureDirectoryExists();
+            this.Disconnect();
 
+            this.CancellationToken = new CancellationTokenSource();
+            this.PipeStream = new NamedPipeClientStream(".", PipeName, PipeDirection.InOut);
+            this.PipeStream.Connect(5000); // 5 second timeout
+
+            this.PipeWriter = new StreamWriter(this.PipeStream, Encoding.UTF8)
+            {
+                AutoFlush = true,
+            };
+
+            this.IsConnected = true;
+            this.Monitor.Log("已连接到助手管道", LogLevel.Debug);
+
+            // Start reading responses in background
+            _ = Task.Run(() => this.ReadResponsesAsync());
+        }
+        catch (Exception ex)
+        {
+            this.Monitor.Log($"连接管道失败: {ex.Message}", LogLevel.Debug);
+            this.IsConnected = false;
+        }
+    }
+
+    private void Disconnect()
+    {
+        this.IsConnected = false;
+        this.CancellationToken?.Cancel();
+        this.PipeWriter?.Dispose();
+        this.PipeStream?.Dispose();
+        this.PipeWriter = null;
+        this.PipeStream = null;
+        this.CancellationToken = null;
+    }
+
+    private async Task ReadResponsesAsync()
+    {
+        if (this.PipeStream == null)
+            return;
+
+        try
+        {
+            using var reader = new StreamReader(this.PipeStream, Encoding.UTF8, leaveOpen: true);
+            while (!this.CancellationToken?.IsCancellationRequested ?? true)
+            {
+                var line = await reader.ReadLineAsync();
+                if (line == null)
+                {
+                    // Connection closed
+                    this.IsConnected = false;
+                    break;
+                }
+
+                // Handle responses from Tauri if needed
+                this.Monitor.Log($"收到响应: {line}", LogLevel.Trace);
+            }
+        }
+        catch (Exception ex)
+        {
+            this.Monitor.Log($"读取响应失败: {ex.Message}", LogLevel.Debug);
+            this.IsConnected = false;
+        }
+    }
+
+    private void SendAllData()
+    {
+        this.SendNpcLocations();
+        this.SendItemPrices();
+    }
+
+    private void SendNpcLocations()
+    {
+        if (!Context.IsWorldReady || !this.IsConnected)
+            return;
+
+        try
+        {
             var snapshot = new NpcLocationsSnapshot(
                 SaveId: this.GetSaveId(),
                 GameTime: Game1.timeOfDay,
@@ -81,23 +154,27 @@ public sealed class ModEntry : Mod
                 Npcs: this.GetNpcLocations().ToList()
             );
 
-            File.WriteAllText(this.NpcLocationsPath, JsonSerializer.Serialize(snapshot, JsonOptions));
+            var message = new ModMessageWrapper
+            {
+                Type = "npcLocations",
+                Data = snapshot,
+            };
+
+            this.SendMessage(message);
         }
         catch (Exception ex)
         {
-            this.Monitor.Log($"Failed to write NPC location snapshot: {ex.Message}", LogLevel.Warn);
+            this.Monitor.Log($"发送 NPC 位置失败: {ex.Message}", LogLevel.Debug);
         }
     }
 
-    private void WriteItemPricesSnapshot()
+    private void SendItemPrices()
     {
-        if (!Context.IsWorldReady || this.ItemPricesPath is null)
+        if (!Context.IsWorldReady || !this.IsConnected)
             return;
 
         try
         {
-            this.EnsureDirectoryExists();
-
             var prices = this.CollectItemPrices();
 
             var snapshot = new ItemPricesSnapshot(
@@ -106,32 +183,55 @@ public sealed class ModEntry : Mod
                 Prices: prices
             );
 
-            File.WriteAllText(this.ItemPricesPath, JsonSerializer.Serialize(snapshot, JsonOptions));
+            var message = new ModMessageWrapper
+            {
+                Type = "itemPrices",
+                Data = snapshot,
+            };
+
+            this.SendMessage(message);
         }
         catch (Exception ex)
         {
-            this.Monitor.Log($"Failed to write item price snapshot: {ex.Message}", LogLevel.Warn);
+            this.Monitor.Log($"发送物品价格失败: {ex.Message}", LogLevel.Debug);
         }
     }
 
-    private void EnsureDirectoryExists()
+    private void SendClear()
     {
-        if (!string.IsNullOrWhiteSpace(this.SnapshotDirectory))
-            Directory.CreateDirectory(this.SnapshotDirectory);
-    }
-
-    private void DeleteSnapshot(string? path)
-    {
-        if (path is null)
+        if (!this.IsConnected)
             return;
 
         try
         {
-            File.Delete(path);
+            var message = new ModMessageWrapper
+            {
+                Type = "clear",
+                Data = null,
+            };
+
+            this.SendMessage(message);
         }
         catch (Exception ex)
         {
-            this.Monitor.Log($"Failed to remove snapshot {Path.GetFileName(path)}: {ex.Message}", LogLevel.Trace);
+            this.Monitor.Log($"发送清除消息失败: {ex.Message}", LogLevel.Debug);
+        }
+    }
+
+    private void SendMessage(ModMessageWrapper message)
+    {
+        if (this.PipeWriter == null || !this.IsConnected)
+            return;
+
+        try
+        {
+            var json = JsonSerializer.Serialize(message, JsonOptions);
+            this.PipeWriter.WriteLine(json);
+        }
+        catch (Exception ex)
+        {
+            this.Monitor.Log($"发送消息失败: {ex.Message}", LogLevel.Debug);
+            this.IsConnected = false;
         }
     }
 
@@ -184,11 +284,21 @@ public sealed class ModEntry : Mod
         }
         catch (Exception ex)
         {
-            this.Monitor.Log($"Failed to read object data: {ex.Message}", LogLevel.Warn);
+            this.Monitor.Log($"读取物品数据失败: {ex.Message}", LogLevel.Warn);
         }
 
         return prices;
     }
+}
+
+// Message wrapper for JSON serialization
+internal sealed class ModMessageWrapper
+{
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = "";
+
+    [JsonPropertyName("data")]
+    public object? Data { get; set; }
 }
 
 // NPC Locations data structures

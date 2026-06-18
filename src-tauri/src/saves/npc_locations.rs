@@ -6,6 +6,7 @@ use tokio::task;
 
 use super::parser::{parse_weather, SaveSummary};
 use super::xml_utils::extract_tag_i32;
+use crate::game_data::live_state::LiveGameState;
 use crate::game_data::map_names::map_display_name;
 use crate::game_data::xnb::load_string_dictionary_xnb;
 
@@ -67,6 +68,7 @@ struct RealtimeNpcLocation {
 
 #[tauri::command]
 pub async fn get_npc_locations(
+    live_state: tauri::State<'_, LiveGameState>,
     save_id: Option<String>,
     game_dir: Option<String>,
     source: Option<String>,
@@ -74,6 +76,38 @@ pub async fn get_npc_locations(
     day: Option<i32>,
     time: Option<i32>,
 ) -> Result<NpcLocationsResult, String> {
+    // Try live state first (from HTTP server)
+    if let Some(payload) = live_state.get_npc_locations().await {
+        let locations = payload
+            .npcs
+            .into_iter()
+            .map(|npc| NpcLocationInfo {
+                npc_name: npc.npc_name,
+                location_display_name: map_display_name(&npc.location)
+                    .map(str::to_string)
+                    .unwrap_or_else(|| npc.location.clone()),
+                location: npc.location,
+                tile_x: Some(npc.tile_x),
+                tile_y: Some(npc.tile_y),
+                direction: Some(npc.direction),
+                schedule_key: None,
+                schedule_time: payload.game_time,
+                source: "mod".to_string(),
+                confidence: "realtime".to_string(),
+                updated_at: payload.generated_at.clone(),
+            })
+            .collect();
+
+        return Ok(NpcLocationsResult {
+            source: "mod".to_string(),
+            save_id: payload.save_id.or(save_id),
+            game_time: payload.game_time,
+            locations,
+            error: None,
+        });
+    }
+
+    // Fall back to file-based or estimate
     task::spawn_blocking(move || {
         get_npc_locations_sync(save_id, game_dir, source, season, day, time)
     })
@@ -97,17 +131,23 @@ pub async fn get_npc_schedule(
 }
 
 #[tauri::command]
-pub fn check_game_running() -> bool {
+pub async fn check_game_running(live_state: tauri::State<'_, LiveGameState>) -> Result<bool, String> {
+    // Check live state first
+    if live_state.is_game_running().await {
+        return Ok(true);
+    }
+
+    // Fall back to file check
     if let Some(path) = realtime_snapshot_path() {
         if let Ok(metadata) = fs::metadata(&path) {
             if let Ok(modified) = metadata.modified() {
                 if let Ok(elapsed) = std::time::SystemTime::now().duration_since(modified) {
-                    return elapsed.as_secs() < 30;
+                    return Ok(elapsed.as_secs() < 30);
                 }
             }
         }
     }
-    false
+    Ok(false)
 }
 
 fn get_npc_schedule_sync(

@@ -22,7 +22,7 @@ use crate::game_data::{
     check_item_prices_mod_running, get_animal_game_data, get_bundle_game_data,
     get_calendar_game_data, get_crop_game_data, get_fishing_map_data, get_fishing_map_detail,
     get_item_game_data, get_item_game_data_overview, get_item_prices_from_mod, get_npc_game_data,
-    get_secret_notes_game_data, query_item_game_data,
+    get_secret_notes_game_data, live_state::LiveGameState, pipe_server, query_item_game_data,
 };
 use crate::mods::{
     apply_profile, check_mod_updates, check_nexus_login_status, close_scraper_window, delete_mod,
@@ -313,6 +313,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(DownloadControlState::default())
         .manage(PendingNxmUrls::default())
+        .manage(LiveGameState::new())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             let _ = app.get_webview_window("main").map(|window| {
                 show_main_window_in_front(&window);
@@ -394,6 +395,21 @@ pub fn run() {
         ])
         .setup(|app| {
             let app_handle = app.handle();
+
+            // Start the named pipe server for bidirectional communication with the mod
+            let live_state = app.state::<LiveGameState>().inner().clone();
+            let rt = tokio::runtime::Handle::current();
+            rt.spawn(async move {
+                match pipe_server::start_pipe_server(live_state).await {
+                    Ok(_) => {
+                        println!("命名管道服务器已启动");
+                    }
+                    Err(e) => {
+                        eprintln!("启动命名管道服务器失败: {}", e);
+                    }
+                }
+            });
+
             #[cfg(any(target_os = "macos", windows, target_os = "linux"))]
             {
                 let _ = app.deep_link().register_all();

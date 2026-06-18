@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
+use super::live_state::LiveGameState;
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ItemPricesResult {
@@ -53,9 +55,38 @@ pub fn merge_mod_prices(base_prices: &mut HashMap<String, i32>, mod_prices: &Has
     }
 }
 
-/// Get item prices from the mod snapshot, with fallback info.
+/// Get item prices from the mod, with fallback to file.
 #[tauri::command]
-pub fn get_item_prices_from_mod() -> ItemPricesResult {
+pub async fn get_item_prices_from_mod(
+    live_state: tauri::State<'_, LiveGameState>,
+) -> Result<ItemPricesResult, String> {
+    // Try live state first (from HTTP server)
+    if let Some(payload) = live_state.get_item_prices().await {
+        return Ok(ItemPricesResult {
+            source: "mod".to_string(),
+            save_id: payload.save_id,
+            prices: payload.prices,
+            error: None,
+        });
+    }
+
+    // Fall back to file-based
+    Ok(get_item_prices_from_file())
+}
+
+/// Check if the item prices mod is running.
+#[tauri::command]
+pub async fn check_item_prices_mod_running(live_state: tauri::State<'_, LiveGameState>) -> Result<bool, String> {
+    // Check live state first
+    if live_state.is_game_running().await {
+        return Ok(true);
+    }
+
+    // Fall back to file check
+    Ok(check_item_prices_file_running())
+}
+
+fn get_item_prices_from_file() -> ItemPricesResult {
     let path = match realtime_item_prices_snapshot_path() {
         Some(p) => p,
         None => {
@@ -146,9 +177,7 @@ pub fn get_item_prices_from_mod() -> ItemPricesResult {
     }
 }
 
-/// Check if the item prices mod is running (snapshot file exists and is fresh).
-#[tauri::command]
-pub fn check_item_prices_mod_running() -> bool {
+fn check_item_prices_file_running() -> bool {
     if let Some(path) = realtime_item_prices_snapshot_path() {
         if let Ok(metadata) = fs::metadata(&path) {
             if let Ok(modified) = metadata.modified() {
