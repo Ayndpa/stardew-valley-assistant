@@ -18,7 +18,6 @@ pub struct ItemPricesResult {
 #[serde(rename_all = "camelCase")]
 struct ItemPricesSnapshot {
     save_id: Option<String>,
-    generated_at: Option<String>,
     prices: HashMap<String, i32>,
 }
 
@@ -45,14 +44,6 @@ pub fn read_realtime_item_prices() -> Option<HashMap<String, i32>> {
     let snapshot: ItemPricesSnapshot = serde_json::from_str(&raw).ok()?;
 
     Some(snapshot.prices)
-}
-
-/// Merge mod prices into an existing price map.
-/// Only overwrites prices for items that exist in both maps.
-pub fn merge_mod_prices(base_prices: &mut HashMap<String, i32>, mod_prices: &HashMap<String, i32>) {
-    for (id, &price) in mod_prices {
-        base_prices.insert(id.clone(), price);
-    }
 }
 
 /// Get item prices from the mod, with fallback to file.

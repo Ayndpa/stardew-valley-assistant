@@ -10,6 +10,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 const ASSISTANT_MOD_ZIP: &[u8] =
     include_bytes!("../../bundled-mods/StardewValleyAssistant.zip");
 
+const ASSISTANT_MOD_MANIFEST_JSON: &str =
+    include_str!("../../bundled-mods/StardewValleyAssistant/manifest.json");
+
 #[derive(Deserialize, Debug)]
 struct Manifest {
     #[serde(alias = "Name", alias = "name")]
@@ -61,7 +64,7 @@ fn scan_mods_recursive(
             continue;
         }
 
-        let dir_name = entry.file_name().to_string_lossy().to_string();
+        let _dir_name = entry.file_name().to_string_lossy().to_string();
 
         // If this directory has a manifest.json, parse it as a mod
         // and do NOT recurse further (it's a mod folder, not a category folder)
@@ -525,4 +528,116 @@ pub async fn install_bundled_assistant_mod(game_dir: String) -> Result<Value, St
     })
     .await
     .map_err(|err| format!("安装任务执行失败: {}", err))?
+}
+
+/// Parse a semver string like "1.0.0" into a comparable tuple.
+fn parse_semver(version: &str) -> Option<(u32, u32, u32)> {
+    let parts: Vec<&str> = version.trim().split('.').collect();
+    if parts.len() >= 3 {
+        let major = parts[0].parse().ok()?;
+        let minor = parts[1].parse().ok()?;
+        let patch = parts[2].parse().ok()?;
+        Some((major, minor, patch))
+    } else {
+        None
+    }
+}
+
+/// Auto-upgrade the bundled assistant mod if an older version is already installed.
+/// Does nothing if the mod is not installed or is already up to date.
+#[tauri::command]
+pub async fn auto_upgrade_bundled_mod(game_dir: String) -> Result<Value, String> {
+    tokio::task::spawn_blocking(move || {
+        // Parse bundled version from the embedded manifest
+        let bundled_manifest: Manifest =
+            serde_json::from_str(ASSISTANT_MOD_MANIFEST_JSON)
+                .map_err(|e| format!("解析内置清单失败: {}", e))?;
+        let bundled_version = bundled_manifest
+            .version
+            .unwrap_or_else(|| "0.0.0".to_string());
+
+        // Check if the mod is already installed
+        let mods_dir = Path::new(&game_dir).join("Mods");
+        let installed_manifest_path =
+            mods_dir.join("StardewValleyAssistant").join("manifest.json");
+
+        if !installed_manifest_path.exists() {
+            // Mod not installed — don't auto-install, only upgrade existing installations
+            return Ok(serde_json::json!({
+                "upgraded": false,
+                "reason": "not_installed",
+                "bundled_version": bundled_version,
+                "message": "Mod is not installed, skipping auto-upgrade"
+            }));
+        }
+
+        // Read installed version
+        let file = File::open(&installed_manifest_path)
+            .map_err(|e| format!("读取已安装清单失败: {}", e))?;
+        let installed_manifest: Manifest = serde_json::from_reader(BufReader::new(file))
+            .map_err(|e| format!("解析已安装清单失败: {}", e))?;
+        let installed_version = installed_manifest
+            .version
+            .unwrap_or_else(|| "0.0.0".to_string());
+
+        // Compare versions
+        let bundled_ver = parse_semver(&bundled_version);
+        let installed_ver = parse_semver(&installed_version);
+
+        match (bundled_ver, installed_ver) {
+            (Some(bundled), Some(installed)) => {
+                if installed >= bundled {
+                    return Ok(serde_json::json!({
+                        "upgraded": false,
+                        "reason": "up_to_date",
+                        "installed_version": installed_version,
+                        "bundled_version": bundled_version,
+                        "message": "Mod is already up to date"
+                    }));
+                }
+            }
+            _ => {
+                // Can't parse versions — skip upgrade to be safe
+                return Ok(serde_json::json!({
+                    "upgraded": false,
+                    "reason": "version_parse_error",
+                    "installed_version": installed_version,
+                    "bundled_version": bundled_version,
+                    "message": "Could not parse version strings"
+                }));
+            }
+        }
+
+        // Perform the upgrade
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_else(|_| std::time::Duration::from_secs(0))
+            .as_millis();
+        let working_dir =
+            std::env::temp_dir().join(format!("sv_assistant_mod_upgrade_{}", timestamp));
+        let zip_path = working_dir.join("StardewValleyAssistant.zip");
+
+        fs::create_dir_all(&working_dir)
+            .map_err(|e| format!("创建临时目录失败: {}", e))?;
+        if let Err(err) = fs::write(&zip_path, ASSISTANT_MOD_ZIP) {
+            let _ = fs::remove_dir_all(&working_dir);
+            return Err(format!("写入内置助手模组失败: {}", err));
+        }
+
+        let result =
+            install_mod_from_zip_sync(game_dir, zip_path.to_string_lossy().to_string());
+        let _ = fs::remove_dir_all(&working_dir);
+
+        match result {
+            Ok(_) => Ok(serde_json::json!({
+                "upgraded": true,
+                "from_version": installed_version,
+                "to_version": bundled_version,
+                "message": format!("Mod upgraded from {} to {}", installed_version, bundled_version)
+            })),
+            Err(e) => Err(format!("自动升级失败: {}", e)),
+        }
+    })
+    .await
+    .map_err(|err| format!("自动升级任务执行失败: {}", err))?
 }

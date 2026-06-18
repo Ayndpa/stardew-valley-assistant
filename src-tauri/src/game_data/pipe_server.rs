@@ -1,12 +1,9 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::{mpsc, RwLock};
 
-use super::live_state::{
-    ItemPricesPayload, LiveGameState, NpcLocationEntry, NpcLocationsPayload,
-};
+use super::live_state::{ItemPricesPayload, LiveGameState, NpcLocationsPayload};
 
 const PIPE_NAME: &str = r"\\.\pipe\stardew-valley-assistant";
 
@@ -38,7 +35,7 @@ pub enum TauriMessage {
 
 /// Start the named pipe server for bidirectional communication with the SMAPI mod.
 pub async fn start_pipe_server(state: LiveGameState) -> Result<(), String> {
-    let (tx, mut rx) = mpsc::channel::<TauriMessage>(32);
+    let (tx, _rx) = mpsc::channel::<TauriMessage>(32);
     let tx = Arc::new(RwLock::new(tx));
 
     // Spawn the pipe server
@@ -65,7 +62,7 @@ async fn accept_connection(
     state: &LiveGameState,
     tx: &Arc<RwLock<mpsc::Sender<TauriMessage>>>,
 ) -> Result<(), String> {
-    use tokio::net::windows::named_pipe::{ServerOptions, NamedPipeServer};
+    use tokio::net::windows::named_pipe::ServerOptions;
 
     let server = ServerOptions::new()
         .first_pipe_instance(true)
@@ -119,7 +116,7 @@ async fn accept_connection(
 async fn handle_mod_message(
     msg: ModMessage,
     state: &LiveGameState,
-    tx: &Arc<RwLock<mpsc::Sender<TauriMessage>>>,
+    _tx: &Arc<RwLock<mpsc::Sender<TauriMessage>>>,
     writer: &mut tokio::io::WriteHalf<tokio::net::windows::named_pipe::NamedPipeServer>,
 ) {
     match msg {
@@ -142,10 +139,3 @@ async fn handle_mod_message(
     }
 }
 
-/// Send a message to the mod via the named pipe.
-/// Returns a channel receiver for the response.
-pub async fn send_to_mod(msg: TauriMessage, tx: &mpsc::Sender<TauriMessage>) -> Result<(), String> {
-    tx.send(msg)
-        .await
-        .map_err(|e| format!("发送消息失败: {}", e))
-}

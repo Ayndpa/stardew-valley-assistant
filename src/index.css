@@ -203,7 +203,8 @@
     overflow: hidden;
   }
   body {
-    background: transparent;
+    /* Solid fallback for Windows 10 where Acrylic may not render behind transparent areas */
+    background: #181c20;
     color: var(--foreground);
     font-family: system-ui, -apple-system, sans-serif;
   }

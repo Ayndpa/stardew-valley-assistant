@@ -25,10 +25,10 @@ use crate::game_data::{
     get_secret_notes_game_data, live_state::LiveGameState, pipe_server, query_item_game_data,
 };
 use crate::mods::{
-    apply_profile, check_mod_updates, check_nexus_login_status, close_scraper_window, delete_mod,
-    delete_profile, export_profile, export_profile_to_file, fetch_nexus_api_key,
-    fetch_nexus_download_metadata, fetch_smapi_compatibility_mods, import_profile,
-    import_profile_from_file, install_bundled_assistant_mod, install_mod_from_zip,
+    apply_profile, auto_upgrade_bundled_mod, check_mod_updates, check_nexus_login_status,
+    close_scraper_window, delete_mod, delete_profile, export_profile, export_profile_to_file,
+    fetch_nexus_api_key, fetch_nexus_download_metadata, fetch_smapi_compatibility_mods,
+    import_profile, import_profile_from_file, install_bundled_assistant_mod, install_mod_from_zip,
     install_nexus_mod, list_installed_mods, list_profiles, load_cached_mod_updates, logout_nexus,
     open_nexus_login_window, open_nexus_ranking_scraper, open_scraper_window, save_mod_config,
     save_profile, toggle_mod,
@@ -47,6 +47,45 @@ use tauri::{AppHandle, Emitter, Manager, Monitor, PhysicalPosition, PhysicalSize
 use tauri_plugin_deep_link::DeepLinkExt;
 #[cfg(windows)]
 use window_vibrancy::{apply_acrylic, apply_mica};
+
+// FFI for ntdll::RtlGetVersion — more reliable than GetVersionEx on Win10+
+#[cfg(windows)]
+#[repr(C)]
+struct RTL_OSVERSIONINFOW {
+    dw_os_version_info_size: u32,
+    dw_major_version: u32,
+    dw_minor_version: u32,
+    dw_build_number: u32,
+    dw_platform_id: u32,
+    sz_csd_version: [u16; 128],
+}
+
+#[cfg(windows)]
+extern "system" {
+    fn RtlGetVersion(lp_version_information: *mut RTL_OSVERSIONINFOW) -> i32;
+}
+
+#[cfg(windows)]
+fn is_windows_11_or_later() -> bool {
+    unsafe {
+        let mut info = RTL_OSVERSIONINFOW {
+            dw_os_version_info_size: std::mem::size_of::<RTL_OSVERSIONINFOW>() as u32,
+            dw_major_version: 0,
+            dw_minor_version: 0,
+            dw_build_number: 0,
+            dw_platform_id: 0,
+            sz_csd_version: [0; 128],
+        };
+        if RtlGetVersion(&mut info) == 0 {
+            // Windows 11 = build 22000+
+            info.dw_major_version > 10
+                || (info.dw_major_version == 10 && info.dw_build_number >= 22000)
+        } else {
+            // Assume Win10 if detection fails
+            false
+        }
+    }
+}
 
 const MAIN_WINDOW_MIN_WIDTH: f64 = 800.0;
 const MAIN_WINDOW_MIN_HEIGHT: f64 = 600.0;
@@ -294,8 +333,14 @@ fn show_main_window_in_front(window: &tauri::WebviewWindow) {
 
 #[cfg(windows)]
 fn apply_windows_backdrop(window: &tauri::WebviewWindow) {
-    if apply_mica(window, None).is_err() {
-        let _ = apply_acrylic(window, Some((24, 28, 32, 160)));
+    // Windows 11 (build >= 22000): use Mica backdrop
+    // Windows 10: use opaque Acrylic to avoid black border artifacts
+    //              on borderless transparent windows
+    if is_windows_11_or_later() {
+        let _ = apply_mica(window, None);
+    } else {
+        // Windows 10: fully opaque Acrylic + solid CSS fallback prevents black edges
+        let _ = apply_acrylic(window, Some((24, 28, 32, 255)));
     }
 }
 
@@ -390,6 +435,7 @@ pub fn run() {
             resume_download_task,
             install_mod_from_zip,
             install_bundled_assistant_mod,
+            auto_upgrade_bundled_mod,
             get_npc_portraits,
             check_for_updates
         ])

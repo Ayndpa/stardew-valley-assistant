@@ -235,6 +235,29 @@ function App() {
     checkUpdateOnStart()
   }, [])
 
+  // Auto-upgrade bundled assistant mod on startup
+  useEffect(() => {
+    const autoUpgradeMod = async () => {
+      if (typeof window === "undefined" || !(window as any).__TAURI_INTERNALS__) return
+      const gameDir = localStorage.getItem("stardewGameDirectory")
+      if (!gameDir) return
+      try {
+        const { invoke } = await import("@tauri-apps/api/core")
+        const result = await invoke<{ upgraded: boolean; message: string }>(
+          "auto_upgrade_bundled_mod",
+          { gameDir }
+        )
+        if (result.upgraded) {
+          setModListRefreshSignal((value) => value + 1)
+          showGlobalToast("助手模组已自动升级到最新版本。", "info")
+        }
+      } catch {
+        // Silently ignore auto-upgrade failures
+      }
+    }
+    autoUpgradeMod()
+  }, [])
+
   const handleDownloadUpdate = async (url: string) => {
     try {
       const { openUrl } = await import("@tauri-apps/plugin-opener")
@@ -264,7 +287,7 @@ function App() {
 
     try {
       const { invoke } = await import("@tauri-apps/api/core")
-      await invoke("install_bundled_npc_locations_mod", { gameDir })
+      await invoke("install_bundled_assistant_mod", { gameDir })
       setModListRefreshSignal((value) => value + 1)
       setCurrentPage("mods")
       showGlobalToast("已安装 NPC 实时位置模组。请通过 SMAPI 启动游戏后再回到村民关系查看实时位置。", "success")
