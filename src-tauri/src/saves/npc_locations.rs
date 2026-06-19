@@ -150,6 +150,35 @@ pub async fn check_game_running(live_state: tauri::State<'_, LiveGameState>) -> 
     Ok(false)
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PipeStatus {
+    pub pipe_connected: bool,
+    pub game_running: bool,
+}
+
+#[tauri::command]
+pub async fn check_pipe_status(live_state: tauri::State<'_, LiveGameState>) -> Result<PipeStatus, String> {
+    let pipe_connected = live_state.is_pipe_connected().await;
+    let mut game_running = live_state.is_game_running().await;
+
+    // Fall back to file check
+    if !game_running {
+        if let Some(path) = realtime_snapshot_path() {
+            if let Ok(metadata) = fs::metadata(&path) {
+                if let Ok(modified) = metadata.modified() {
+                    if let Ok(elapsed) = std::time::SystemTime::now().duration_since(modified) {
+                        game_running = elapsed.as_secs() < 30;
+                    }
+                }
+            }
+        }
+    }
+
+    println!("[状态] check_pipe_status: pipe_connected={}, game_running={}", pipe_connected, game_running);
+    Ok(PipeStatus { pipe_connected, game_running })
+}
+
 fn get_npc_schedule_sync(
     save_id: Option<String>,
     game_dir: Option<String>,
@@ -293,7 +322,7 @@ fn read_realtime_locations(
         .ok_or_else(|| "无法定位星露谷用户数据目录，不能读取实时 NPC 位置。".to_string())?;
 
     if !path.exists() {
-        return Err("游戏未启动，实时位置不可用。".to_string());
+        return Err("实时位置数据不可用。".to_string());
     }
 
     let metadata = fs::metadata(&path)
@@ -305,7 +334,7 @@ fn read_realtime_locations(
         .unwrap_or_else(|_| std::time::Duration::from_secs(0));
 
     if elapsed.as_secs() > 30 {
-        return Err("游戏未启动，实时位置不可用。".to_string());
+        return Err("实时位置数据已过期。".to_string());
     }
 
     let raw = fs::read_to_string(&path)

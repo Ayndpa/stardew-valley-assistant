@@ -1001,6 +1001,8 @@
     "svgTileTitleHidden": "({{x}}, {{y}}) Depth {{depth}} \u00b7 Hidden Water",
     "showNpcRoute": "Show NPC Route",
     "showNpcLocation": "Show NPC Locations",
+    "pipeNotConnected": "Assistant app not running, real-time locations unavailable.",
+    "pipeConnectedNoData": "Mod connected, load a save to enable real-time locations.",
     "selectNpc": "Select NPC",
     "npcScheduleTitle": "Schedule Points",
     "npcLocationsTitle": "NPC Locations",

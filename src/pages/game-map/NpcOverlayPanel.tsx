@@ -11,6 +11,7 @@ interface NpcOverlayPanelProps {
   showNpcRoute: boolean
   setShowNpcRoute: (v: boolean) => void
   isGameRunning: boolean
+  pipeConnected: boolean
   isModSource: boolean
   loadingLocations: boolean
   npcLocationError: string | null
@@ -40,6 +41,7 @@ export function NpcOverlayPanel({
   showNpcRoute,
   setShowNpcRoute,
   isGameRunning,
+  pipeConnected,
   isModSource,
   loadingLocations,
   npcLocationError,
@@ -90,14 +92,14 @@ export function NpcOverlayPanel({
             <button
               className={cn(
                 "flex-1 py-1.5 px-2 border-l transition-colors",
-                !isGameRunning && isModSource
+                isModSource && !pipeConnected
                   ? "opacity-50 cursor-not-allowed text-muted-foreground"
                   : showNpcLocations
                     ? "bg-primary text-primary-foreground"
                     : "bg-muted text-muted-foreground hover:bg-muted/80"
               )}
               onClick={() => {
-                if (!isGameRunning && isModSource) return
+                if (isModSource && !pipeConnected) return
                 setShowNpcLocations(!showNpcLocations)
                 setShowNpcRoute(false)
               }}
@@ -117,8 +119,10 @@ export function NpcOverlayPanel({
               {t("fishingMap.showNpcRoute", { defaultValue: "行动路线" })}
             </button>
           </div>
-          {(!isGameRunning && isModSource) ? (
-            <div className="text-[10px] text-red-500 font-medium">游戏未启动，实时位置不可用。</div>
+          {isModSource && !pipeConnected ? (
+            <div className="text-[10px] text-amber-500 font-medium">{t("fishingMap.pipeNotConnected", { defaultValue: "助手应用未运行，实时位置不可用。" })}</div>
+          ) : isModSource && pipeConnected && !isGameRunning ? (
+            <div className="text-[10px] text-blue-500 font-medium">{t("fishingMap.pipeConnectedNoData", { defaultValue: "Mod 已连接，请加载存档以启用实时位置。" })}</div>
           ) : (
             npcLocationError && <div className="text-[10px] text-red-500 font-medium">{npcLocationError}</div>
           )}

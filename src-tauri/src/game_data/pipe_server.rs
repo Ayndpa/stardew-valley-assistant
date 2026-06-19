@@ -1,13 +1,15 @@
 use serde::{Deserialize, Serialize};
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::sync::{mpsc, RwLock};
+use tokio::net::windows::named_pipe::{NamedPipeServer, ServerOptions};
+use tokio::sync::{mpsc, Mutex};
 
 use super::live_state::{ItemPricesPayload, LiveGameState, NpcLocationsPayload};
 
 const PIPE_NAME: &str = r"\\.\pipe\stardew-valley-assistant";
 
-/// Messages from Mod to Tauri
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type")]
 pub enum ModMessage {
@@ -21,8 +23,7 @@ pub enum ModMessage {
     Ping,
 }
 
-/// Messages from Tauri to Mod
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type")]
 pub enum TauriMessage {
     #[serde(rename = "requestNpcLocations")]
@@ -33,149 +34,188 @@ pub enum TauriMessage {
     Pong,
 }
 
-/// Start the named pipe server for bidirectional communication with the SMAPI mod.
-///
-/// Keeps the pipe always available by creating the next server instance immediately
-/// after the current one accepts a connection, before processing messages.
-pub async fn start_pipe_server(state: LiveGameState) -> Result<(), String> {
-    use tokio::net::windows::named_pipe::ServerOptions;
+#[derive(Clone)]
+pub struct PipeWriterHandle {
+    inner: Arc<Mutex<Option<mpsc::Sender<TauriMessage>>>>,
+}
 
-    let (tx, _rx) = mpsc::channel::<TauriMessage>(32);
-    let tx = Arc::new(RwLock::new(tx));
+impl PipeWriterHandle {
+    pub fn new() -> Self {
+        Self { inner: Arc::new(Mutex::new(None)) }
+    }
 
-    let state_clone = state.clone();
-    tokio::spawn(async move {
-        // Create the first pipe instance
-        let mut server = match ServerOptions::new()
-            .first_pipe_instance(true)
-            .create(PIPE_NAME)
-        {
+    pub async fn send(&self, msg: TauriMessage) -> bool {
+        let guard = self.inner.lock().await;
+        if let Some(ref tx) = *guard {
+            tx.send(msg).await.is_ok()
+        } else {
+            false
+        }
+    }
+
+    pub(crate) async fn set(&self, tx: mpsc::Sender<TauriMessage>) {
+        let mut guard = self.inner.lock().await;
+        *guard = Some(tx);
+    }
+
+    pub(crate) async fn clear(&self) {
+        let mut guard = self.inner.lock().await;
+        *guard = None;
+    }
+}
+
+pub async fn start_pipe_server(state: LiveGameState, writer_handle: PipeWriterHandle) {
+    run_pipe_server(state, writer_handle).await;
+}
+
+/// 管道服务器主状态机 — 纯事件驱动，通过 Box::pin 递归实现状态转换
+fn run_pipe_server(
+    state: LiveGameState,
+    writer_handle: PipeWriterHandle,
+) -> Pin<Box<dyn Future<Output = ()> + Send>> {
+    Box::pin(async move {
+        // 状态 1：创建管道实例
+        let server = match ServerOptions::new().create(PIPE_NAME) {
             Ok(s) => s,
             Err(e) => {
-                eprintln!("创建命名管道失败: {}", e);
-                return;
+                eprintln!("[管道] 创建命名管道失败: {}", e);
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                return run_pipe_server(state, writer_handle).await;
             }
         };
 
-        println!("等待 Mod 连接管道: {}", PIPE_NAME);
-
-        loop {
-            // Wait for a client to connect
-            match server.connect().await {
-                Ok(()) => {
-                    println!("Mod 已连接");
-                }
-                Err(e) => {
-                    eprintln!("等待连接失败: {}", e);
-                    // Recreate the pipe instance and retry
-                    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-                    server = match ServerOptions::new()
-                        .first_pipe_instance(false)
-                        .create(PIPE_NAME)
-                    {
-                        Ok(s) => s,
-                        Err(e) => {
-                            eprintln!("重建命名管道失败: {}", e);
-                            return;
-                        }
-                    };
-                    println!("等待 Mod 连接管道: {}", PIPE_NAME);
-                    continue;
-                }
-            }
-
-            // Create the next instance IMMEDIATELY so the pipe stays available
-            // for other clients while we process this one
-            let next_server = match ServerOptions::new()
-                .first_pipe_instance(false)
-                .create(PIPE_NAME)
-            {
-                Ok(s) => s,
-                Err(e) => {
-                    eprintln!("创建下一个管道实例失败: {}", e);
-                    return;
-                }
-            };
-
-            // Process current connection in a background task
-            let state = state_clone.clone();
-            let tx = tx.clone();
-            tokio::spawn(async move {
-                process_connection(server, &state, &tx).await;
-                println!("Mod 断开连接，等待重新连接...");
-            });
-
-            // The next server instance is now ready for the next client
-            server = next_server;
-            println!("等待 Mod 连接管道: {}", PIPE_NAME);
-        }
-    });
-
-    Ok(())
+        // 状态 2：等待客户端连接
+        println!("[管道] 等待 Mod 连接...");
+        on_connect(server, state, writer_handle).await;
+    })
 }
 
-/// Read and handle messages from a connected client until it disconnects.
-async fn process_connection(
-    server: tokio::net::windows::named_pipe::NamedPipeServer,
-    state: &LiveGameState,
-    tx: &Arc<RwLock<mpsc::Sender<TauriMessage>>>,
-) {
-    let (reader, mut writer) = tokio::io::split(server);
-    let mut reader = BufReader::new(reader);
-    let mut line = String::new();
+/// 状态 2：客户端握手
+fn on_connect(
+    server: NamedPipeServer,
+    state: LiveGameState,
+    writer_handle: PipeWriterHandle,
+) -> Pin<Box<dyn Future<Output = ()> + Send>> {
+    Box::pin(async move {
+        if let Err(e) = server.connect().await {
+            eprintln!("[管道] 等待连接失败: {}", e);
+            return run_pipe_server(state, writer_handle).await;
+        }
 
-    loop {
-        line.clear();
-        match reader.read_line(&mut line).await {
-            Ok(0) => {
-                return;
-            }
-            Ok(_) => {
-                let trimmed = line.trim();
-                if trimmed.is_empty() {
-                    continue;
-                }
+        println!("[管道] Mod 已连接");
+        state.set_pipe_connected(true).await;
 
-                match serde_json::from_str::<ModMessage>(trimmed) {
-                    Ok(msg) => {
-                        handle_mod_message(msg, state, tx, &mut writer).await;
+        let (tx, rx) = mpsc::channel::<TauriMessage>(32);
+        writer_handle.set(tx).await;
+
+        let (reader, writer) = tokio::io::split(server);
+        let reader = BufReader::new(reader);
+
+        // 状态 3：事件循环
+        on_event(state, writer_handle, reader, writer, rx, String::new()).await;
+    })
+}
+
+/// 状态 3：事件驱动 I/O — 每次 select 处理一个事件，然后递归等待下一个
+fn on_event(
+    state: LiveGameState,
+    writer_handle: PipeWriterHandle,
+    mut reader: BufReader<tokio::io::ReadHalf<NamedPipeServer>>,
+    mut writer: tokio::io::WriteHalf<NamedPipeServer>,
+    mut rx: mpsc::Receiver<TauriMessage>,
+    mut line_buf: String,
+) -> Pin<Box<dyn Future<Output = ()> + Send>> {
+    Box::pin(async move {
+        tokio::select! {
+            // 事件：从 Mod 收到一行数据
+            result = reader.read_line(&mut line_buf) => {
+                match result {
+                    Ok(0) => {
+                        println!("[管道←] 连接关闭 (EOF)");
+                        on_disconnect(state, writer_handle).await;
+                    }
+                    Ok(n) => {
+                        let trimmed = line_buf.trim().to_owned();
+                        line_buf.clear();
+                        if !trimmed.is_empty() {
+                            println!(
+                                "[管道←] 收到 {} bytes: {}",
+                                n,
+                                if trimmed.len() > 120 { format!("{}...", &trimmed[..120]) } else { trimmed.clone() }
+                            );
+                            match serde_json::from_str::<ModMessage>(&trimmed) {
+                                Ok(msg) => handle_mod_message(msg, &state).await,
+                                Err(e) => eprintln!("[管道←] 解析失败: {}", e),
+                            }
+                        }
+                        // 继续等待下一个事件
+                        on_event(state, writer_handle, reader, writer, rx, line_buf).await;
                     }
                     Err(e) => {
-                        eprintln!("解析 Mod 消息失败: {}", e);
+                        eprintln!("[管道←] 读取失败: {}", e);
+                        on_disconnect(state, writer_handle).await;
                     }
                 }
             }
-            Err(e) => {
-                eprintln!("读取管道数据失败: {}", e);
-                return;
+            // 事件：Tauri 命令请求发送消息给 Mod
+            msg = rx.recv() => {
+                match msg {
+                    Some(msg) => {
+                        if let Ok(json) = serde_json::to_string(&msg) {
+                            println!(
+                                "[管道→] 发送: {}",
+                                if json.len() > 120 { format!("{}...", &json[..120]) } else { json.clone() }
+                            );
+                            let mut bytes = json.into_bytes();
+                            bytes.push(b'\n');
+                            if writer.write_all(&bytes).await.is_err() {
+                                eprintln!("[管道→] 写入失败");
+                                on_disconnect(state, writer_handle).await;
+                                return;
+                            }
+                        }
+                        // 继续等待下一个事件
+                        on_event(state, writer_handle, reader, writer, rx, line_buf).await;
+                    }
+                    None => {
+                        // 发送端已关闭
+                        on_disconnect(state, writer_handle).await;
+                    }
+                }
             }
         }
-    }
+    })
 }
 
-async fn handle_mod_message(
-    msg: ModMessage,
-    state: &LiveGameState,
-    _tx: &Arc<RwLock<mpsc::Sender<TauriMessage>>>,
-    writer: &mut tokio::io::WriteHalf<tokio::net::windows::named_pipe::NamedPipeServer>,
-) {
+/// 状态转换：断开 → 清理 → 回到等待连接
+fn on_disconnect(
+    state: LiveGameState,
+    writer_handle: PipeWriterHandle,
+) -> Pin<Box<dyn Future<Output = ()> + Send>> {
+    Box::pin(async move {
+        writer_handle.clear().await;
+        state.set_pipe_connected(false).await;
+        println!("[管道] Mod 断开连接，等待重新连接...");
+        run_pipe_server(state, writer_handle).await;
+    })
+}
+
+async fn handle_mod_message(msg: ModMessage, state: &LiveGameState) {
     match msg {
         ModMessage::NpcLocations { data } => {
+            println!("[处理] npcLocations: {} 个NPC, 时间={:?}", data.npcs.len(), data.game_time);
             state.update_npc_locations(data).await;
         }
         ModMessage::ItemPrices { data } => {
+            println!("[处理] itemPrices: {} 个物品", data.prices.len());
             state.update_item_prices(data).await;
         }
         ModMessage::Clear => {
+            println!("[处理] clear");
             state.clear().await;
         }
         ModMessage::Ping => {
-            let response = TauriMessage::Pong;
-            if let Ok(json) = serde_json::to_string(&response) {
-                let _ = writer.write_all(json.as_bytes()).await;
-                let _ = writer.write_all(b"\n").await;
-            }
+            println!("[处理] ping");
         }
     }
 }
-

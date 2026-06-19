@@ -1001,6 +1001,8 @@
     "svgTileTitleHidden": "({{x}}, {{y}}) 深度 {{depth}} · 隐藏水域",
     "showNpcRoute": "显示 NPC 行动路线",
     "showNpcLocation": "显示 NPC 实时位置",
+    "pipeNotConnected": "助手应用未运行，实时位置不可用。",
+    "pipeConnectedNoData": "Mod 已连接，请加载存档以启用实时位置。",
     "selectNpc": "选择 NPC",
     "npcScheduleTitle": "日程路线点",
     "npcLocationsTitle": "NPC 实时位置",

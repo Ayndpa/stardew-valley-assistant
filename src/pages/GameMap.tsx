@@ -101,6 +101,7 @@ export function GameMap({ selectedSaveId }: GameMapProps) {
   const [loadingLocations, setLoadingLocations] = useState<boolean>(false)
   const [npcLocationError, setNpcLocationError] = useState<string | null>(null)
   const [isGameRunning, setIsGameRunning] = useState<boolean>(true)
+  const [pipeConnected, setPipeConnected] = useState<boolean>(false)
   const [pendingFocus, setPendingFocus] = useState<{ mapId: string; x: number; y: number } | null>(null)
   const [isNpcDropdownOpen, setIsNpcDropdownOpen] = useState(false)
   const [npcSearchTerm, setNpcSearchTerm] = useState("")
@@ -118,20 +119,22 @@ export function GameMap({ selectedSaveId }: GameMapProps) {
   }, [])
 
   useEffect(() => {
-    const checkRunning = async () => {
+    const checkStatus = async () => {
       const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__
       if (!isTauri) return
       try {
         const { invoke } = await import("@tauri-apps/api/core")
-        const running = await invoke<boolean>("check_game_running")
-        setIsGameRunning(running)
+        const status = await invoke<{ pipeConnected: boolean; gameRunning: boolean }>("check_pipe_status")
+        setPipeConnected(status.pipeConnected)
+        setIsGameRunning(status.gameRunning)
       } catch (err) {
-        console.error("Failed to check if game is running:", err)
+        console.error("Failed to check pipe status:", err)
+        setPipeConnected(false)
         setIsGameRunning(false)
       }
     }
-    checkRunning()
-    const timer = setInterval(checkRunning, 10000)
+    checkStatus()
+    const timer = setInterval(checkStatus, 5000)
     return () => clearInterval(timer)
   }, [])
 
@@ -717,6 +720,7 @@ export function GameMap({ selectedSaveId }: GameMapProps) {
             showNpcRoute={showNpcRoute}
             setShowNpcRoute={setShowNpcRoute}
             isGameRunning={isGameRunning}
+            pipeConnected={pipeConnected}
             isModSource={isModSource}
             loadingLocations={loadingLocations}
             npcLocationError={npcLocationError}

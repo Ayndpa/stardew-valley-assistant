@@ -23,7 +23,7 @@ use crate::game_data::{
     check_item_prices_mod_running, get_animal_game_data, get_bundle_game_data,
     get_calendar_game_data, get_crop_game_data, get_fishing_map_data, get_fishing_map_detail,
     get_item_game_data, get_item_game_data_overview, get_item_prices_from_mod, get_npc_game_data,
-    get_secret_notes_game_data, live_state::LiveGameState, pipe_server, query_item_game_data,
+    get_secret_notes_game_data, live_state::LiveGameState, pipe_server::{self, PipeWriterHandle}, query_item_game_data,
 };
 use crate::mods::{
     apply_profile, auto_upgrade_bundled_mod, check_mod_updates, check_nexus_login_status,
@@ -36,7 +36,7 @@ use crate::mods::{
 };
 use crate::saves::{
     create_save_backup, delete_save_backup, get_children_data, get_npc_locations, get_npc_schedule,
-    check_game_running, get_planted_crops, get_save_animals, get_save_detail,
+    check_game_running, check_pipe_status, get_planted_crops, get_save_animals, get_save_detail,
     get_save_editor_data, list_save_backups, list_save_files, restore_save_backup,
     update_child, update_save_editor_data,
 };
@@ -526,6 +526,7 @@ pub fn run() {
             get_npc_locations,
             get_npc_schedule,
             check_game_running,
+            check_pipe_status,
             get_item_prices_from_mod,
             check_item_prices_mod_running,
             get_save_editor_data,
@@ -571,18 +572,10 @@ pub fn run() {
 
             // Start the named pipe server for bidirectional communication with the mod
             let live_state = app.state::<LiveGameState>().inner().clone();
-            std::thread::spawn(move || {
-                let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
-                rt.block_on(async move {
-                    match pipe_server::start_pipe_server(live_state).await {
-                        Ok(_) => {
-                            println!("命名管道服务器已启动");
-                        }
-                        Err(e) => {
-                            eprintln!("启动命名管道服务器失败: {}", e);
-                        }
-                    }
-                });
+            let writer_handle = PipeWriterHandle::new();
+            app.manage(writer_handle.clone());
+            tauri::async_runtime::spawn(async move {
+                pipe_server::start_pipe_server(live_state, writer_handle).await;
             });
 
             #[cfg(any(target_os = "macos", windows, target_os = "linux"))]

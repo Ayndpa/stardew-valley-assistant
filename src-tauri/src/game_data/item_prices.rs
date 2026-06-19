@@ -4,6 +4,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use super::live_state::LiveGameState;
+use super::pipe_server::{PipeWriterHandle, TauriMessage};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -47,11 +48,13 @@ pub fn read_realtime_item_prices() -> Option<HashMap<String, i32>> {
 }
 
 /// Get item prices from the mod, with fallback to file.
+/// Sends a request to the mod via pipe and waits for the response.
 #[tauri::command]
 pub async fn get_item_prices_from_mod(
     live_state: tauri::State<'_, LiveGameState>,
+    writer: tauri::State<'_, PipeWriterHandle>,
 ) -> Result<ItemPricesResult, String> {
-    // Try live state first (from HTTP server)
+    // Try cached data first
     if let Some(payload) = live_state.get_item_prices().await {
         return Ok(ItemPricesResult {
             source: "mod".to_string(),
@@ -59,6 +62,23 @@ pub async fn get_item_prices_from_mod(
             prices: payload.prices,
             error: None,
         });
+    }
+
+    // If pipe connected, request prices from mod
+    if live_state.is_pipe_connected().await {
+        let _ = writer.send(TauriMessage::RequestItemPrices).await;
+        // Wait for response (mod sends back itemPrices message)
+        for _ in 0..30 {
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            if let Some(payload) = live_state.get_item_prices().await {
+                return Ok(ItemPricesResult {
+                    source: "mod".to_string(),
+                    save_id: payload.save_id,
+                    prices: payload.prices,
+                    error: None,
+                });
+            }
+        }
     }
 
     // Fall back to file-based

@@ -26,41 +26,62 @@ public sealed class ModEntry : Mod
     private const string PipeName = "stardew-valley-assistant";
 
     private NamedPipeClientStream? PipeStream;
-    private StreamWriter? PipeWriter;
+    private readonly object WriteLock = new();
     private CancellationTokenSource? CancellationToken;
     private volatile bool IsConnected;
     private Thread? ConnectThread;
 
     public override void Entry(IModHelper helper)
     {
+        this.Monitor.Log("助手 Mod 已加载，开始连接管道...", LogLevel.Info);
+        this.EnsureConnected();
         helper.Events.GameLoop.SaveLoaded += this.OnSaveLoaded;
-        helper.Events.GameLoop.DayStarted += this.OnDayStarted;
+        helper.Events.GameLoop.TimeChanged += this.OnTimeChanged;
         helper.Events.GameLoop.OneSecondUpdateTicked += this.OnOneSecondUpdateTicked;
         helper.Events.GameLoop.ReturnedToTitle += this.OnReturnedToTitle;
+        helper.Events.Player.Warped += this.OnWarped;
     }
 
     private void OnSaveLoaded(object? sender, SaveLoadedEventArgs e)
     {
-        this.EnsureConnected();
-        this.SendAllData();
-    }
-
-    private void OnDayStarted(object? sender, DayStartedEventArgs e)
-    {
-        this.SendItemPrices();
+        this.Monitor.Log($"[发送] 存档已加载, IsConnected={this.IsConnected}, IsWorldReady={Context.IsWorldReady}", LogLevel.Info);
+        this.SendNpcLocationsAsync();
     }
 
     private void OnOneSecondUpdateTicked(object? sender, OneSecondUpdateTickedEventArgs e)
     {
-        if (this.IsConnected)
+        if (!this.IsConnected)
         {
-            this.SendNpcLocations();
-        }
-        else
-        {
-            // Connection lost or never established — try to reconnect
             this.EnsureConnected();
         }
+    }
+
+    private void OnTimeChanged(object? sender, TimeChangedEventArgs e)
+    {
+        this.Monitor.Log($"[发送] 时间变化 {e.NewTime}, IsConnected={this.IsConnected}", LogLevel.Info);
+        this.SendNpcLocationsAsync();
+    }
+
+    private void OnWarped(object? sender, WarpedEventArgs e)
+    {
+        if (e.IsLocalPlayer)
+        {
+            this.Monitor.Log($"[发送] 切换地图 → {e.NewLocation.Name}, IsConnected={this.IsConnected}", LogLevel.Info);
+            this.SendNpcLocationsAsync();
+        }
+    }
+
+    /// <summary>
+    /// Send NPC locations on a background thread to avoid blocking the game.
+    /// </summary>
+    private void SendNpcLocationsAsync()
+    {
+        if (!this.IsConnected)
+        {
+            this.Monitor.Log("[发送] 跳过: 未连接", LogLevel.Debug);
+            return;
+        }
+        Task.Run(() => this.SendNpcLocations());
     }
 
     private void OnReturnedToTitle(object? sender, ReturnedToTitleEventArgs e)
@@ -90,10 +111,13 @@ public sealed class ModEntry : Mod
 
     private void ConnectLoop(CancellationToken token)
     {
+        int attempt = 0;
         while (!token.IsCancellationRequested)
         {
+            attempt++;
             try
             {
+                this.Monitor.Log($"正在尝试连接管道 (第{attempt}次)...", LogLevel.Debug);
                 var stream = new NamedPipeClientStream(".", PipeName, PipeDirection.InOut);
                 stream.Connect(5000);
 
@@ -104,21 +128,27 @@ public sealed class ModEntry : Mod
                 }
 
                 this.PipeStream = stream;
-                this.PipeWriter = new StreamWriter(stream, Encoding.UTF8)
-                {
-                    AutoFlush = true,
-                };
 
                 this.IsConnected = true;
-                this.Monitor.Log("已连接到助手管道", LogLevel.Debug);
+                this.Monitor.Log("已连接到助手管道!", LogLevel.Info);
 
                 // Start reading responses in background
                 _ = Task.Run(() => this.ReadResponsesAsync());
+
+                // If a save is already loaded, send current NPC locations immediately
+                if (Context.IsWorldReady)
+                {
+                    this.SendNpcLocationsAsync();
+                }
+
                 return; // Connection succeeded, exit retry loop
             }
             catch (TimeoutException)
             {
-                // Expected when assistant is not running — keep retrying
+                if (attempt == 1 || attempt % 10 == 0)
+                {
+                    this.Monitor.Log($"连接超时 (第{attempt}次)，请确认助手应用已启动。3秒后重试...", LogLevel.Warn);
+                }
             }
             catch (OperationCanceledException)
             {
@@ -126,7 +156,7 @@ public sealed class ModEntry : Mod
             }
             catch (Exception ex)
             {
-                this.Monitor.Log($"连接管道失败: {ex.Message}", LogLevel.Debug);
+                this.Monitor.Log($"连接管道失败: {ex.Message}", LogLevel.Warn);
             }
 
             // Wait before retrying
@@ -139,9 +169,7 @@ public sealed class ModEntry : Mod
         this.IsConnected = false;
         this.CancellationToken?.Cancel();
         this.ConnectThread = null;
-        this.PipeWriter?.Dispose();
         this.PipeStream?.Dispose();
-        this.PipeWriter = null;
         this.PipeStream = null;
         this.CancellationToken = null;
     }
@@ -152,28 +180,86 @@ public sealed class ModEntry : Mod
         if (stream == null)
             return;
 
+        this.Monitor.Log("[管道] 读取响应线程已启动", LogLevel.Debug);
         try
         {
-            using var reader = new StreamReader(stream, Encoding.UTF8, leaveOpen: true);
+            // 直接使用 Stream.ReadAsync 读取原始字节，逐行解析
+            // 避免 StreamReader 内部锁与 Write 操作冲突
+            var buffer = new byte[4096];
+            var lineBuffer = new StringBuilder();
+
             while (!this.CancellationToken?.IsCancellationRequested ?? true)
             {
-                var line = await reader.ReadLineAsync();
-                if (line == null)
+                var bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length, this.CancellationToken?.Token ?? default);
+                if (bytesRead == 0)
                 {
-                    // Connection closed — mark disconnected so EnsureConnected can retry
                     this.IsConnected = false;
-                    this.Monitor.Log("管道连接已断开，等待重连...", LogLevel.Debug);
+                    this.Monitor.Log("[管道←] 连接已断开 (EOF)，等待重连...", LogLevel.Warn);
                     break;
                 }
 
-                // Handle responses from Tauri if needed
-                this.Monitor.Log($"收到响应: {line}", LogLevel.Trace);
+                // 按换行符分割，逐行处理
+                for (int i = 0; i < bytesRead; i++)
+                {
+                    if (buffer[i] == (byte)'\n')
+                    {
+                        var line = lineBuffer.ToString().Trim();
+                        lineBuffer.Clear();
+                        if (!string.IsNullOrEmpty(line))
+                        {
+                            this.Monitor.Log($"[管道←] 收到: {line}", LogLevel.Debug);
+                            this.HandleTauriMessage(line);
+                        }
+                    }
+                    else
+                    {
+                        lineBuffer.Append((char)buffer[i]);
+                    }
+                }
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            this.Monitor.Log($"[管道←] 读取失败: {ex.Message}", LogLevel.Warn);
+            this.IsConnected = false;
+        }
+    }
+
+    private void HandleTauriMessage(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            if (!root.TryGetProperty("type", out var typeProp))
+            {
+                this.Monitor.Log($"[处理] 消息缺少 type 字段: {json}", LogLevel.Warn);
+                return;
+            }
+
+            var type = typeProp.GetString();
+            this.Monitor.Log($"[处理] 消息类型: {type}", LogLevel.Info);
+            switch (type)
+            {
+                case "requestItemPrices":
+                    this.Monitor.Log("[处理] 收到物品价格请求，开始收集...", LogLevel.Info);
+                    this.SendItemPrices();
+                    break;
+                case "requestNpcLocations":
+                    this.Monitor.Log("[处理] 收到 NPC 位置请求", LogLevel.Info);
+                    this.SendNpcLocations();
+                    break;
+                case "pong":
+                    break;
+                default:
+                    this.Monitor.Log($"[处理] 未知消息类型: {type}", LogLevel.Warn);
+                    break;
             }
         }
         catch (Exception ex)
         {
-            this.Monitor.Log($"读取响应失败: {ex.Message}", LogLevel.Debug);
-            this.IsConnected = false;
+            this.Monitor.Log($"[处理] 解析消息失败: {ex.Message}", LogLevel.Warn);
         }
     }
 
@@ -186,15 +272,19 @@ public sealed class ModEntry : Mod
     private void SendNpcLocations()
     {
         if (!Context.IsWorldReady || !this.IsConnected)
+        {
+            this.Monitor.Log($"[发送] 跳过NPC位置: IsWorldReady={Context.IsWorldReady}, IsConnected={this.IsConnected}", LogLevel.Debug);
             return;
+        }
 
         try
         {
+            var npcs = this.GetNpcLocations().ToList();
             var snapshot = new NpcLocationsSnapshot(
                 SaveId: this.GetSaveId(),
                 GameTime: Game1.timeOfDay,
                 GeneratedAt: DateTimeOffset.Now.ToString("O"),
-                Npcs: this.GetNpcLocations().ToList()
+                Npcs: npcs
             );
 
             var message = new ModMessageWrapper
@@ -203,11 +293,12 @@ public sealed class ModEntry : Mod
                 Data = snapshot,
             };
 
+            this.Monitor.Log($"[发送] npcLocations: {npcs.Count} 个NPC, 时间={Game1.timeOfDay}", LogLevel.Info);
             this.SendMessage(message);
         }
         catch (Exception ex)
         {
-            this.Monitor.Log($"发送 NPC 位置失败: {ex.Message}", LogLevel.Debug);
+            this.Monitor.Log($"[发送] NPC 位置失败: {ex.Message}", LogLevel.Warn);
         }
     }
 
@@ -263,19 +354,31 @@ public sealed class ModEntry : Mod
 
     private void SendMessage(ModMessageWrapper message)
     {
-        if (this.PipeWriter == null || !this.IsConnected)
+        if (this.PipeStream == null || !this.IsConnected)
+        {
+            this.Monitor.Log($"[管道] 跳过发送 {message.Type}: PipeStream={this.PipeStream != null}, IsConnected={this.IsConnected}", LogLevel.Debug);
             return;
+        }
 
-        try
+        this.Monitor.Log($"[管道→] 准备发送 {message.Type}, 获取锁...", LogLevel.Debug);
+        lock (this.WriteLock)
         {
-            var json = JsonSerializer.Serialize(message, JsonOptions);
-            this.PipeWriter.WriteLine(json);
+            this.Monitor.Log($"[管道→] 已获取锁, 序列化...", LogLevel.Debug);
+            try
+            {
+                var json = JsonSerializer.Serialize(message, JsonOptions);
+                var bytes = Encoding.UTF8.GetBytes(json + "\n");
+                this.Monitor.Log($"[管道→] 序列化完成 ({bytes.Length} bytes), 写入管道...", LogLevel.Debug);
+                this.PipeStream.Write(bytes, 0, bytes.Length);
+                this.Monitor.Log($"[管道→] {message.Type} 写入成功!", LogLevel.Info);
+            }
+            catch (Exception ex)
+            {
+                this.Monitor.Log($"[管道] 发送失败 {message.Type}: {ex.Message}", LogLevel.Warn);
+                this.IsConnected = false;
+            }
         }
-        catch (Exception ex)
-        {
-            this.Monitor.Log($"发送消息失败: {ex.Message}", LogLevel.Debug);
-            this.IsConnected = false;
-        }
+        this.Monitor.Log($"[管道→] 已释放锁", LogLevel.Debug);
     }
 
     private string? GetSaveId()

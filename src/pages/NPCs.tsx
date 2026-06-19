@@ -202,6 +202,8 @@ export function NPCs({ selectedSaveId, onNavigateToItem, onInstallNpcLocationsMo
   const [loadingLocations, setLoadingLocations] = useState(false)
   const [locationError, setLocationError] = useState<string | null>(null)
   const [locationGameTime, setLocationGameTime] = useState<number | null>(null)
+  const [pipeConnected, setPipeConnected] = useState<boolean>(false)
+  const [gameRunning, setGameRunning] = useState<boolean>(false)
   const [estimateSeason, setEstimateSeason] = useState(0)
   const [estimateDay, setEstimateDay] = useState(1)
   const [estimateTime, setEstimateTime] = useState<number | null>(null)
@@ -260,6 +262,25 @@ export function NPCs({ selectedSaveId, onNavigateToItem, onInstallNpcLocationsMo
     }
     return options
   }
+
+  useEffect(() => {
+    const checkStatus = async () => {
+      const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__
+      if (!isTauri) return
+      try {
+        const { invoke } = await import("@tauri-apps/api/core")
+        const status = await invoke<{ pipeConnected: boolean; gameRunning: boolean }>("check_pipe_status")
+        setPipeConnected(status.pipeConnected)
+        setGameRunning(status.gameRunning)
+      } catch {
+        setPipeConnected(false)
+        setGameRunning(false)
+      }
+    }
+    checkStatus()
+    const timer = setInterval(checkStatus, 5000)
+    return () => clearInterval(timer)
+  }, [])
 
   useEffect(() => {
     let canceled = false
@@ -656,21 +677,27 @@ export function NPCs({ selectedSaveId, onNavigateToItem, onInstallNpcLocationsMo
         </label>
       </div>
 
-      {locationError && (
+      {locationSource === "mod" && !pipeConnected ? (
+        <div className="flex flex-col gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-3 text-sm text-amber-700 dark:text-amber-300 md:flex-row md:items-center md:justify-between">
+          <span>{t("fishingMap.pipeNotConnected", { defaultValue: "助手应用未运行，实时位置不可用。" })}</span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 shrink-0 gap-2 border-amber-500/40 bg-background/80 text-amber-700 hover:bg-amber-500/10 dark:text-amber-300"
+            onClick={() => void onInstallNpcLocationsMod()}
+          >
+            <PackagePlus className="h-4 w-4" />
+            {t("npcs.installLocationsModButton")}
+          </Button>
+        </div>
+      ) : locationSource === "mod" && pipeConnected && !gameRunning ? (
+        <div className="flex flex-col gap-3 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-3 text-sm text-blue-700 dark:text-blue-300">
+          <span>{t("fishingMap.pipeConnectedNoData", { defaultValue: "Mod 已连接，请加载存档以启用实时位置。" })}</span>
+        </div>
+      ) : locationError && (
         <div className="flex flex-col gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-3 text-sm text-amber-700 dark:text-amber-300 md:flex-row md:items-center md:justify-between">
           <span>{locationError}</span>
-          {locationSource === "mod" && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-8 shrink-0 gap-2 border-amber-500/40 bg-background/80 text-amber-700 hover:bg-amber-500/10 dark:text-amber-300"
-              onClick={() => void onInstallNpcLocationsMod()}
-            >
-              <PackagePlus className="h-4 w-4" />
-              {t("npcs.installLocationsModButton")}
-            </Button>
-          )}
         </div>
       )}
 
