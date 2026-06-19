@@ -1,7 +1,7 @@
 {
   "Name": "Stardew Valley Assistant",
   "Author": "Stardew Valley Assistant",
-  "Version": "1.0.0",
+  "Version": "1.1.0",
   "Description": "Provides live game data (NPC locations, item prices) for Stardew Valley Assistant.",
   "UniqueID": "StardewValleyAssistant",
   "EntryDll": "StardewValleyAssistant.dll",

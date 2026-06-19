@@ -465,24 +465,31 @@ pub fn install_mod_from_zip_sync(game_dir: String, zip_path: String) -> Result<V
     }
 
     let mut installed_any = false;
-    let entries = match fs::read_dir(&extract_dir) {
-        Ok(e) => e,
-        Err(e) => {
-            cleanup();
-            return Err(format!("读取解压目录失败: {}", e));
-        }
+
+    // Collect top-level entries to decide install strategy
+    let top_entries: Vec<_> = fs::read_dir(&extract_dir)
+        .map_err(|e| format!("读取解压目录失败: {}", e))?
+        .filter_map(|e| e.ok())
+        .collect();
+
+    // Determine the copy target directory under Mods/.
+    // If the zip has a single top-level folder, use it directly (standard mod layout).
+    // Otherwise (files at root or multiple folders), create a subfolder from the zip filename.
+    let install_target = if top_entries.len() == 1 && top_entries[0].path().is_dir() {
+        mods_path.clone()
+    } else {
+        let folder_name = source_zip
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("UnknownMod");
+        let target = mods_path.join(folder_name);
+        fs::create_dir_all(&target).map_err(|e| format!("创建模组子目录失败: {}", e))?;
+        target
     };
 
-    for entry in entries {
-        let entry = match entry {
-            Ok(e) => e,
-            Err(err) => {
-                cleanup();
-                return Err(format!("读取解压项失败: {}", err));
-            }
-        };
+    for entry in &top_entries {
         let source = entry.path();
-        let target = mods_path.join(entry.file_name());
+        let target = install_target.join(entry.file_name());
 
         if target.exists() {
             if target.is_dir() {

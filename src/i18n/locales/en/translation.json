@@ -1285,8 +1285,8 @@
     "smapiDetecting": "Detecting SMAPI...",
     "smapiNotInstalled": "SMAPI: Not Installed",
     "gameRunningLocked": "Game Running: Modifications Locked",
-    "installRealtimeMod": "Install Real-time Location Mod",
-    "installRealtimeModTooltip": "Install NPC real-time location reading Mod",
+    "installRealtimeMod": "Install Assistant Link Mod",
+    "installRealtimeModTooltip": "Install the mod that links with the assistant",
     "gameRunningModDisabled": "Cannot install mods while game is running",
     "categories": {
       "all": "All",

@@ -28,7 +28,8 @@ public sealed class ModEntry : Mod
     private NamedPipeClientStream? PipeStream;
     private StreamWriter? PipeWriter;
     private CancellationTokenSource? CancellationToken;
-    private bool IsConnected;
+    private volatile bool IsConnected;
+    private Thread? ConnectThread;
 
     public override void Entry(IModHelper helper)
     {
@@ -55,6 +56,11 @@ public sealed class ModEntry : Mod
         {
             this.SendNpcLocations();
         }
+        else
+        {
+            // Connection lost or never established — try to reconnect
+            this.EnsureConnected();
+        }
     }
 
     private void OnReturnedToTitle(object? sender, ReturnedToTitleEventArgs e)
@@ -68,29 +74,63 @@ public sealed class ModEntry : Mod
         if (this.IsConnected && this.PipeStream?.IsConnected == true)
             return;
 
-        try
+        // Stop any existing connection attempt
+        this.Disconnect();
+        this.CancellationToken = new CancellationTokenSource();
+
+        // Spawn a background thread that retries connection until success
+        var token = this.CancellationToken.Token;
+        this.ConnectThread = new Thread(() => this.ConnectLoop(token))
         {
-            this.Disconnect();
+            IsBackground = true,
+            Name = "SVA-PipeConnect",
+        };
+        this.ConnectThread.Start();
+    }
 
-            this.CancellationToken = new CancellationTokenSource();
-            this.PipeStream = new NamedPipeClientStream(".", PipeName, PipeDirection.InOut);
-            this.PipeStream.Connect(5000); // 5 second timeout
-
-            this.PipeWriter = new StreamWriter(this.PipeStream, Encoding.UTF8)
+    private void ConnectLoop(CancellationToken token)
+    {
+        while (!token.IsCancellationRequested)
+        {
+            try
             {
-                AutoFlush = true,
-            };
+                var stream = new NamedPipeClientStream(".", PipeName, PipeDirection.InOut);
+                stream.Connect(5000);
 
-            this.IsConnected = true;
-            this.Monitor.Log("已连接到助手管道", LogLevel.Debug);
+                if (token.IsCancellationRequested)
+                {
+                    stream.Dispose();
+                    return;
+                }
 
-            // Start reading responses in background
-            _ = Task.Run(() => this.ReadResponsesAsync());
-        }
-        catch (Exception ex)
-        {
-            this.Monitor.Log($"连接管道失败: {ex.Message}", LogLevel.Debug);
-            this.IsConnected = false;
+                this.PipeStream = stream;
+                this.PipeWriter = new StreamWriter(stream, Encoding.UTF8)
+                {
+                    AutoFlush = true,
+                };
+
+                this.IsConnected = true;
+                this.Monitor.Log("已连接到助手管道", LogLevel.Debug);
+
+                // Start reading responses in background
+                _ = Task.Run(() => this.ReadResponsesAsync());
+                return; // Connection succeeded, exit retry loop
+            }
+            catch (TimeoutException)
+            {
+                // Expected when assistant is not running — keep retrying
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                this.Monitor.Log($"连接管道失败: {ex.Message}", LogLevel.Debug);
+            }
+
+            // Wait before retrying
+            Thread.Sleep(3000);
         }
     }
 
@@ -98,6 +138,7 @@ public sealed class ModEntry : Mod
     {
         this.IsConnected = false;
         this.CancellationToken?.Cancel();
+        this.ConnectThread = null;
         this.PipeWriter?.Dispose();
         this.PipeStream?.Dispose();
         this.PipeWriter = null;
@@ -107,19 +148,21 @@ public sealed class ModEntry : Mod
 
     private async Task ReadResponsesAsync()
     {
-        if (this.PipeStream == null)
+        var stream = this.PipeStream;
+        if (stream == null)
             return;
 
         try
         {
-            using var reader = new StreamReader(this.PipeStream, Encoding.UTF8, leaveOpen: true);
+            using var reader = new StreamReader(stream, Encoding.UTF8, leaveOpen: true);
             while (!this.CancellationToken?.IsCancellationRequested ?? true)
             {
                 var line = await reader.ReadLineAsync();
                 if (line == null)
                 {
-                    // Connection closed
+                    // Connection closed — mark disconnected so EnsureConnected can retry
                     this.IsConnected = false;
+                    this.Monitor.Log("管道连接已断开，等待重连...", LogLevel.Debug);
                     break;
                 }
 

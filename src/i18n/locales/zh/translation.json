@@ -1155,8 +1155,8 @@
     "smapiDetecting": "正在检测 SMAPI...",
     "smapiNotInstalled": "SMAPI: 未安装",
     "gameRunningLocked": "游戏运行中：已锁定修改",
-    "installRealtimeMod": "安装实时位置 Mod",
-    "installRealtimeModTooltip": "安装村民关系实时位置读取 Mod",
+    "installRealtimeMod": "安装助手联动 Mod",
+    "installRealtimeModTooltip": "安装与助手联动的 Mod",
     "gameRunningModDisabled": "游戏运行中，不能安装模组",
     "categories": {
       "all": "全部",

@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react"
+import { useState, useMemo, useCallback, useRef, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -18,7 +18,60 @@ import {
   ChevronRight,
   ChevronDown,
   Folder,
+  FolderHeart,
+  Save,
+  Upload,
+  Play,
+  Plus,
+  FileJson,
 } from "lucide-react"
+
+// ---- Profile types (mirrored from ModProfiles) ----
+interface ModStateEntry {
+  folderName: string
+  isEnabled: boolean
+}
+interface ModProfile {
+  id: string
+  name: string
+  modStates: ModStateEntry[]
+  createdAt: string
+  updatedAt: string
+}
+
+async function getTauriInvoke() {
+  if (typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__) {
+    try {
+      const mod = await import("@tauri-apps/api/core")
+      return mod.invoke
+    } catch (err) {
+      console.error("Failed to load Tauri core invoke plugin", err)
+    }
+  }
+  return null
+}
+async function getTauriDialogSave() {
+  if (typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__) {
+    try {
+      const mod = await import("@tauri-apps/plugin-dialog")
+      return mod.save
+    } catch (err) {
+      console.error("Failed to load Tauri dialog plugin", err)
+    }
+  }
+  return null
+}
+async function getTauriDialogOpen() {
+  if (typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__) {
+    try {
+      const mod = await import("@tauri-apps/plugin-dialog")
+      return mod.open
+    } catch (err) {
+      console.error("Failed to load Tauri dialog plugin", err)
+    }
+  }
+  return null
+}
 
 export interface ModConfigField {
   key: string
@@ -70,6 +123,10 @@ interface ModListProps {
   isGameRunning?: boolean
   translationSyncingModIds?: Set<string>
   confirm: (options: { title: string; message: string; confirmText?: string; cancelText?: string; variant?: "default" | "destructive" }) => Promise<boolean>
+  // Profile props (inlined from ModProfiles)
+  currentMods: { folderName: string; isEnabled: boolean; name: string }[]
+  onApplyProfile: (modStates: ModStateEntry[]) => Promise<void>
+  showToast: (message: string, type: "success" | "info" | "warning") => void
 }
 
 /** A node in the mod folder tree */
@@ -107,11 +164,9 @@ function buildModTree(mods: Mod[]): FolderNode[] {
     current.mods.push(mod)
   }
 
-  // If root has top-level mods, return only root (children will be rendered recursively inside it)
   if (root.mods.length > 0) {
     return [root]
   }
-  // If root has no mods, return children directly (skip the empty root wrapper)
   return root.children
 }
 
@@ -122,6 +177,19 @@ function countModsInNode(node: FolderNode): number {
     count += countModsInNode(child)
   }
   return count
+}
+
+function formatTimestamp(ts: string): string {
+  const num = parseInt(ts)
+  if (isNaN(num)) return ts
+  const date = new Date(num)
+  return date.toLocaleString("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  })
 }
 
 export function ModList({
@@ -147,13 +215,15 @@ export function ModList({
   isGameRunning = false,
   translationSyncingModIds = new Set(),
   confirm,
+  currentMods,
+  onApplyProfile,
+  showToast,
 }: ModListProps) {
   const { t } = useTranslation()
   const lockedTitle = isGameRunning ? t("mods.toast.gameRunningNoModify") : undefined
 
-  // Track which folder paths are expanded (default: all expanded)
+  // ---- Folder expand state ----
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => {
-    // Initialize with all folder paths expanded
     const paths = new Set<string>()
     for (const mod of filteredMods) {
       if (mod.parentPath) paths.add(mod.parentPath)
@@ -161,10 +231,8 @@ export function ModList({
     return paths
   })
 
-  // Build tree structure from filtered mods
   const modTree = useMemo(() => buildModTree(filteredMods), [filteredMods])
 
-  // Auto-expand new folders when tree changes
   useMemo(() => {
     const allPaths = new Set<string>()
     const collectPaths = (nodes: FolderNode[]) => {
@@ -199,330 +267,581 @@ export function ModList({
     })
   }, [])
 
-  /** Render a single mod card */
-  const renderModCard = useCallback((mod: Mod) => {
+  // ---- Profile dropdown state ----
+  const [profileOpen, setProfileOpen] = useState(false)
+  const [profiles, setProfiles] = useState<ModProfile[]>([])
+  const [profilesLoading, setProfilesLoading] = useState(false)
+  const [showSaveForm, setShowSaveForm] = useState(false)
+  const [newProfileName, setNewProfileName] = useState("")
+  const [isSaving, setIsSaving] = useState(false)
+  const [isApplyingId, setIsApplyingId] = useState<string | null>(null)
+  const profileRef = useRef<HTMLDivElement>(null)
+
+  // Close profile dropdown on outside click
+  useEffect(() => {
+    if (!profileOpen) return
+    const handler = (e: MouseEvent) => {
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
+        setProfileOpen(false)
+        setShowSaveForm(false)
+      }
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [profileOpen])
+
+  const loadProfiles = useCallback(async () => {
+    setProfilesLoading(true)
+    const invoke = await getTauriInvoke()
+    if (invoke) {
+      try {
+        const result = await invoke("list_profiles") as ModProfile[]
+        setProfiles(result)
+      } catch (err: any) {
+        console.error("Failed to load profiles:", err)
+      }
+    } else {
+      const stored = localStorage.getItem("stardewModProfiles")
+      if (stored) {
+        try { setProfiles(JSON.parse(stored)) } catch {}
+      }
+    }
+    setProfilesLoading(false)
+  }, [])
+
+  const handleProfileToggle = useCallback(() => {
+    const next = !profileOpen
+    setProfileOpen(next)
+    if (next && profiles.length === 0) loadProfiles()
+  }, [profileOpen, profiles.length, loadProfiles])
+
+  const handleSaveProfile = useCallback(async () => {
+    if (isGameRunning) { showToast(t("mods.profiles.cannotSaveRunning"), "warning"); return }
+    if (!newProfileName.trim()) { showToast(t("mods.profiles.toastEnterName"), "warning"); return }
+    setIsSaving(true)
+    const modStates: ModStateEntry[] = currentMods.map((m) => ({ folderName: m.folderName, isEnabled: m.isEnabled }))
+    const invoke = await getTauriInvoke()
+    if (invoke) {
+      try {
+        const profile = await invoke("save_profile", { name: newProfileName.trim(), modStates }) as ModProfile
+        setProfiles((prev) => [profile, ...prev.filter((p) => p.id !== profile.id)])
+        showToast(t("mods.profiles.toastSaved", { name: newProfileName.trim() }), "success")
+        setNewProfileName(""); setShowSaveForm(false)
+      } catch (err: any) {
+        showToast(t("mods.profiles.toastSaveFailed", { error: err }), "warning")
+      }
+    } else {
+      const now = Date.now().toString()
+      const profile: ModProfile = {
+        id: newProfileName.trim().toLowerCase().replace(/[^a-z0-9-_]/g, "-"),
+        name: newProfileName.trim(), modStates, createdAt: now, updatedAt: now
+      }
+      const newProfiles = [profile, ...profiles.filter((p) => p.id !== profile.id)]
+      setProfiles(newProfiles)
+      localStorage.setItem("stardewModProfiles", JSON.stringify(newProfiles))
+      showToast(t("mods.profiles.toastSaved", { name: newProfileName.trim() }), "success")
+      setNewProfileName(""); setShowSaveForm(false)
+    }
+    setIsSaving(false)
+  }, [isGameRunning, newProfileName, currentMods, profiles, showToast, t])
+
+  const handleApplyProfile = useCallback(async (profile: ModProfile) => {
+    if (isGameRunning) { showToast(t("mods.profiles.cannotApplyRunning"), "warning"); return }
+    setIsApplyingId(profile.id)
+    try {
+      await onApplyProfile(profile.modStates)
+      showToast(t("mods.profiles.toastApplied", { name: profile.name, count: profile.modStates.length }), "success")
+    } catch (err: any) {
+      showToast(t("mods.profiles.toastApplyFailed", { error: err }), "warning")
+    }
+    setIsApplyingId(null)
+    setProfileOpen(false)
+  }, [isGameRunning, onApplyProfile, showToast, t])
+
+  const handleDeleteProfile = useCallback(async (profile: ModProfile) => {
+    if (isGameRunning) { showToast(t("mods.profiles.cannotDeleteRunning"), "warning"); return }
+    if (!await confirm({ title: t("mods.profiles.deleteProfile", "删除模组配置"), message: t("mods.profiles.confirmDelete", { name: profile.name }), variant: "destructive" })) return
+    const invoke = await getTauriInvoke()
+    if (invoke) {
+      try {
+        await invoke("delete_profile", { profileId: profile.id })
+        setProfiles((prev) => prev.filter((p) => p.id !== profile.id))
+        showToast(t("mods.profiles.toastDeleted", { name: profile.name }), "info")
+      } catch (err: any) {
+        showToast(t("mods.profiles.toastDeleteFailed", { error: err }), "warning")
+      }
+    } else {
+      const newProfiles = profiles.filter((p) => p.id !== profile.id)
+      setProfiles(newProfiles)
+      localStorage.setItem("stardewModProfiles", JSON.stringify(newProfiles))
+      showToast(t("mods.profiles.toastDeleted", { name: profile.name }), "info")
+    }
+  }, [isGameRunning, profiles, confirm, showToast, t])
+
+  const handleExportProfile = useCallback(async (profile: ModProfile) => {
+    const invoke = await getTauriInvoke()
+    const dialogSave = await getTauriDialogSave()
+    if (invoke && dialogSave) {
+      try {
+        const filePath = await dialogSave({ filters: [{ name: "Mod Profile", extensions: ["json"] }], defaultPath: `${profile.name}.json` })
+        if (filePath) {
+          await invoke("export_profile_to_file", { profile, filePath })
+          showToast(t("mods.profiles.toastExported", { path: filePath }), "success")
+        }
+      } catch (err: any) {
+        showToast(t("mods.profiles.toastExportFailed", { error: err }), "warning")
+      }
+    } else {
+      const jsonStr = JSON.stringify(profile, null, 2)
+      const blob = new Blob([jsonStr], { type: "application/json" })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a"); a.href = url; a.download = `${profile.name}.json`; a.click()
+      URL.revokeObjectURL(url)
+      showToast(t("mods.profiles.toastExported", { path: `${profile.name}.json` }), "success")
+    }
+  }, [showToast, t])
+
+  const handleImportProfile = useCallback(async () => {
+    if (isGameRunning) { showToast(t("mods.profiles.cannotImportRunning"), "warning"); return }
+    const invoke = await getTauriInvoke()
+    const dialogOpen = await getTauriDialogOpen()
+    if (invoke && dialogOpen) {
+      try {
+        const filePath = await dialogOpen({ filters: [{ name: "Mod Profile", extensions: ["json"] }], multiple: false, directory: false })
+        if (filePath) {
+          const pathStr = typeof filePath === "string" ? filePath : (filePath as any).path || filePath[0]
+          const profile = await invoke("import_profile_from_file", { filePath: pathStr }) as ModProfile
+          setProfiles((prev) => [profile, ...prev.filter((p) => p.id !== profile.id)])
+          showToast(t("mods.profiles.toastImported", { name: profile.name }), "success")
+        }
+      } catch (err: any) {
+        showToast(t("mods.profiles.toastImportFailed", { error: err }), "warning")
+      }
+    } else {
+      const input = document.createElement("input")
+      input.type = "file"; input.accept = ".json"
+      input.onchange = async (e) => {
+        const file = (e.target as HTMLInputElement).files?.[0]
+        if (!file) return
+        try {
+          const text = await file.text()
+          const profileData = JSON.parse(text) as ModProfile
+          const now = Date.now().toString()
+          const profile: ModProfile = { ...profileData, id: profileData.id + "-imported-" + now, updatedAt: now }
+          if (!profile.createdAt) profile.createdAt = now
+          setProfiles((prev) => [profile, ...prev])
+          showToast(t("mods.profiles.toastImported", { name: profile.name }), "success")
+        } catch (err: any) {
+          showToast(t("mods.profiles.toastImportFailed", { error: err }), "warning")
+        }
+      }
+      input.click()
+    }
+  }, [isGameRunning, showToast, t])
+
+  /** Render a single mod row (compact) */
+  const renderModRow = useCallback((mod: Mod) => {
     const hasUpdate = !!mod.latestVersion && mod.version !== mod.latestVersion
     const isSelected = mod.id === selectedModId
     const isSyncingTranslation = translationSyncingModIds.has(mod.id)
     return (
       <div
         key={mod.id}
-        className={`group relative p-4 rounded-xl border transition-all duration-200 cursor-pointer ${
+        className={`group flex items-center gap-2 px-3 py-2 border-b border-border/40 cursor-pointer transition-colors ${
           isSelected
-            ? "bg-accent/40 dark:bg-accent/20 border-primary shadow-md ring-1 ring-primary/20"
-            : "bg-card hover:bg-accent/30 dark:hover:bg-accent/10 border-border hover:border-border-accent shadow-sm"
-        } ${!mod.isEnabled ? "opacity-65 hover:opacity-85" : ""}`}
+            ? "bg-accent/50 dark:bg-accent/25 border-l-2 border-l-primary"
+            : "hover:bg-accent/30 dark:hover:bg-accent/10 border-l-2 border-l-transparent"
+        } ${!mod.isEnabled ? "opacity-55" : ""}`}
         onClick={() => setSelectedModId(mod.id)}
       >
-        {/* Update Indicator Side-Border */}
-        {hasUpdate && mod.isEnabled && (
-          <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500 rounded-l-xl" />
-        )}
-
-        <div className="flex items-start justify-between gap-4">
-          {/* Left: Checkbox & Meta */}
-          <div className="flex items-start gap-3 flex-1 min-w-0">
-            {/* Status Toggle Switch (Small) */}
-            <div
-              className="mt-1 flex-shrink-0"
-              onClick={(e) => {
-                e.stopPropagation()
-                if (isGameRunning) return
-                onToggleMod(mod.id)
-              }}
-            >
-              <button
-                type="button"
-                disabled={isGameRunning}
-                title={lockedTitle}
-                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
-                  mod.isEnabled ? "bg-primary" : "bg-muted-foreground/30"
-                } ${isGameRunning ? "cursor-not-allowed opacity-60" : ""}`}
-              >
-                <span
-                  className={`pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg ring-0 transition-transform ${
-                    mod.isEnabled ? "translate-x-4.5" : "translate-x-0.5"
-                  }`}
-                />
-              </button>
-            </div>
-
-            {/* Mod Names */}
-            <div className="min-w-0">
-              <div className="flex items-center flex-wrap gap-x-2 gap-y-1">
-                <h4 className="font-bold text-base truncate group-hover:text-primary transition-colors">
-                  {mod.name}
-                </h4>
-                {isSyncingTranslation && (
-                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-sky-600 dark:text-sky-400 bg-sky-500/10 border border-sky-500/20 rounded-md px-1.5 py-0.5">
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                    {t("mods.translationLibrary")}
-                  </span>
-                )}
-                <span className="text-xs text-muted-foreground font-mono truncate max-w-[140px] lg:max-w-xs">
-                  {mod.englishName}
-                </span>
-              </div>
-              <p className="text-xs text-muted-foreground mt-1 font-medium">
-                {t("mods.list.authorVersion", { author: mod.author, version: mod.version })}
-                {hasUpdate && (
-                  <span className="text-amber-600 dark:text-amber-400"> → v{mod.latestVersion}</span>
-                )}
-              </p>
-              <p className="text-xs text-muted-foreground/80 mt-1 line-clamp-1">
-                {mod.description}
-              </p>
-            </div>
-          </div>
-
-          {/* Right: Badges & Trash */}
-          <div className="flex flex-col items-end gap-2 flex-shrink-0">
-            <Badge
-              variant="secondary"
-              className={`text-[10px] font-bold py-0.5 px-2 rounded-md ${
-                mod.category === "core"
-                  ? "bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300 border border-purple-200/50 dark:border-purple-900/40"
-                  : mod.category === "content"
-                  ? "bg-pink-100 text-pink-700 dark:bg-pink-950/40 dark:text-pink-300 border border-pink-200/50 dark:border-pink-900/40"
-                  : mod.category === "expansion"
-                  ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200/50 dark:border-emerald-900/40"
-                  : "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200/50 dark:border-blue-900/40"
+        {/* Toggle */}
+        <div
+          className="flex-shrink-0"
+          onClick={(e) => {
+            e.stopPropagation()
+            if (isGameRunning) return
+            onToggleMod(mod.id)
+          }}
+        >
+          <button
+            type="button"
+            disabled={isGameRunning}
+            title={lockedTitle}
+            className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center rounded-full transition-colors ${
+              mod.isEnabled ? "bg-primary" : "bg-muted-foreground/30"
+            } ${isGameRunning ? "cursor-not-allowed opacity-60" : ""}`}
+          >
+            <span
+              className={`pointer-events-none block h-3 w-3 rounded-full bg-background shadow-sm ring-0 transition-transform ${
+                mod.isEnabled ? "translate-x-3.5" : "translate-x-0.5"
               }`}
-            >
-              {categoryMap[mod.category] || mod.category}
-            </Badge>
+            />
+          </button>
+        </div>
 
-            {/* Has Update Badge */}
-            {hasUpdate ? (
-              <Badge className="bg-amber-500 hover:bg-amber-600 text-white border-none text-[10px] font-bold flex items-center gap-0.5 py-0.5 px-1.5 animate-pulse rounded-md">
-                {t("mods.list.upgradable", { version: mod.latestVersion })}
-              </Badge>
-            ) : (
-              <Badge variant="outline" className="text-[10px] text-green-600 dark:text-green-400 border-green-200 dark:border-green-900/40 bg-green-500/5 dark:bg-green-500/2 py-0.5 px-1.5 rounded-md">
-                {mod.latestVersion ? t("mods.list.latestVersion", { version: mod.latestVersion }) : t("mods.list.latestVersionShort")}
-              </Badge>
+        {/* Name */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5">
+            <span className="text-sm font-semibold truncate group-hover:text-primary transition-colors">
+              {mod.name}
+            </span>
+            {isSyncingTranslation && (
+              <Loader2 className="h-3 w-3 animate-spin text-sky-500 flex-shrink-0" />
             )}
-
-            {/* Delete Button (Only displays on hover/select) */}
-            <button
-              onClick={async (e) => {
-                e.stopPropagation()
-                if (isGameRunning) return
-                if (await confirm({ title: t("mods.list.removeMod"), message: t("mods.list.confirmRemove", { name: mod.name }), variant: "destructive" })) {
-                  onDeleteMod(mod.id)
-                }
-              }}
-              className={`opacity-0 group-hover:opacity-100 p-1 rounded transition-all mt-1 ${
-                isGameRunning
-                  ? "text-muted-foreground/50 cursor-not-allowed"
-                  : "hover:bg-destructive/15 text-muted-foreground hover:text-destructive"
-              }`}
-              disabled={isGameRunning}
-              title={isGameRunning ? t("mods.list.cannotRemoveRunning") : t("mods.list.removeMod")}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
+            {hasUpdate && mod.isEnabled && (
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 flex-shrink-0" />
+            )}
           </div>
         </div>
+
+        {/* Version */}
+        <span className="text-[10px] text-muted-foreground font-mono flex-shrink-0 hidden sm:inline">
+          v{mod.version}
+        </span>
+
+        {/* Category Badge */}
+        <Badge
+          variant="secondary"
+          className={`text-[9px] font-bold py-0 px-1.5 rounded flex-shrink-0 ${
+            mod.category === "core"
+              ? "bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300"
+              : mod.category === "content"
+              ? "bg-pink-100 text-pink-700 dark:bg-pink-950/40 dark:text-pink-300"
+              : mod.category === "expansion"
+              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
+              : "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300"
+          }`}
+        >
+          {categoryMap[mod.category] || mod.category}
+        </Badge>
+
+        {/* Delete (hover) */}
+        <button
+          onClick={async (e) => {
+            e.stopPropagation()
+            if (isGameRunning) return
+            if (await confirm({ title: t("mods.list.removeMod"), message: t("mods.list.confirmRemove", { name: mod.name }), variant: "destructive" })) {
+              onDeleteMod(mod.id)
+            }
+          }}
+          className={`opacity-0 group-hover:opacity-100 p-1 rounded transition-all ${
+            isGameRunning
+              ? "text-muted-foreground/50 cursor-not-allowed"
+              : "hover:bg-destructive/15 text-muted-foreground hover:text-destructive"
+          }`}
+          disabled={isGameRunning}
+          title={isGameRunning ? t("mods.list.cannotRemoveRunning") : t("mods.list.removeMod")}
+        >
+          <Trash2 className="h-3 w-3" />
+        </button>
       </div>
     )
-  }, [selectedModId, setSelectedModId, onToggleMod, onDeleteMod, categoryMap, isGameRunning, lockedTitle, t, translationSyncingModIds])
+  }, [selectedModId, setSelectedModId, onToggleMod, onDeleteMod, categoryMap, isGameRunning, lockedTitle, t, translationSyncingModIds, confirm])
 
   /** Render a folder node and its children recursively */
   const renderFolderNode = useCallback((node: FolderNode, depth: number): React.ReactNode => {
-    const isRoot = !node.fullPath // top-level mods (no parent folder)
+    const isRoot = !node.fullPath
     const isExpanded = isRoot || expandedFolders.has(node.fullPath)
     const modCount = countModsInNode(node)
 
-    // Collect all direct mod items for this node
-    const modCards = node.mods.map((mod) => renderModCard(mod))
+    const modRows = node.mods.map((mod) => renderModRow(mod))
 
-    // If this is the root node (top-level mods), render without folder header
     if (isRoot) {
       return (
-        <div key="__root" className="space-y-3">
-          {modCards}
+        <div key="__root">
+          {modRows}
           {node.children.map((child) => renderFolderNode(child, depth))}
         </div>
       )
     }
 
     return (
-      <div key={node.fullPath} className="space-y-2">
+      <div key={node.fullPath}>
         {/* Folder Header */}
         <button
           onClick={() => toggleFolder(node.fullPath)}
-          className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg bg-accent/50 dark:bg-accent/20 border border-border/60 hover:bg-accent/70 dark:hover:bg-accent/30 transition-colors text-left group"
-          style={{ paddingLeft: `${depth * 16 + 12}px` }}
+          className="w-full flex items-center gap-1.5 px-3 py-1.5 bg-accent/30 dark:bg-accent/10 border-b border-border/30 hover:bg-accent/50 dark:hover:bg-accent/20 transition-colors text-left group"
+          style={{ paddingLeft: `${depth * 12 + 12}px` }}
         >
           {isExpanded ? (
-            <ChevronDown className="h-4 w-4 text-muted-foreground flex-shrink-0 transition-transform" />
+            <ChevronDown className="h-3 w-3 text-muted-foreground flex-shrink-0" />
           ) : (
-            <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0 transition-transform" />
+            <ChevronRight className="h-3 w-3 text-muted-foreground flex-shrink-0" />
           )}
-          <Folder className="h-4 w-4 text-amber-500 flex-shrink-0" />
-          <span className="font-bold text-sm text-foreground truncate">{node.name}</span>
-          <span className="text-[11px] text-muted-foreground ml-auto flex-shrink-0">
-            {modCount} {modCount === 1 ? "mod" : "mods"}
+          <Folder className="h-3 w-3 text-amber-500 flex-shrink-0" />
+          <span className="font-semibold text-xs text-foreground truncate">{node.name}</span>
+          <span className="text-[10px] text-muted-foreground ml-auto flex-shrink-0">
+            {modCount}
           </span>
         </button>
 
         {/* Folder Contents */}
         {isExpanded && (
-          <div className="space-y-2" style={{ paddingLeft: `${(depth + 1) * 16}px` }}>
-            {modCards}
+          <div style={{ paddingLeft: `${(depth + 1) * 12}px` }}>
+            {modRows}
             {node.children.map((child) => renderFolderNode(child, depth + 1))}
           </div>
         )}
       </div>
     )
-  }, [expandedFolders, toggleFolder, renderModCard])
+  }, [expandedFolders, toggleFolder, renderModRow])
 
   return (
-    <div className="space-y-4">
-      {/* Toolbar / Actions Bar */}
-      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
-        {/* Left Search */}
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4.5 w-4.5 text-muted-foreground" />
-          <Input
-            placeholder={t("mods.list.searchPlaceholder")}
-            className="pl-11 h-10 bg-card border border-border shadow-sm rounded-xl focus-visible:ring-primary focus-visible:ring-primary transition-all text-xs"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.currentTarget.value)}
-          />
-          {searchTerm && (
-            <button
-              onClick={() => setSearchTerm("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 text-muted-foreground hover:text-foreground rounded"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
-        </div>
+    <div className="h-full flex flex-col overflow-hidden">
+      {/* Toolbar */}
+      <div className="flex-shrink-0 px-3 py-2 border-b border-border/60 space-y-2">
+        {/* Row 1: Search + Actions */}
+        <div className="flex items-center gap-1.5">
+          <div className="relative flex-1">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              placeholder={t("mods.list.searchPlaceholder")}
+              className="pl-8 h-8 bg-card border border-border text-xs rounded-lg"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.currentTarget.value)}
+            />
+            {searchTerm && (
+              <button
+                onClick={() => setSearchTerm("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-muted-foreground hover:text-foreground rounded"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            )}
+          </div>
 
-        {/* Right Action Buttons */}
-        <div className="flex flex-wrap items-center gap-2">
+          {/* Icon action buttons */}
           <Button
-            variant="outline"
+            variant="ghost"
             size="sm"
-            className="gap-2 h-10 border-border bg-card hover:bg-accent text-sm rounded-xl px-4 font-semibold"
+            className="h-8 w-8 p-0 hover:bg-accent"
             onClick={onScan}
             disabled={isScanning}
+            title={isScanning ? t("mods.list.scanning") : t("mods.list.scanDirectory")}
           >
-            {isScanning ? (
-              <Loader2 className="h-4 w-4 animate-spin text-primary" />
-            ) : (
-              <FolderOpen className="h-4 w-4 text-emerald-500" />
-            )}
-            {isScanning ? t("mods.list.scanning") : t("mods.list.scanDirectory")}
+            {isScanning ? <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" /> : <FolderOpen className="h-3.5 w-3.5 text-emerald-500" />}
           </Button>
-
           <Button
-            variant="outline"
+            variant="ghost"
             size="sm"
-            className="gap-2 h-10 border-border bg-card hover:bg-accent text-sm rounded-xl px-4 font-semibold"
+            className="h-8 w-8 p-0 hover:bg-accent"
             onClick={onCheckUpdates}
             disabled={isCheckingUpdates}
+            title={isCheckingUpdates ? t("mods.list.checkingUpdates") : t("mods.list.checkUpdates")}
           >
-            <RefreshCw className={`h-4 w-4 text-sky-500 ${isCheckingUpdates ? "animate-spin" : ""}`} />
-            {isCheckingUpdates ? t("mods.list.checkingUpdates") : t("mods.list.checkUpdates")}
+            <RefreshCw className={`h-3.5 w-3.5 text-sky-500 ${isCheckingUpdates ? "animate-spin" : ""}`} />
           </Button>
-
           <Button
-            variant="outline"
+            variant="ghost"
             size="sm"
-            className="gap-2 h-10 border-border bg-card hover:bg-accent text-sm rounded-xl px-4 font-semibold"
+            className="h-8 w-8 p-0 hover:bg-accent"
             onClick={onOpenFolder}
+            title={t("mods.list.openModsDir")}
           >
-            <FolderOpen className="h-4 w-4 text-amber-500" />
-            {t("mods.list.openModsDir")}
+            <FolderOpen className="h-3.5 w-3.5 text-amber-500" />
           </Button>
-
           <Button
-            variant="default"
+            variant="ghost"
             size="sm"
-            className="gap-2 h-10 bg-primary hover:bg-primary/95 text-primary-foreground text-sm font-semibold rounded-xl px-4 shadow-sm"
+            className="h-8 w-8 p-0 hover:bg-accent"
             onClick={onImportMod}
             disabled={isGameRunning}
-            title={lockedTitle}
+            title={t("mods.list.importMod")}
           >
-            <FileUp className="h-4 w-4" />
-            {t("mods.list.importMod")}
+            <FileUp className="h-3.5 w-3.5 text-primary" />
           </Button>
 
+          {/* Profile dropdown trigger */}
+          <div className="relative" ref={profileRef}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 w-8 p-0 hover:bg-accent"
+              onClick={handleProfileToggle}
+              title={t("mods.profiles.title")}
+            >
+              <FolderHeart className="h-3.5 w-3.5 text-primary" />
+            </Button>
+
+            {/* Profile dropdown panel */}
+            {profileOpen && (
+              <div className="absolute right-0 top-full mt-1 w-72 bg-card border border-border rounded-xl shadow-xl z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                {/* Header */}
+                <div className="flex items-center justify-between px-3 py-2 border-b border-border/60">
+                  <div className="flex items-center gap-1.5">
+                    <FolderHeart className="h-3.5 w-3.5 text-primary" />
+                    <span className="text-xs font-bold">{t("mods.profiles.title")}</span>
+                    <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4">{profiles.length}</Badge>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={handleImportProfile}
+                      disabled={isGameRunning}
+                      className="p-1 hover:bg-accent rounded text-muted-foreground hover:text-foreground transition-colors"
+                      title={t("mods.profiles.import")}
+                    >
+                      <Upload className="h-3 w-3" />
+                    </button>
+                    <button
+                      onClick={() => setShowSaveForm(!showSaveForm)}
+                      disabled={currentMods.length === 0 || isGameRunning}
+                      className="p-1 hover:bg-accent rounded text-muted-foreground hover:text-foreground transition-colors"
+                      title={t("mods.profiles.saveCurrent")}
+                    >
+                      <Save className="h-3 w-3" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Save form */}
+                {showSaveForm && (
+                  <div className="px-3 py-2 border-b border-border/60 bg-primary/5">
+                    <div className="flex gap-1.5">
+                      <Input
+                        placeholder={t("mods.profiles.namePlaceholder")}
+                        className="flex-1 h-7 text-xs bg-card border-border rounded-md"
+                        value={newProfileName}
+                        onChange={(e) => setNewProfileName(e.currentTarget.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") handleSaveProfile() }}
+                        disabled={isGameRunning}
+                        autoFocus
+                      />
+                      <Button
+                        size="sm"
+                        className="h-7 px-2 rounded-md text-[10px] gap-1"
+                        onClick={handleSaveProfile}
+                        disabled={isSaving || isGameRunning}
+                      >
+                        {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+                        {isSaving ? t("mods.profiles.saving") : t("mods.profiles.confirmSave")}
+                      </Button>
+                    </div>
+                    <p className="text-[9px] text-muted-foreground mt-1">
+                      {t("mods.profiles.saveFormDesc", { total: currentMods.length, enabled: currentMods.filter(m => m.isEnabled).length })}
+                    </p>
+                  </div>
+                )}
+
+                {/* Profile list */}
+                <div className="max-h-[280px] overflow-y-auto">
+                  {profilesLoading ? (
+                    <div className="py-6 flex flex-col items-center">
+                      <Loader2 className="h-5 w-5 text-primary/50 animate-spin mb-1" />
+                      <p className="text-[10px] text-muted-foreground">{t("mods.profiles.loading")}</p>
+                    </div>
+                  ) : profiles.length === 0 ? (
+                    <div className="py-6 flex flex-col items-center text-center">
+                      <FolderOpen className="h-6 w-6 text-muted-foreground/30 mb-1" />
+                      <p className="text-[10px] font-semibold text-muted-foreground">{t("mods.profiles.emptyTitle")}</p>
+                      <p className="text-[9px] text-muted-foreground/70 mt-0.5 max-w-[200px]">{t("mods.profiles.emptyDesc")}</p>
+                    </div>
+                  ) : (
+                    profiles.map((profile) => {
+                      const isApplying = isApplyingId === profile.id
+                      const enabled = profile.modStates.filter((m) => m.isEnabled).length
+                      return (
+                        <div
+                          key={profile.id}
+                          className="flex items-center gap-2 px-3 py-2 border-b border-border/30 last:border-0 hover:bg-accent/30 transition-colors group"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs font-semibold truncate">{profile.name}</span>
+                              <Badge variant="secondary" className="text-[9px] px-1 py-0 h-3.5 shrink-0">
+                                {enabled}/{profile.modStates.length}
+                              </Badge>
+                            </div>
+                            <p className="text-[9px] text-muted-foreground truncate">
+                              {formatTimestamp(profile.updatedAt)}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-0.5 shrink-0">
+                            <button
+                              onClick={() => handleApplyProfile(profile)}
+                              disabled={isApplying || isGameRunning}
+                              className="p-1 hover:bg-primary/10 text-primary rounded transition-colors"
+                              title={t("mods.profiles.apply")}
+                            >
+                              {isApplying ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+                            </button>
+                            <button
+                              onClick={() => handleExportProfile(profile)}
+                              className="p-1 hover:bg-accent text-muted-foreground hover:text-foreground rounded transition-colors opacity-0 group-hover:opacity-100"
+                              title={t("mods.profiles.exportProfile")}
+                            >
+                              <Download className="h-3 w-3" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteProfile(profile)}
+                              disabled={isGameRunning}
+                              className="p-1 hover:bg-destructive/10 text-muted-foreground hover:text-destructive rounded transition-colors opacity-0 group-hover:opacity-100"
+                              title={t("mods.profiles.deleteProfile")}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Row 2: Category Chips */}
+        <div className="flex gap-1 overflow-x-auto">
+          {(Object.keys(categoryMap) as Array<keyof typeof categoryMap>).map((catKey) => (
+            <button
+              key={catKey}
+              onClick={() => setSelectedCategory(catKey)}
+              className={`px-2.5 py-1 text-[10px] font-semibold rounded-md whitespace-nowrap transition-all ${
+                selectedCategory === catKey
+                  ? "bg-primary/10 text-primary border border-primary/20"
+                  : "text-muted-foreground hover:text-foreground hover:bg-accent/40 border border-transparent"
+              }`}
+            >
+              {categoryMap[catKey]}
+              {catKey !== "all" && (
+                <span className="ml-1 px-1 py-0 bg-muted dark:bg-muted/30 text-muted-foreground text-[9px] rounded-full">
+                  {mods.filter(m => m.category === catKey).length}
+                </span>
+              )}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Category Tabs */}
-      <div className="flex gap-1.5 p-1 bg-accent/30 dark:bg-accent/10 border border-border/80 rounded-xl overflow-x-auto max-w-full">
-        {(Object.keys(categoryMap) as Array<keyof typeof categoryMap>).map((catKey) => (
-          <button
-            key={catKey}
-            onClick={() => setSelectedCategory(catKey)}
-            className={`px-4 py-2 text-xs font-semibold rounded-lg whitespace-nowrap transition-all ${
-              selectedCategory === catKey
-                ? "bg-card text-primary shadow-sm border border-border/50"
-                : "text-muted-foreground hover:text-foreground hover:bg-card/40"
-            }`}
-          >
-            {categoryMap[catKey]}
-            {catKey !== "all" && (
-              <span className="ml-1.5 px-1.5 py-0.25 bg-muted dark:bg-muted/30 text-muted-foreground text-[10px] rounded-full">
-                {mods.filter(m => m.category === catKey).length}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
-
-      {/* List of Mod Cards */}
-      <div className="space-y-3 max-h-[640px] overflow-y-auto pr-1">
+      {/* Mod List (fills remaining space) */}
+      <div className="flex-1 overflow-y-auto">
         {isLoading ? (
-          <Card className="border border-dashed border-border py-16 flex flex-col items-center justify-center text-center">
-            <Loader2 className="h-10 w-10 text-primary/50 animate-spin mb-4" />
-            <h3 className="text-lg font-bold text-muted-foreground">{t("mods.list.scanningTitle")}</h3>
-            <p className="text-sm text-muted-foreground/70 max-w-xs mt-1">
-              {t("mods.list.scanningDesc")}
-            </p>
-          </Card>
+          <div className="py-16 flex flex-col items-center justify-center text-center">
+            <Loader2 className="h-8 w-8 text-primary/50 animate-spin mb-3" />
+            <h3 className="text-sm font-bold text-muted-foreground">{t("mods.list.scanningTitle")}</h3>
+            <p className="text-xs text-muted-foreground/70 max-w-xs mt-1">{t("mods.list.scanningDesc")}</p>
+          </div>
         ) : mods.length === 0 ? (
-          <Card className="border border-dashed border-border py-16 flex flex-col items-center justify-center text-center">
-            <PackageOpen className="h-12 w-12 text-muted-foreground/40 mb-3" />
-            <h3 className="text-lg font-bold text-muted-foreground">{t("mods.list.noModsTitle")}</h3>
-            <p className="text-sm text-muted-foreground/70 max-w-xs mt-1">
-              {t("mods.list.noModsDesc")}
-            </p>
-            <div className="flex gap-2 mt-4">
-              {onGoOnline && (
-                <Button
-                  variant="default"
-                  size="sm"
-                  className="gap-2 rounded-xl"
-                  onClick={onGoOnline}
-                >
-                  <Download className="h-4 w-4" />
-                  {t("mods.list.goNexusDownload")}
-                </Button>
-              )}
-            </div>
-          </Card>
+          <div className="py-16 flex flex-col items-center justify-center text-center">
+            <PackageOpen className="h-10 w-10 text-muted-foreground/40 mb-2" />
+            <h3 className="text-sm font-bold text-muted-foreground">{t("mods.list.noModsTitle")}</h3>
+            <p className="text-xs text-muted-foreground/70 max-w-xs mt-1">{t("mods.list.noModsDesc")}</p>
+            {onGoOnline && (
+              <Button variant="default" size="sm" className="gap-1.5 rounded-lg mt-3 text-xs" onClick={onGoOnline}>
+                <Download className="h-3.5 w-3.5" />
+                {t("mods.list.goNexusDownload")}
+              </Button>
+            )}
+          </div>
         ) : filteredMods.length === 0 ? (
-          <Card className="border border-dashed border-border py-16 flex flex-col items-center justify-center text-center">
-            <Puzzle className="h-12 w-12 text-muted-foreground/40 mb-3" />
-            <h3 className="text-lg font-bold text-muted-foreground">{t("mods.list.noResultsTitle")}</h3>
-            <p className="text-sm text-muted-foreground/70 max-w-xs mt-1">
-              {t("mods.list.noResultsDesc")}
-            </p>
-            <Button
-              variant="outline"
-              size="sm"
-              className="mt-4 rounded-xl"
-              onClick={() => { setSearchTerm(""); setSelectedCategory("all"); }}
-            >
+          <div className="py-16 flex flex-col items-center justify-center text-center">
+            <Puzzle className="h-10 w-10 text-muted-foreground/40 mb-2" />
+            <h3 className="text-sm font-bold text-muted-foreground">{t("mods.list.noResultsTitle")}</h3>
+            <p className="text-xs text-muted-foreground/70 max-w-xs mt-1">{t("mods.list.noResultsDesc")}</p>
+            <Button variant="outline" size="sm" className="mt-3 rounded-lg text-xs" onClick={() => { setSearchTerm(""); setSelectedCategory("all"); }}>
               {t("mods.list.clearFilters")}
             </Button>
-          </Card>
+          </div>
         ) : (
           modTree.map((rootNode) => renderFolderNode(rootNode, 0))
         )}

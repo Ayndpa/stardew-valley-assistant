@@ -3,15 +3,13 @@ import { Badge } from "@/components/ui/badge"
 import { useModManagement } from "@/hooks/useModManagement"
 import { useConfirm } from "@/hooks/useConfirm"
 import { Button } from "@/components/ui/button"
-import { Sliders, CheckCircle2, AlertTriangle, Info, X, PackagePlus } from "lucide-react"
+import { CheckCircle2, AlertTriangle, Info, X, PackagePlus, ArrowUpCircle, Trash2, Loader2 } from "lucide-react"
 import type { Page } from "@/App"
 
 // Import subcomponents
 import { SmapiInstaller } from "@/components/mods/SmapiInstaller"
-import { SmapiManager } from "@/components/mods/SmapiManager"
 import { ModList } from "@/components/mods/ModList"
 import { ModDetail } from "@/components/mods/ModDetail"
-import { ModProfiles } from "@/components/mods/ModProfiles"
 import type { QueueSmapiDownloadRequest } from "@/hooks/useDownloadManager"
 
 // Category Translations
@@ -59,8 +57,6 @@ export function Mods({ onNavigate, refreshSignal, isGameRunning = false, onQueue
     smapiLatestVersion,
     smapiMirror,
     setSmapiMirror,
-    isManagementOpen,
-    setIsManagementOpen,
     installStatus,
     installProgress,
     installError,
@@ -134,26 +130,26 @@ export function Mods({ onNavigate, refreshSignal, isGameRunning = false, onQueue
     }
   }
 
+  const isBusy = installStatus !== "idle"
+
   return (
-    <div
-      className="min-h-screen p-8 space-y-6 relative"
-    >
+    <div className="h-full flex flex-col overflow-hidden relative">
       {ConfirmDialogElement}
       {/* Toast Notification */}
       {toast && (
         <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 px-5 py-4 rounded-xl border shadow-xl animate-in slide-in-from-bottom-5 fade-in duration-300 ${
-          toast.type === "success" 
-            ? "bg-green-50/90 dark:bg-green-950/80 border-green-200 dark:border-green-800 text-green-800 dark:text-green-200" 
-            : toast.type === "warning" 
-            ? "bg-amber-50/90 dark:bg-amber-950/80 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200" 
+          toast.type === "success"
+            ? "bg-green-50/90 dark:bg-green-950/80 border-green-200 dark:border-green-800 text-green-800 dark:text-green-200"
+            : toast.type === "warning"
+            ? "bg-amber-50/90 dark:bg-amber-950/80 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200"
             : "bg-blue-50/90 dark:bg-blue-950/80 border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-200"
         }`}>
           {toast.type === "success" && <CheckCircle2 className="h-5 w-5 text-green-500 flex-shrink-0" />}
           {toast.type === "warning" && <AlertTriangle className="h-5 w-5 text-amber-500 flex-shrink-0" />}
           {toast.type === "info" && <Info className="h-5 w-5 text-blue-500 flex-shrink-0" />}
           <div className="text-sm font-medium pr-4">{toast.message}</div>
-          <button 
-            onClick={() => setToast(null)} 
+          <button
+            onClick={() => setToast(null)}
             className="p-1 rounded-lg hover:bg-black/10 dark:hover:bg-white/10 transition-colors ml-auto"
           >
             <X className="h-4 w-4" />
@@ -162,144 +158,225 @@ export function Mods({ onNavigate, refreshSignal, isGameRunning = false, onQueue
       )}
 
       {smapiStatus !== null && !smapiStatus.installed ? (
-        <SmapiInstaller
-          smapiLatestVersion={smapiLatestVersion}
-          smapiMirror={smapiMirror}
-          setSmapiMirror={setSmapiMirror}
-          onInstall={handleInstallSmapi}
-          onOpenOfficialSite={handleOpenOfficialSite}
-          installStatus={installStatus}
-          installProgress={installProgress}
-          installError={installError}
-          gameVersion={gameVersion}
-          isGameRunning={isGameRunning}
-        />
-      ) : (
-        <>
-          {/* Header Panel */}
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-card border border-border p-6 rounded-2xl shadow-sm bg-gradient-to-r from-card to-accent/20 animate-in fade-in duration-300">
-            <div>
-              <div className="flex items-center gap-3">
-                <h2 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-primary to-green-600 bg-clip-text text-transparent">{t("mods.title")}</h2>
-                {smapiStatus?.installed && !smapiStatus?.version ? (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-full border transition-all" style={{ backgroundColor: 'rgba(120,120,120,0.15)', color: '#888', borderColor: 'rgba(120,120,120,0.25)' }}>
-                    {t("mods.smapiInstalled")}
-                  </span>
-                ) : (
-                  <Badge 
-                    className={`gap-1.5 px-3 py-1 font-semibold rounded-full border transition-all ${
-                      smapiStatus?.installed 
-                        ? "bg-primary/10 text-primary border-primary/20" 
-                        : "bg-red-500/10 text-red-500 border-red-500/20"
-                    }`}
-                  >
-                    {smapiStatus === null ? (
-                      t("mods.smapiDetecting")
-                    ) : smapiStatus.installed ? (
-                      `SMAPI: v${smapiStatus.version}`
-                    ) : (
-                      t("mods.smapiNotInstalled")
-                    )}
-                  </Badge>
-                )}
-                {smapiStatus?.installed && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 rounded-lg text-xs gap-1.5 hover:bg-accent border-border font-semibold shadow-sm"
-                    onClick={() => setIsManagementOpen(!isManagementOpen)}
-                  >
-                    <Sliders className="h-3.5 w-3.5 text-primary" />
-                    {t("mods.manageSmapi")}
-                  </Button>
-                )}
-                {isGameRunning && (
-                  <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20 gap-1.5 px-3 py-1 font-semibold rounded-full">
-                    {t("mods.gameRunningLocked")}
-                  </Badge>
-                )}
-                {onInstallNpcLocationsMod && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 rounded-lg text-xs gap-1.5 hover:bg-accent border-border font-semibold shadow-sm"
-                    onClick={() => void onInstallNpcLocationsMod()}
-                    disabled={isGameRunning}
-                    title={isGameRunning ? t("mods.gameRunningModDisabled") : t("mods.installRealtimeModTooltip")}
-                  >
-                    <PackagePlus className="h-3.5 w-3.5 text-emerald-600" />
-                    {t("mods.installRealtimeMod")}
-                  </Button>
-                )}
-              </div>
-              <p className="text-muted-foreground mt-2 text-sm max-w-xl [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-xs [&_code]:font-mono"
-                dangerouslySetInnerHTML={{ __html: t("mods.description") }}
-              />
-            </div>
-
-            {/* Global Statistics Panel */}
-            <div className="flex gap-4 self-stretch lg:self-auto">
-              <div className="bg-accent/30 dark:bg-accent/10 border border-border/60 rounded-xl px-4 py-3 text-center flex-1 lg:flex-initial min-w-[90px]">
-                <p className="text-xs text-muted-foreground font-medium">{t("mods.installed")}</p>
-                <p className="text-2xl font-bold text-foreground mt-0.5">{totalInstalled}</p>
-              </div>
-              <div className="bg-green-50/50 dark:bg-green-950/10 border border-green-100 dark:border-green-950 rounded-xl px-4 py-3 text-center flex-1 lg:flex-initial min-w-[90px]">
-                <p className="text-xs text-green-700 dark:text-green-400 font-medium">{t("mods.enabled")}</p>
-                <p className="text-2xl font-bold text-green-600 dark:text-green-500 mt-0.5">{activeCount}</p>
-              </div>
-              <div className={`border rounded-xl px-4 py-3 text-center flex-1 lg:flex-initial min-w-[90px] transition-colors ${
-                updateAvailableCount > 0 
-                  ? "bg-amber-50/50 dark:bg-amber-950/10 border-amber-200 dark:border-amber-900" 
-                  : "bg-accent/30 dark:bg-accent/10 border-border/60"
-              }`}>
-                <p className={`text-xs font-medium ${updateAvailableCount > 0 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}>{t("mods.updatable")}</p>
-                <p className={`text-2xl font-bold mt-0.5 ${updateAvailableCount > 0 ? "text-amber-500" : "text-foreground"}`}>{updateAvailableCount}</p>
-              </div>
-              {isZh && (
-              <div className={`border rounded-xl px-4 py-3 text-center flex-1 lg:flex-initial min-w-[90px] transition-colors ${
-                isSyncingModTranslations
-                  ? "bg-sky-50/60 dark:bg-sky-950/10 border-sky-200 dark:border-sky-900"
-                  : "bg-accent/30 dark:bg-accent/10 border-border/60"
-              }`}>
-                <p className={`text-xs font-medium ${isSyncingModTranslations ? "text-sky-600 dark:text-sky-400" : "text-muted-foreground"}`}>{t("mods.translationLibrary")}</p>
-                <p className={`text-2xl font-bold mt-0.5 ${isSyncingModTranslations ? "text-sky-500 animate-pulse" : "text-foreground"}`}>
-                  {translationSyncingModIds.size}
-                </p>
-              </div>
-              )}
-            </div>
-          </div>
-
-          {/* SMAPI Management Panel */}
-          <SmapiManager
-            isManagementOpen={isManagementOpen}
-            setIsManagementOpen={setIsManagementOpen}
-            smapiStatus={smapiStatus}
-            gameVersion={gameVersion}
+        <div className="flex-1 overflow-y-auto">
+          <SmapiInstaller
             smapiLatestVersion={smapiLatestVersion}
-            smapiUpdateAvailable={!!smapiUpdateAvailable}
-            onUpdate={handleUpdateSmapi}
-            onUninstall={handleUninstallSmapi}
-            isGameRunning={isGameRunning}
             smapiMirror={smapiMirror}
             setSmapiMirror={setSmapiMirror}
+            onInstall={handleInstallSmapi}
+            onOpenOfficialSite={handleOpenOfficialSite}
             installStatus={installStatus}
             installProgress={installProgress}
             installError={installError}
-          />
-          {/* Mod Profiles Section */}
-          <ModProfiles
-            currentMods={mods.map((m) => ({ folderName: m.folderName.replace(/(^|\/)\./g, "$1"), isEnabled: m.isEnabled, name: m.name }))}
-            onApplyProfile={handleApplyProfile}
-            showToast={showToast}
+            gameVersion={gameVersion}
             isGameRunning={isGameRunning}
-            confirm={confirm}
           />
+        </div>
+      ) : (
+        <>
+          {/* Header Bar — all SMAPI info inline, always visible */}
+          <div className="flex-shrink-0 px-4 py-2 border-b border-border bg-card/80 backdrop-blur-sm">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              {/* Title */}
+              <h2 className="text-lg font-extrabold tracking-tight bg-gradient-to-r from-primary to-green-600 bg-clip-text text-transparent flex-shrink-0">
+                {t("mods.title")}
+              </h2>
 
-          {/* Main Split Layout */}
-          <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
-            {/* Left Area: Filter Tabs & Mod Cards */}
-            <div className="xl:col-span-7">
+              <div className="w-px h-4 bg-border" />
+
+              {/* SMAPI Version Info (always shown when installed) */}
+              {smapiStatus?.installed && (
+                <div className="flex items-center gap-2 text-[11px] flex-wrap">
+                  <span className="font-mono font-semibold text-primary bg-primary/10 px-1.5 py-0.5 rounded">
+                    SMAPI {smapiStatus.version || "—"}
+                  </span>
+                  {smapiLatestVersion && (
+                    <>
+                      <span className="text-muted-foreground">→</span>
+                      <span className={`font-mono font-semibold px-1.5 py-0.5 rounded ${
+                        smapiUpdateAvailable
+                          ? "text-amber-600 dark:text-amber-400 bg-amber-500/10"
+                          : "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10"
+                      }`}>
+                        {smapiLatestVersion}
+                      </span>
+                    </>
+                  )}
+                  {gameVersion && (
+                    <span className="text-muted-foreground">
+                      {t("mods.smapi.gameVersionLabel")} <span className="font-mono font-semibold text-foreground">{gameVersion}</span>
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* SMAPI not installed badge */}
+              {smapiStatus && !smapiStatus.installed && (
+                <Badge className="bg-red-500/10 text-red-500 border-red-500/20 text-[10px] px-2 py-0.5 rounded-full">
+                  {t("mods.smapiNotInstalled")}
+                </Badge>
+              )}
+
+              {/* SMAPI detecting */}
+              {smapiStatus === null && (
+                <span className="text-[10px] text-muted-foreground animate-pulse">{t("mods.smapiDetecting")}</span>
+              )}
+
+              {/* SMAPI Actions (inline, always visible when installed) */}
+              {smapiStatus?.installed && (
+                <div className="flex items-center gap-1.5">
+                  {/* Mirror selector */}
+                  {smapiUpdateAvailable && installStatus === "idle" && (
+                    <div className="flex bg-accent/40 rounded-md p-0.5 border border-border/30">
+                      <button
+                        onClick={() => setSmapiMirror("ghproxy")}
+                        className={`text-[9px] font-semibold px-1.5 py-0.5 rounded transition-all ${
+                          smapiMirror === "ghproxy"
+                            ? "bg-primary text-primary-foreground shadow-sm"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {t("mods.smapi.mirrorRecommended")}
+                      </button>
+                      <button
+                        onClick={() => setSmapiMirror("official")}
+                        className={`text-[9px] font-semibold px-1.5 py-0.5 rounded transition-all ${
+                          smapiMirror === "official"
+                            ? "bg-primary text-primary-foreground shadow-sm"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {t("mods.smapi.mirrorOfficial")}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Progress (inline) */}
+                  {isBusy && installStatus !== "error" && (
+                    <div className="flex items-center gap-1">
+                      {installStatus === "success" ? (
+                        <CheckCircle2 className="h-3 w-3 text-green-500" />
+                      ) : (
+                        <Loader2 className="h-3 w-3 animate-spin text-primary" />
+                      )}
+                      <div className="w-14 h-1.5 bg-accent/40 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-primary transition-all duration-300 rounded-full"
+                          style={{ width: `${installProgress}%` }}
+                        />
+                      </div>
+                      <span className="text-[9px] font-mono text-muted-foreground">{installProgress}%</span>
+                    </div>
+                  )}
+
+                  {/* Error */}
+                  {installStatus === "error" && (
+                    <span className="text-[9px] text-red-500 flex items-center gap-0.5">
+                      <AlertTriangle className="h-3 w-3" />
+                      {t("mods.smapi.installError")}
+                    </span>
+                  )}
+
+                  {/* Up to date */}
+                  {!smapiUpdateAvailable && !isBusy && smapiLatestVersion && smapiStatus.version && (
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-0.5">
+                      <CheckCircle2 className="h-3 w-3" />
+                      {t("mods.smapi.upToDate")}
+                    </span>
+                  )}
+
+                  {/* Update button */}
+                  {smapiUpdateAvailable && (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={handleUpdateSmapi}
+                      disabled={isGameRunning || isBusy}
+                      className="h-6 px-2 rounded text-[9px] font-semibold gap-0.5 bg-blue-600 hover:bg-blue-700 text-white"
+                    >
+                      {isBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <ArrowUpCircle className="h-3 w-3" />}
+                      {isBusy ? t("mods.smapi.statusUpdating") : t("mods.smapi.updateButton")}
+                    </Button>
+                  )}
+
+                  {/* Uninstall button */}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleUninstallSmapi}
+                    disabled={isGameRunning || isBusy}
+                    className="h-6 px-1.5 rounded text-[9px] text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                    title={t("mods.smapi.uninstallButton")}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
+
+              {/* Spacer */}
+              <div className="flex-1" />
+
+              {/* Game Running Badge */}
+              {isGameRunning && (
+                <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20 text-[9px] px-1.5 py-0.5 rounded-full font-semibold">
+                  {t("mods.gameRunningLocked")}
+                </Badge>
+              )}
+
+              {/* NPC Locations Mod Button */}
+              {onInstallNpcLocationsMod && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-[10px] gap-0.5 hover:bg-accent"
+                  onClick={() => void onInstallNpcLocationsMod()}
+                  disabled={isGameRunning}
+                  title={isGameRunning ? t("mods.gameRunningModDisabled") : t("mods.installRealtimeModTooltip")}
+                >
+                  <PackagePlus className="h-3 w-3 text-emerald-600" />
+                  {t("mods.installRealtimeMod")}
+                </Button>
+              )}
+
+              {/* Inline Stats */}
+              <div className="flex items-center gap-2.5 text-[11px] flex-shrink-0">
+                <div className="flex items-center gap-1">
+                  <span className="text-muted-foreground">{t("mods.installed")}</span>
+                  <span className="font-bold text-foreground">{totalInstalled}</span>
+                </div>
+                <div className="w-px h-3 bg-border" />
+                <div className="flex items-center gap-1">
+                  <span className="text-green-600 dark:text-green-400">{t("mods.enabled")}</span>
+                  <span className="font-bold text-green-600 dark:text-green-500">{activeCount}</span>
+                </div>
+                {updateAvailableCount > 0 && (
+                  <>
+                    <div className="w-px h-3 bg-border" />
+                    <div className="flex items-center gap-1">
+                      <span className="text-amber-600 dark:text-amber-400">{t("mods.updatable")}</span>
+                      <span className="font-bold text-amber-500">{updateAvailableCount}</span>
+                    </div>
+                  </>
+                )}
+                {isZh && (
+                  <>
+                    <div className="w-px h-3 bg-border" />
+                    <div className="flex items-center gap-1">
+                      <span className={isSyncingModTranslations ? "text-sky-600 dark:text-sky-400" : "text-muted-foreground"}>{t("mods.translationLibrary")}</span>
+                      <span className={`font-bold ${isSyncingModTranslations ? "text-sky-500 animate-pulse" : "text-foreground"}`}>
+                        {translationSyncingModIds.size}
+                      </span>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Content area — ModList + optional inline Detail Panel */}
+          <div className="flex-1 flex overflow-hidden">
+            {/* Mod List */}
+            <div className="flex-1 overflow-hidden">
               <ModList
                 mods={mods}
                 filteredMods={filteredMods}
@@ -325,26 +402,33 @@ export function Mods({ onNavigate, refreshSignal, isGameRunning = false, onQueue
                 isGameRunning={isGameRunning}
                 translationSyncingModIds={translationSyncingModIds}
                 confirm={confirm}
+                currentMods={mods.map((m) => ({ folderName: m.folderName.replace(/(^|\/)\./g, "$1"), isEnabled: m.isEnabled, name: m.name }))}
+                onApplyProfile={handleApplyProfile}
+                showToast={showToast}
               />
             </div>
 
-            {/* Right Area: Mod Details & Interactive Configuration */}
-            <div className="xl:col-span-5">
-              <ModDetail
-                selectedMod={selectedMod}
-                mods={mods}
-                activeDetailTab={activeDetailTab}
-                setActiveDetailTab={setActiveDetailTab}
-                onToggleMod={handleToggleMod}
-                onOpenFolder={handleOpenFolder}
-                onConfigChange={handleConfigChange}
-                onSaveConfig={handleSaveConfig}
-                onSelectMod={setSelectedModId}
-                isGameRunning={isGameRunning}
-              />
-            </div>
+            {/* Detail Panel — inline right side when a mod is selected */}
+            {selectedMod && (
+              <div className="w-[440px] max-w-[40%] border-l border-border bg-card overflow-hidden flex flex-col animate-in slide-in-from-right duration-200">
+                <div className="flex-1 overflow-y-auto">
+                  <ModDetail
+                    selectedMod={selectedMod}
+                    mods={mods}
+                    activeDetailTab={activeDetailTab}
+                    setActiveDetailTab={setActiveDetailTab}
+                    onToggleMod={handleToggleMod}
+                    onOpenFolder={handleOpenFolder}
+                    onConfigChange={handleConfigChange}
+                    onSaveConfig={handleSaveConfig}
+                    onSelectMod={setSelectedModId}
+                    onClose={() => setSelectedModId("")}
+                    isGameRunning={isGameRunning}
+                  />
+                </div>
+              </div>
+            )}
           </div>
-
         </>
       )}
     </div>
