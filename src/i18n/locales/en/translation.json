@@ -1574,7 +1574,13 @@
       "launchFilePath": "Launch File Path",
       "noPath": "N/A",
       "uninstallButton": "Uninstall SMAPI",
-      "cannotUninstallRunning": "Cannot uninstall SMAPI while game is running"
+      "cannotUninstallRunning": "Cannot uninstall SMAPI while game is running",
+      "updateButton": "Update SMAPI",
+      "updateSuccess": "SMAPI updated successfully!",
+      "upToDate": "Up to date",
+      "updateAvailable": "Update available",
+      "cannotUpdateRunning": "Cannot update SMAPI while game is running",
+      "statusUpdating": "Updating SMAPI..."
     },
     "specs": {
       "version": "Version",

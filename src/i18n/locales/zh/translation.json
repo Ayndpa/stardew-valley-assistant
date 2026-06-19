@@ -1444,7 +1444,13 @@
       "launchFilePath": "启动文件路径",
       "noPath": "无",
       "uninstallButton": "卸载 SMAPI",
-      "cannotUninstallRunning": "游戏运行中，不能卸载 SMAPI"
+      "cannotUninstallRunning": "游戏运行中，不能卸载 SMAPI",
+      "updateButton": "更新 SMAPI",
+      "updateSuccess": "SMAPI 更新成功！",
+      "upToDate": "已是最新版本",
+      "updateAvailable": "有新版本可用",
+      "cannotUpdateRunning": "游戏运行中，不能更新 SMAPI",
+      "statusUpdating": "正在更新 SMAPI..."
     },
     "specs": {
       "version": "版本",

@@ -13,6 +13,20 @@ async function getTauriInvoke() {
   return null;
 }
 
+function parseVersion(v: string): [number, number, number] {
+  const cleaned = v.replace(/^v/, "")
+  const parts = cleaned.split(".").map(Number)
+  return [parts[0] || 0, parts[1] || 0, parts[2] || 0]
+}
+
+function isVersionNewer(installed: string, latest: string): boolean {
+  const a = parseVersion(installed)
+  const b = parseVersion(latest)
+  if (a[0] !== b[0]) return a[0] < b[0]
+  if (a[1] !== b[1]) return a[1] < b[1]
+  return a[2] < b[2]
+}
+
 async function getTauriOpen() {
   if (typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__) {
     try {
@@ -61,6 +75,12 @@ export function useSmapiInstaller({
   const [installStatus, setInstallStatus] = useState<"idle" | "fetching" | "downloading" | "extracting" | "copying" | "success" | "error">("idle")
   const [installProgress, setInstallProgress] = useState(0)
   const [installError, setInstallError] = useState<string | null>(null)
+
+  const smapiUpdateAvailable =
+    smapiStatus?.installed &&
+    smapiStatus.version &&
+    smapiLatestVersion &&
+    isVersionNewer(smapiStatus.version, smapiLatestVersion)
 
   const ensureCanModify = useCallback(() => {
     if (!isGameRunning) return true
@@ -286,6 +306,129 @@ export function useSmapiInstaller({
     }
   }, [ensureCanModify, showToast, refreshMods])
 
+  const handleUpdateSmapi = useCallback(async () => {
+    if (!ensureCanModify()) return
+
+    const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+    if (!gameDir) {
+      showToast("未配置游戏安装目录，请先在设置中配置", "warning")
+      return
+    }
+
+    setInstallStatus("fetching")
+    setInstallProgress(10)
+    setInstallError(null)
+
+    let rawUrl = smapiDownloadUrl
+    if (!rawUrl) {
+      rawUrl = "https://github.com/Pathoschild/SMAPI/releases/download/4.5.2/SMAPI-4.5.2-installer-double-zipped.zip"
+    }
+
+    const downloadUrl = smapiMirror === "ghproxy" ? `https://gh-proxy.org/${rawUrl}` : rawUrl
+
+    if (onQueueSmapiDownload) {
+      setInstallStatus("downloading")
+      setInstallProgress(10)
+      const result = onQueueSmapiDownload({
+        version: smapiLatestVersion,
+        downloadUrl,
+        mirror: smapiMirror,
+        onSuccess: async () => {
+          setInstallStatus("success")
+          setInstallProgress(100)
+          showToast("SMAPI 更新成功！", "success")
+
+          const invoke = await getTauriInvoke()
+          if (!invoke) return
+
+          const status = await invoke("check_smapi_status", { gameDir }) as any
+          setSmapiStatus(status)
+
+          await refreshMods()
+
+          setTimeout(() => {
+            setInstallStatus("idle")
+          }, 1500)
+        },
+        onError: (error) => {
+          setInstallStatus("error")
+          setInstallProgress(0)
+          setInstallError(error)
+        },
+      })
+
+      if (result.ok) {
+        showToast(result.message, "info")
+      } else {
+        setInstallStatus("idle")
+        showToast(result.message, "warning")
+      }
+      return
+    }
+
+    const invoke = await getTauriInvoke()
+
+    if (invoke) {
+      try {
+        setInstallStatus("downloading")
+        setInstallProgress(35)
+
+        await invoke("install_smapi", { gameDir, downloadUrl })
+
+        setInstallStatus("extracting")
+        setInstallProgress(75)
+        await new Promise((resolve) => setTimeout(resolve, 800))
+
+        setInstallStatus("copying")
+        setInstallProgress(90)
+        await new Promise((resolve) => setTimeout(resolve, 500))
+
+        setInstallStatus("success")
+        setInstallProgress(100)
+        showToast("SMAPI 更新成功！", "success")
+
+        const status = await invoke("check_smapi_status", { gameDir }) as any
+        setSmapiStatus(status)
+
+        await refreshMods()
+
+        setTimeout(() => {
+          setInstallStatus("idle")
+        }, 1500)
+      } catch (err: any) {
+        console.error("Update SMAPI error:", err)
+        setInstallStatus("error")
+        setInstallError(err.toString())
+        showToast(`更新失败: ${err}`, "warning")
+      }
+    } else {
+      // Browser Mock
+      setInstallStatus("downloading")
+      setInstallProgress(35)
+      setTimeout(() => {
+        setInstallStatus("extracting")
+        setInstallProgress(65)
+        setTimeout(() => {
+          setInstallStatus("copying")
+          setInstallProgress(90)
+          setTimeout(() => {
+            setInstallStatus("success")
+            setInstallProgress(100)
+            showToast("（Web 模式模拟）SMAPI 更新成功！", "success")
+            setSmapiStatus({
+              installed: true,
+              version: smapiLatestVersion || "4.0.8",
+              path: "Mock/StardewModdingAPI"
+            })
+            setTimeout(() => {
+              setInstallStatus("idle")
+            }, 1000)
+          }, 1000)
+        }, 1000)
+      }, 1000)
+    }
+  }, [ensureCanModify, onQueueSmapiDownload, smapiDownloadUrl, smapiMirror, smapiLatestVersion, showToast, refreshMods])
+
   const handleOpenOfficialSite = useCallback(async () => {
     const openUrl = await getTauriOpen()
     if (openUrl) {
@@ -307,8 +450,10 @@ export function useSmapiInstaller({
     installStatus,
     installProgress,
     installError,
+    smapiUpdateAvailable,
     handleInstallSmapi,
     handleUninstallSmapi,
+    handleUpdateSmapi,
     handleOpenOfficialSite,
   }
 }

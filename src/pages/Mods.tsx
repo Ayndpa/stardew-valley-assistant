@@ -64,6 +64,7 @@ export function Mods({ onNavigate, refreshSignal, isGameRunning = false, onQueue
     installStatus,
     installProgress,
     installError,
+    smapiUpdateAvailable,
     isScanning,
     isCheckingUpdates,
     isSyncingModTranslations,
@@ -87,6 +88,7 @@ export function Mods({ onNavigate, refreshSignal, isGameRunning = false, onQueue
     handleSaveConfig,
     handleInstallSmapi,
     handleUninstallSmapi,
+    handleUpdateSmapi,
     handleDeleteMod,
     handleOpenOfficialSite,
     handleApplyProfile,
@@ -275,8 +277,15 @@ export function Mods({ onNavigate, refreshSignal, isGameRunning = false, onQueue
             smapiStatus={smapiStatus}
             gameVersion={gameVersion}
             smapiLatestVersion={smapiLatestVersion}
+            smapiUpdateAvailable={!!smapiUpdateAvailable}
+            onUpdate={handleUpdateSmapi}
             onUninstall={handleUninstallSmapi}
             isGameRunning={isGameRunning}
+            smapiMirror={smapiMirror}
+            setSmapiMirror={setSmapiMirror}
+            installStatus={installStatus}
+            installProgress={installProgress}
+            installError={installError}
           />
           {/* Mod Profiles Section */}
           <ModProfiles
