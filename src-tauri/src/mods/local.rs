@@ -7,11 +7,10 @@ use std::io::{BufReader, Write};
 use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-const ASSISTANT_MOD_ZIP: &[u8] =
-    include_bytes!("../../bundled-mods/StardewValleyAssistant.zip");
-
-const ASSISTANT_MOD_MANIFEST_JSON: &str =
-    include_str!("../../bundled-mods/StardewValleyAssistant/manifest.json");
+const ASSISTANT_MOD_DLL: &[u8] =
+    include_bytes!("../../bundled-mods/StardewValleyAssistant/bin/Release/StardewValleyAssistant.dll");
+const ASSISTANT_MOD_MANIFEST: &[u8] =
+    include_bytes!("../../bundled-mods/StardewValleyAssistant/manifest.json");
 
 #[derive(Deserialize, Debug)]
 struct Manifest {
@@ -529,25 +528,27 @@ pub async fn install_mod_from_zip(game_dir: String, zip_path: String) -> Result<
         .map_err(|err| format!("安装任务执行失败: {}", err))?
 }
 
+/// Write the bundled assistant mod files (DLL + manifest) directly into Mods/StardewValleyAssistant/.
+fn write_bundled_mod_files(game_dir: &str) -> Result<(), String> {
+    let mod_dir = Path::new(game_dir).join("Mods").join("StardewValleyAssistant");
+    fs::create_dir_all(&mod_dir).map_err(|e| format!("创建模组目录失败: {}", e))?;
+
+    fs::write(mod_dir.join("manifest.json"), ASSISTANT_MOD_MANIFEST)
+        .map_err(|e| format!("写入 manifest.json 失败: {}", e))?;
+    fs::write(mod_dir.join("StardewValleyAssistant.dll"), ASSISTANT_MOD_DLL)
+        .map_err(|e| format!("写入 StardewValleyAssistant.dll 失败: {}", e))?;
+
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn install_bundled_assistant_mod(game_dir: String) -> Result<Value, String> {
     tokio::task::spawn_blocking(move || {
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_else(|_| std::time::Duration::from_secs(0))
-            .as_millis();
-        let working_dir = std::env::temp_dir().join(format!("sv_assistant_mod_{}", timestamp));
-        let zip_path = working_dir.join("StardewValleyAssistant.zip");
-
-        fs::create_dir_all(&working_dir).map_err(|e| format!("创建临时目录失败: {}", e))?;
-        if let Err(err) = fs::write(&zip_path, ASSISTANT_MOD_ZIP) {
-            let _ = fs::remove_dir_all(&working_dir);
-            return Err(format!("写入内置助手模组失败: {}", err));
-        }
-
-        let result = install_mod_from_zip_sync(game_dir, zip_path.to_string_lossy().to_string());
-        let _ = fs::remove_dir_all(&working_dir);
-        result
+        write_bundled_mod_files(&game_dir)?;
+        Ok(serde_json::json!({
+            "success": true,
+            "message": "mod installed"
+        }))
     })
     .await
     .map_err(|err| format!("安装任务执行失败: {}", err))?
@@ -573,7 +574,7 @@ pub async fn auto_upgrade_bundled_mod(game_dir: String) -> Result<Value, String>
     tokio::task::spawn_blocking(move || {
         // Parse bundled version from the embedded manifest
         let bundled_manifest: Manifest =
-            serde_json::from_str(ASSISTANT_MOD_MANIFEST_JSON)
+            serde_json::from_slice(ASSISTANT_MOD_MANIFEST)
                 .map_err(|e| format!("解析内置清单失败: {}", e))?;
         let bundled_version = bundled_manifest
             .version
@@ -585,7 +586,6 @@ pub async fn auto_upgrade_bundled_mod(game_dir: String) -> Result<Value, String>
             mods_dir.join("StardewValleyAssistant").join("manifest.json");
 
         if !installed_manifest_path.exists() {
-            // Mod not installed — don't auto-install, only upgrade existing installations
             return Ok(serde_json::json!({
                 "upgraded": false,
                 "reason": "not_installed",
@@ -620,7 +620,6 @@ pub async fn auto_upgrade_bundled_mod(game_dir: String) -> Result<Value, String>
                 }
             }
             _ => {
-                // Can't parse versions — skip upgrade to be safe
                 return Ok(serde_json::json!({
                     "upgraded": false,
                     "reason": "version_parse_error",
@@ -631,35 +630,15 @@ pub async fn auto_upgrade_bundled_mod(game_dir: String) -> Result<Value, String>
             }
         }
 
-        // Perform the upgrade
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_else(|_| std::time::Duration::from_secs(0))
-            .as_millis();
-        let working_dir =
-            std::env::temp_dir().join(format!("sv_assistant_mod_upgrade_{}", timestamp));
-        let zip_path = working_dir.join("StardewValleyAssistant.zip");
+        // Perform the upgrade — overwrite the two files directly
+        write_bundled_mod_files(&game_dir)?;
 
-        fs::create_dir_all(&working_dir)
-            .map_err(|e| format!("创建临时目录失败: {}", e))?;
-        if let Err(err) = fs::write(&zip_path, ASSISTANT_MOD_ZIP) {
-            let _ = fs::remove_dir_all(&working_dir);
-            return Err(format!("写入内置助手模组失败: {}", err));
-        }
-
-        let result =
-            install_mod_from_zip_sync(game_dir, zip_path.to_string_lossy().to_string());
-        let _ = fs::remove_dir_all(&working_dir);
-
-        match result {
-            Ok(_) => Ok(serde_json::json!({
-                "upgraded": true,
-                "from_version": installed_version,
-                "to_version": bundled_version,
-                "message": format!("Mod upgraded from {} to {}", installed_version, bundled_version)
-            })),
-            Err(e) => Err(format!("自动升级失败: {}", e)),
-        }
+        Ok(serde_json::json!({
+            "upgraded": true,
+            "from_version": installed_version,
+            "to_version": bundled_version,
+            "message": format!("Mod upgraded from {} to {}", installed_version, bundled_version)
+        }))
     })
     .await
     .map_err(|err| format!("自动升级任务执行失败: {}", err))?

@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next"
-import { Card } from "@/components/ui/card"
+
 import { openUrl } from "@tauri-apps/plugin-opener"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"

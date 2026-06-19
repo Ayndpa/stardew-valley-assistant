@@ -37,7 +37,7 @@ export function SmapiManager({
   setSmapiMirror,
   installStatus,
   installProgress,
-  installError,
+  installError: _installError,
 }: SmapiManagerProps) {
   const { t } = useTranslation()
   if (!isManagementOpen || !smapiStatus?.installed) return null

@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react"
 import { useTranslation } from "react-i18next"
-import { Card } from "@/components/ui/card"
+
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -23,7 +23,7 @@ import {
   Upload,
   Play,
   Plus,
-  FileJson,
+
 } from "lucide-react"
 
 // ---- Profile types (mirrored from ModProfiles) ----

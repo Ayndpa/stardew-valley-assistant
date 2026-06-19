@@ -26,15 +26,16 @@ public sealed class ModEntry : Mod
     private const string PipeName = "stardew-valley-assistant";
 
     private NamedPipeClientStream? PipeStream;
-    private readonly object WriteLock = new();
+    private readonly SemaphoreSlim WriteSemaphore = new(1, 1);
     private CancellationTokenSource? CancellationToken;
+    private volatile bool IsConnecting;
     private volatile bool IsConnected;
-    private Thread? ConnectThread;
+    private int ConnectAttempt;
 
     public override void Entry(IModHelper helper)
     {
         this.Monitor.Log("助手 Mod 已加载，开始连接管道...", LogLevel.Info);
-        this.EnsureConnected();
+        this.TryConnectAsync();
         helper.Events.GameLoop.SaveLoaded += this.OnSaveLoaded;
         helper.Events.GameLoop.TimeChanged += this.OnTimeChanged;
         helper.Events.GameLoop.OneSecondUpdateTicked += this.OnOneSecondUpdateTicked;
@@ -42,24 +43,26 @@ public sealed class ModEntry : Mod
         helper.Events.Player.Warped += this.OnWarped;
     }
 
+    // ── 事件处理器 ──────────────────────────────────────────
+
     private void OnSaveLoaded(object? sender, SaveLoadedEventArgs e)
     {
         this.Monitor.Log($"[发送] 存档已加载, IsConnected={this.IsConnected}, IsWorldReady={Context.IsWorldReady}", LogLevel.Info);
-        this.SendNpcLocationsAsync();
+        _ = this.SendNpcLocationsAsync();
     }
 
     private void OnOneSecondUpdateTicked(object? sender, OneSecondUpdateTickedEventArgs e)
     {
-        if (!this.IsConnected)
+        if (!this.IsConnected && !this.IsConnecting)
         {
-            this.EnsureConnected();
+            this.TryConnectAsync();
         }
     }
 
     private void OnTimeChanged(object? sender, TimeChangedEventArgs e)
     {
         this.Monitor.Log($"[发送] 时间变化 {e.NewTime}, IsConnected={this.IsConnected}", LogLevel.Info);
-        this.SendNpcLocationsAsync();
+        _ = this.SendNpcLocationsAsync();
     }
 
     private void OnWarped(object? sender, WarpedEventArgs e)
@@ -67,100 +70,63 @@ public sealed class ModEntry : Mod
         if (e.IsLocalPlayer)
         {
             this.Monitor.Log($"[发送] 切换地图 → {e.NewLocation.Name}, IsConnected={this.IsConnected}", LogLevel.Info);
-            this.SendNpcLocationsAsync();
+            _ = this.SendNpcLocationsAsync();
         }
     }
 
-    /// <summary>
-    /// Send NPC locations on a background thread to avoid blocking the game.
-    /// </summary>
-    private void SendNpcLocationsAsync()
+    private async void OnReturnedToTitle(object? sender, ReturnedToTitleEventArgs e)
     {
-        if (!this.IsConnected)
-        {
-            this.Monitor.Log("[发送] 跳过: 未连接", LogLevel.Debug);
+        await this.SendClearAsync();
+        this.Disconnect();
+    }
+
+    // ── 连接（单次尝试，事件驱动重试） ──────────────────────
+
+    private async void TryConnectAsync()
+    {
+        if (this.IsConnecting || this.IsConnected)
             return;
+
+        this.IsConnecting = true;
+        this.ConnectAttempt++;
+        var attempt = this.ConnectAttempt;
+
+        try
+        {
+            this.Monitor.Log($"正在尝试连接管道 (第{attempt}次)...", LogLevel.Debug);
+            var stream = new NamedPipeClientStream(".", PipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+
+            // Connect 本身是同步阻塞的，用 Task.Run 卸载到线程池避免卡游戏
+            await Task.Run(() => stream.Connect(5000));
+
+            this.CancellationToken = new CancellationTokenSource();
+            this.PipeStream = stream;
+            this.IsConnected = true;
+            this.Monitor.Log("已连接到助手管道!", LogLevel.Info);
+
+            // 以回调链启动读取（无循环）
+            this.StartReading();
+
+            // 如果已有存档，立即发送数据
+            if (Context.IsWorldReady)
+            {
+                _ = this.SendNpcLocationsAsync();
+            }
         }
-        Task.Run(() => this.SendNpcLocations());
-    }
-
-    private void OnReturnedToTitle(object? sender, ReturnedToTitleEventArgs e)
-    {
-        this.SendClear();
-        this.Disconnect();
-    }
-
-    private void EnsureConnected()
-    {
-        if (this.IsConnected && this.PipeStream?.IsConnected == true)
-            return;
-
-        // Stop any existing connection attempt
-        this.Disconnect();
-        this.CancellationToken = new CancellationTokenSource();
-
-        // Spawn a background thread that retries connection until success
-        var token = this.CancellationToken.Token;
-        this.ConnectThread = new Thread(() => this.ConnectLoop(token))
+        catch (TimeoutException)
         {
-            IsBackground = true,
-            Name = "SVA-PipeConnect",
-        };
-        this.ConnectThread.Start();
-    }
-
-    private void ConnectLoop(CancellationToken token)
-    {
-        int attempt = 0;
-        while (!token.IsCancellationRequested)
+            if (attempt == 1 || attempt % 10 == 0)
+            {
+                this.Monitor.Log($"连接超时 (第{attempt}次)，请确认助手应用已启动。等待下一次重试...", LogLevel.Warn);
+            }
+        }
+        catch (Exception ex)
         {
-            attempt++;
-            try
-            {
-                this.Monitor.Log($"正在尝试连接管道 (第{attempt}次)...", LogLevel.Debug);
-                var stream = new NamedPipeClientStream(".", PipeName, PipeDirection.InOut);
-                stream.Connect(5000);
-
-                if (token.IsCancellationRequested)
-                {
-                    stream.Dispose();
-                    return;
-                }
-
-                this.PipeStream = stream;
-
-                this.IsConnected = true;
-                this.Monitor.Log("已连接到助手管道!", LogLevel.Info);
-
-                // Start reading responses in background
-                _ = Task.Run(() => this.ReadResponsesAsync());
-
-                // If a save is already loaded, send current NPC locations immediately
-                if (Context.IsWorldReady)
-                {
-                    this.SendNpcLocationsAsync();
-                }
-
-                return; // Connection succeeded, exit retry loop
-            }
-            catch (TimeoutException)
-            {
-                if (attempt == 1 || attempt % 10 == 0)
-                {
-                    this.Monitor.Log($"连接超时 (第{attempt}次)，请确认助手应用已启动。3秒后重试...", LogLevel.Warn);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
-            catch (Exception ex)
-            {
-                this.Monitor.Log($"连接管道失败: {ex.Message}", LogLevel.Warn);
-            }
-
-            // Wait before retrying
-            Thread.Sleep(3000);
+            this.Monitor.Log($"连接管道失败: {ex.Message}", LogLevel.Warn);
+        }
+        finally
+        {
+            this.IsConnecting = false;
         }
     }
 
@@ -168,34 +134,51 @@ public sealed class ModEntry : Mod
     {
         this.IsConnected = false;
         this.CancellationToken?.Cancel();
-        this.ConnectThread = null;
         this.PipeStream?.Dispose();
         this.PipeStream = null;
         this.CancellationToken = null;
     }
 
-    private async Task ReadResponsesAsync()
+    // ── 读取（回调链，无循环） ─────────────────────────────
+
+    private void StartReading()
     {
         var stream = this.PipeStream;
-        if (stream == null)
-            return;
+        if (stream == null) return;
 
-        this.Monitor.Log("[管道] 读取响应线程已启动", LogLevel.Debug);
-        try
+        this.Monitor.Log("[管道] 读取回调已注册", LogLevel.Debug);
+        var buffer = new byte[4096];
+        var lineBuffer = new StringBuilder();
+        this.ReadNextChunk(stream, buffer, lineBuffer);
+    }
+
+    /// <summary>
+    /// 读取下一个数据块，处理后注册下一次读取 — 纯事件驱动，无循环。
+    /// </summary>
+    private void ReadNextChunk(NamedPipeClientStream stream, byte[] buffer, StringBuilder lineBuffer)
+    {
+        var token = this.CancellationToken?.Token ?? default;
+
+        stream.ReadAsync(buffer, 0, buffer.Length, token).ContinueWith(task =>
         {
-            // 直接使用 Stream.ReadAsync 读取原始字节，逐行解析
-            // 避免 StreamReader 内部锁与 Write 操作冲突
-            var buffer = new byte[4096];
-            var lineBuffer = new StringBuilder();
-
-            while (!this.CancellationToken?.IsCancellationRequested ?? true)
+            try
             {
-                var bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length, this.CancellationToken?.Token ?? default);
+                if (task.IsCanceled || task.IsFaulted)
+                {
+                    if (task.Exception?.InnerException is not OperationCanceledException)
+                    {
+                        this.Monitor.Log($"[管道←] 读取失败: {task.Exception?.InnerException?.Message}", LogLevel.Warn);
+                    }
+                    this.IsConnected = false;
+                    return;
+                }
+
+                var bytesRead = task.Result;
                 if (bytesRead == 0)
                 {
                     this.IsConnected = false;
                     this.Monitor.Log("[管道←] 连接已断开 (EOF)，等待重连...", LogLevel.Warn);
-                    break;
+                    return;
                 }
 
                 // 按换行符分割，逐行处理
@@ -216,15 +199,19 @@ public sealed class ModEntry : Mod
                         lineBuffer.Append((char)buffer[i]);
                     }
                 }
+
+                // 注册下一次读取（回调链延续）
+                this.ReadNextChunk(stream, buffer, lineBuffer);
             }
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            this.Monitor.Log($"[管道←] 读取失败: {ex.Message}", LogLevel.Warn);
-            this.IsConnected = false;
-        }
+            catch (Exception ex)
+            {
+                this.Monitor.Log($"[管道←] 回调异常: {ex.Message}", LogLevel.Warn);
+                this.IsConnected = false;
+            }
+        }, token, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
     }
+
+    // ── 消息处理 ────────────────────────────────────────────
 
     private void HandleTauriMessage(string json)
     {
@@ -244,11 +231,11 @@ public sealed class ModEntry : Mod
             {
                 case "requestItemPrices":
                     this.Monitor.Log("[处理] 收到物品价格请求，开始收集...", LogLevel.Info);
-                    this.SendItemPrices();
+                    _ = this.SendItemPricesAsync();
                     break;
                 case "requestNpcLocations":
                     this.Monitor.Log("[处理] 收到 NPC 位置请求", LogLevel.Info);
-                    this.SendNpcLocations();
+                    _ = this.SendNpcLocationsAsync();
                     break;
                 case "pong":
                     break;
@@ -263,13 +250,9 @@ public sealed class ModEntry : Mod
         }
     }
 
-    private void SendAllData()
-    {
-        this.SendNpcLocations();
-        this.SendItemPrices();
-    }
+    // ── 发送 ────────────────────────────────────────────────
 
-    private void SendNpcLocations()
+    private async Task SendNpcLocationsAsync()
     {
         if (!Context.IsWorldReady || !this.IsConnected)
         {
@@ -294,7 +277,7 @@ public sealed class ModEntry : Mod
             };
 
             this.Monitor.Log($"[发送] npcLocations: {npcs.Count} 个NPC, 时间={Game1.timeOfDay}", LogLevel.Info);
-            this.SendMessage(message);
+            await this.SendMessageAsync(message);
         }
         catch (Exception ex)
         {
@@ -302,7 +285,7 @@ public sealed class ModEntry : Mod
         }
     }
 
-    private void SendItemPrices()
+    private async Task SendItemPricesAsync()
     {
         if (!Context.IsWorldReady || !this.IsConnected)
             return;
@@ -323,7 +306,7 @@ public sealed class ModEntry : Mod
                 Data = snapshot,
             };
 
-            this.SendMessage(message);
+            await this.SendMessageAsync(message);
         }
         catch (Exception ex)
         {
@@ -331,7 +314,7 @@ public sealed class ModEntry : Mod
         }
     }
 
-    private void SendClear()
+    private async Task SendClearAsync()
     {
         if (!this.IsConnected)
             return;
@@ -344,7 +327,7 @@ public sealed class ModEntry : Mod
                 Data = null,
             };
 
-            this.SendMessage(message);
+            await this.SendMessageAsync(message);
         }
         catch (Exception ex)
         {
@@ -352,7 +335,7 @@ public sealed class ModEntry : Mod
         }
     }
 
-    private void SendMessage(ModMessageWrapper message)
+    private async Task SendMessageAsync(ModMessageWrapper message)
     {
         if (this.PipeStream == null || !this.IsConnected)
         {
@@ -360,26 +343,31 @@ public sealed class ModEntry : Mod
             return;
         }
 
-        this.Monitor.Log($"[管道→] 准备发送 {message.Type}, 获取锁...", LogLevel.Debug);
-        lock (this.WriteLock)
+        this.Monitor.Log($"[管道→] 准备发送 {message.Type}, 获取信号量...", LogLevel.Debug);
+        await this.WriteSemaphore.WaitAsync();
+        this.Monitor.Log($"[管道→] 已获取信号量, 序列化...", LogLevel.Debug);
+        try
         {
-            this.Monitor.Log($"[管道→] 已获取锁, 序列化...", LogLevel.Debug);
-            try
-            {
-                var json = JsonSerializer.Serialize(message, JsonOptions);
-                var bytes = Encoding.UTF8.GetBytes(json + "\n");
-                this.Monitor.Log($"[管道→] 序列化完成 ({bytes.Length} bytes), 写入管道...", LogLevel.Debug);
-                this.PipeStream.Write(bytes, 0, bytes.Length);
-                this.Monitor.Log($"[管道→] {message.Type} 写入成功!", LogLevel.Info);
-            }
-            catch (Exception ex)
-            {
-                this.Monitor.Log($"[管道] 发送失败 {message.Type}: {ex.Message}", LogLevel.Warn);
-                this.IsConnected = false;
-            }
+            var json = JsonSerializer.Serialize(message, JsonOptions);
+            var bytes = Encoding.UTF8.GetBytes(json + "\n");
+            this.Monitor.Log($"[管道→] 序列化完成 ({bytes.Length} bytes), 写入管道...", LogLevel.Debug);
+            await this.PipeStream.WriteAsync(bytes, 0, bytes.Length);
+            await this.PipeStream.FlushAsync();
+            this.Monitor.Log($"[管道→] {message.Type} 写入成功!", LogLevel.Info);
         }
-        this.Monitor.Log($"[管道→] 已释放锁", LogLevel.Debug);
+        catch (Exception ex)
+        {
+            this.Monitor.Log($"[管道] 发送失败 {message.Type}: {ex.Message}", LogLevel.Warn);
+            this.IsConnected = false;
+        }
+        finally
+        {
+            this.WriteSemaphore.Release();
+            this.Monitor.Log($"[管道→] 已释放信号量", LogLevel.Debug);
+        }
     }
+
+    // ── 辅助方法 ────────────────────────────────────────────
 
     private string? GetSaveId()
     {
