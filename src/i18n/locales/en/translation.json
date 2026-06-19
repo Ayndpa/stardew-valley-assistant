@@ -440,7 +440,8 @@
         "weather": "Weather",
         "progress": "Collection",
         "info": "Overview",
-        "social": "Social"
+        "social": "Social",
+        "time": "Time"
       },
       "weatherForecast": {
         "name": "Weather Forecast",
@@ -465,6 +466,14 @@
       "friendshipSummary": {
         "name": "Villager Friendships",
         "description": "Top villagers ranked by heart count"
+      },
+      "gameTime": {
+        "name": "Game Time",
+        "description": "Current in-game date, season and play time"
+      },
+      "realTimeClock": {
+        "name": "Real Time Clock",
+        "description": "Current real-world time and date"
       }
     },
     "editMode": {

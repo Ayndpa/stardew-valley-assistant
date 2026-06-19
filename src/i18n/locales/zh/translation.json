@@ -440,7 +440,8 @@
         "weather": "天气",
         "progress": "收集进度",
         "info": "信息概览",
-        "social": "社交"
+        "social": "社交",
+        "time": "时间"
       },
       "weatherForecast": {
         "name": "天气预报",
@@ -465,6 +466,14 @@
       "friendshipSummary": {
         "name": "村民关系",
         "description": "村民好感度排行"
+      },
+      "gameTime": {
+        "name": "游戏时间",
+        "description": "当前游戏内日期、季节和游戏时长"
+      },
+      "realTimeClock": {
+        "name": "实时时钟",
+        "description": "当前现实时间和日期"
       }
     },
     "editMode": {

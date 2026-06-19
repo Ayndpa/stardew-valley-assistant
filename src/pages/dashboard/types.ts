@@ -88,7 +88,7 @@ export interface WidgetDefinition {
   icon: LucideIcon
   defaultSize: WidgetSize
   removable?: boolean
-  category: "stats" | "weather" | "progress" | "info" | "social"
+  category: "stats" | "weather" | "progress" | "info" | "social" | "time"
   render: (props: WidgetRenderProps) => ReactNode
 }
 
