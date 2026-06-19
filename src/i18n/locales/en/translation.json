@@ -429,6 +429,52 @@
         "sat": "Sat",
         "sun": "Sun"
       }
+    },
+    "widgetPicker": {
+      "title": "Add Widget",
+      "description": "Choose widgets to add to your dashboard",
+      "add": "Add",
+      "added": "Added",
+      "categories": {
+        "stats": "Statistics",
+        "weather": "Weather",
+        "progress": "Collection",
+        "info": "Overview",
+        "social": "Social"
+      },
+      "weatherForecast": {
+        "name": "Weather Forecast",
+        "description": "7-day weather forecast with today's details"
+      },
+      "statsGrid": {
+        "name": "Farm Stats",
+        "description": "Money, level, friendships and perfection overview"
+      },
+      "collectionProgress": {
+        "name": "Collection Progress",
+        "description": "Progress across all collection categories"
+      },
+      "farmOverview": {
+        "name": "Farm Overview",
+        "description": "Quick summary of date, season, and gold"
+      },
+      "skillsOverview": {
+        "name": "Skills",
+        "description": "Visual display of all five skill levels"
+      },
+      "friendshipSummary": {
+        "name": "Villager Friendships",
+        "description": "Top villagers ranked by heart count"
+      }
+    },
+    "editMode": {
+      "edit": "Edit",
+      "active": "Edit Mode",
+      "hint": "Drag widgets to rearrange, resize from corners",
+      "add": "Add Widget",
+      "reset": "Reset Layout",
+      "done": "Done",
+      "dragHint": "Drag to move"
     }
   },
   "animals": {

@@ -11,6 +11,10 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(async () => ({
   plugins: [react(), tailwindcss()],
 
+  define: {
+    "process.env.NODE_ENV": JSON.stringify(process.env.NODE_ENV || "development"),
+  },
+
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
@@ -41,6 +45,9 @@ export default defineConfig(async () => ({
           }
           if (id.includes("@tauri-apps")) {
             return "tauri";
+          }
+          if (id.includes("react-grid-layout") || id.includes("react-draggable")) {
+            return "grid-layout";
           }
           if (id.includes("@radix-ui")) {
             return "radix";

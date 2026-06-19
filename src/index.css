@@ -453,3 +453,50 @@
   image-rendering: pixelated;
   image-rendering: crisp-edges;
 }
+
+/* react-grid-layout customization */
+.react-grid-layout {
+  position: relative;
+}
+.react-grid-item {
+  transition: all 200ms ease;
+  transition-property: left, top, width, height;
+}
+.react-grid-item.react-draggable-dragging {
+  z-index: 100;
+  will-change: transform;
+  opacity: 0.9;
+}
+.react-grid-placeholder {
+  background: var(--primary);
+  opacity: 0.1;
+  border-radius: var(--radius);
+  border: 2px dashed var(--primary);
+}
+/* Hide resize handle by default, only show in edit mode */
+.react-grid-item > .react-resizable-handle {
+  display: none;
+}
+.dashboard-edit-mode .react-grid-item > .react-resizable-handle {
+  display: block;
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  bottom: 0;
+  right: 0;
+  cursor: se-resize;
+}
+.dashboard-edit-mode .react-grid-item > .react-resizable-handle::after {
+  content: "";
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--muted-foreground);
+  border-bottom: 2px solid var(--muted-foreground);
+  opacity: 0.3;
+}
+.dashboard-edit-mode .react-grid-item > .react-resizable-handle:hover::after {
+  opacity: 0.6;
+}

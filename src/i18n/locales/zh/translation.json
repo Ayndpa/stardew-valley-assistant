@@ -429,6 +429,52 @@
         "sat": "周六",
         "sun": "周日"
       }
+    },
+    "widgetPicker": {
+      "title": "添加小组件",
+      "description": "选择要添加到仪表盘的组件",
+      "add": "添加",
+      "added": "已添加",
+      "categories": {
+        "stats": "数据统计",
+        "weather": "天气",
+        "progress": "收集进度",
+        "info": "信息概览",
+        "social": "社交"
+      },
+      "weatherForecast": {
+        "name": "天气预报",
+        "description": "7天天气预报及今日详情"
+      },
+      "statsGrid": {
+        "name": "农场数据",
+        "description": "金币、等级、关系和完美度概览"
+      },
+      "collectionProgress": {
+        "name": "收集进度",
+        "description": "各类收集品的完成进度"
+      },
+      "farmOverview": {
+        "name": "农场概览",
+        "description": "日期、季节、金币等快速摘要"
+      },
+      "skillsOverview": {
+        "name": "技能等级",
+        "description": "五项技能等级可视化"
+      },
+      "friendshipSummary": {
+        "name": "村民关系",
+        "description": "村民好感度排行"
+      }
+    },
+    "editMode": {
+      "edit": "编辑",
+      "active": "编辑模式",
+      "hint": "拖拽组件调整位置，从角落调整大小",
+      "add": "添加组件",
+      "reset": "重置布局",
+      "done": "完成",
+      "dragHint": "拖拽移动"
     }
   },
   "animals": {
