@@ -15,7 +15,10 @@ function getDefaultLayout(): DashboardLayout {
     version: CURRENT_VERSION,
     widgets: [
       { instanceId: generateId(), widgetId: "weather-forecast", layout: { x: 0, y: 0, w: 12, h: 3 } },
-      { instanceId: generateId(), widgetId: "stats-grid", layout: { x: 0, y: 3, w: 12, h: 2 } },
+      { instanceId: generateId(), widgetId: "coins", layout: { x: 0, y: 3, w: 3, h: 2 } },
+      { instanceId: generateId(), widgetId: "farm-level", layout: { x: 3, y: 3, w: 3, h: 2 } },
+      { instanceId: generateId(), widgetId: "friendship-progress", layout: { x: 6, y: 3, w: 3, h: 2 } },
+      { instanceId: generateId(), widgetId: "perfection", layout: { x: 9, y: 3, w: 3, h: 2 } },
       { instanceId: generateId(), widgetId: "collection-progress", layout: { x: 0, y: 5, w: 12, h: 4 } },
     ],
   }

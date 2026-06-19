@@ -1,6 +1,9 @@
 // Barrel import — triggers all widget registrations
 import "./weather-forecast"
-import "./stats-grid"
+import "./coins"
+import "./farm-level"
+import "./friendship-progress"
+import "./perfection"
 import "./collection-progress"
 import "./farm-overview"
 import "./skills-overview"

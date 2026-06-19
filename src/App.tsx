@@ -310,7 +310,7 @@ function App() {
   }
 
   // Custom hooks for launcher, deep link and drag and drop
-  const { isGameRunning, handleLaunchGame } = useGameLauncher({ ensureGameDirectoryReady, showGlobalToast })
+  const { isGameRunning, handleLaunchGame, handleForceKillGame } = useGameLauncher({ ensureGameDirectoryReady, showGlobalToast })
 
   const handleInstallNpcLocationsMod = useCallback(async () => {
     if (isGameRunning) {
@@ -558,6 +558,7 @@ function App() {
             collapsed={sidebarCollapsed}
             onToggleCollapse={toggleSidebarCollapsed}
             onLaunchGame={handleLaunchGame}
+            onForceKillGame={handleForceKillGame}
             isGameRunning={isGameRunning}
             downloadStats={downloadStats}
             enabledFeatures={enabledFeatures}

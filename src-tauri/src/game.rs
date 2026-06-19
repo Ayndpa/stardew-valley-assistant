@@ -2,6 +2,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use sysinfo::System;
 use tauri::{AppHandle, Emitter};
 
 use crate::utils::run_without_window;
@@ -248,4 +249,63 @@ pub fn launch_game(
     });
 
     Ok(pid)
+}
+
+/// Names of game executables to detect (case-insensitive comparison).
+const GAME_PROCESS_NAMES: &[&str] = &[
+    "stardewmoddingapi.exe",
+    "stardew valley.exe",
+    "stardewvalley",          // Linux / macOS
+    "stardewmoddingapi",      // Linux / macOS
+];
+
+fn is_game_process(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    GAME_PROCESS_NAMES.iter().any(|&target| lower == target)
+}
+
+/// Check whether any Stardew Valley / SMAPI process is currently running.
+#[tauri::command]
+pub fn check_game_process_running() -> bool {
+    let mut sys = System::new();
+    sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+    sys.processes().iter().any(|(_, proc)| {
+        proc.name()
+            .to_str()
+            .map(is_game_process)
+            .unwrap_or(false)
+    })
+}
+
+/// Force-kill all running Stardew Valley / SMAPI processes.
+/// Returns a message summarising how many processes were killed.
+#[tauri::command]
+pub fn force_kill_game() -> Result<String, String> {
+    let mut sys = System::new();
+    sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+
+    let targets: Vec<sysinfo::Pid> = sys
+        .processes()
+        .iter()
+        .filter(|(_, proc)| {
+            proc.name()
+                .to_str()
+                .map(is_game_process)
+                .unwrap_or(false)
+        })
+        .map(|(pid, _)| *pid)
+        .collect();
+
+    if targets.is_empty() {
+        return Err("未检测到正在运行的游戏进程。".to_string());
+    }
+
+    let count = targets.len();
+    for pid in &targets {
+        if let Some(proc) = sys.process(*pid) {
+            proc.kill();
+        }
+    }
+
+    Ok(format!("已终止 {} 个游戏进程。", count))
 }

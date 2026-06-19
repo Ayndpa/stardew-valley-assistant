@@ -1,15 +1,8 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useTranslation } from "react-i18next"
-import { Coins, Heart, TreePine, Trophy } from "lucide-react"
+import { Trophy } from "lucide-react"
 import { registerWidget } from "../widget-registry"
 import type { WidgetRenderProps, SaveDetail } from "../types"
-
-const VILLAGERS = new Set([
-  "Abigail", "Alex", "Caroline", "Clint", "Demetrius", "Elliott", "Emily", "Evelyn",
-  "George", "Gus", "Haley", "Harvey", "Jas", "Jodi", "Kent", "Krobus", "Leah", "Leo",
-  "Lewis", "Linus", "Marnie", "Maru", "Pam", "Penny", "Pierre", "Robin", "Sam", "Sandy",
-  "Sebastian", "Shane", "Vincent", "Willy", "Wizard", "Dwarf",
-])
 
 function computeCollectionPct(detail: SaveDetail, itemEntries: import("../../items/types").ItemEntry[]): number {
   const SHIPPING_EXCLUDE_TYPES = new Set(["arch", "fish", "minerals", "cooking", "ring", "seeds", "litter", "interactive", "quest", "asdf"])
@@ -59,84 +52,37 @@ function computeCollectionPct(detail: SaveDetail, itemEntries: import("../../ite
   )
 }
 
-function StatsGridContent({ saveDetail, itemEntries }: WidgetRenderProps) {
+function PerfectionWidget({ saveDetail, itemEntries }: WidgetRenderProps) {
   const { t } = useTranslation()
 
   if (!saveDetail) return null
 
-  const summary = saveDetail.summary
   const perfectionPct = itemEntries ? computeCollectionPct(saveDetail, itemEntries) : 0
 
-  let maxHeartsCount = 0
-  let totalTracked = 0
-  saveDetail.friendships.forEach((f) => {
-    if (VILLAGERS.has(f.npcName)) {
-      totalTracked++
-      const hearts = Math.floor(f.points / 250)
-      if (hearts >= 8) maxHeartsCount++
-    }
-  })
-  if (totalTracked === 0) totalTracked = 34
-
-  const statsCards = [
-    {
-      title: t("dashboard.stats.moneyTitle"),
-      value: `${summary.money.toLocaleString()}g`,
-      icon: <Coins className="h-5 w-5" />,
-      description: t("dashboard.stats.moneyDesc", { amount: summary.totalMoneyEarned.toLocaleString() }),
-      color: "text-yellow-500",
-    },
-    {
-      title: t("dashboard.stats.levelTitle"),
-      value: t("dashboard.stats.levelValue", {
-        level: Math.round(
-          (summary.farmingLevel + summary.miningLevel + summary.combatLevel + summary.foragingLevel + summary.fishingLevel) / 5,
-        ) || 1,
-      }),
-      icon: <TreePine className="h-5 w-5" />,
-      description: t("dashboard.stats.levelDesc", { farming: summary.farmingLevel, mining: summary.miningLevel }),
-      color: "text-green-500",
-    },
-    {
-      title: t("dashboard.stats.friendshipTitle"),
-      value: `${maxHeartsCount} / ${totalTracked}`,
-      icon: <Heart className="h-5 w-5" />,
-      description: t("dashboard.stats.friendshipDesc"),
-      color: "text-red-400",
-    },
-    {
-      title: t("dashboard.stats.collectionTitle"),
-      value: `${perfectionPct}%`,
-      icon: <Trophy className="h-5 w-5" />,
-      description: t("dashboard.stats.collectionDesc", { percent: perfectionPct }),
-      color: "text-amber-500",
-    },
-  ]
-
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 h-full">
-      {statsCards.map((stat) => (
-        <Card key={stat.title}>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">{stat.title}</CardTitle>
-            <div className={stat.color}>{stat.icon}</div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stat.value}</div>
-            <p className="text-xs text-muted-foreground mt-1">{stat.description}</p>
-          </CardContent>
-        </Card>
-      ))}
-    </div>
+    <Card className="h-full">
+      <CardHeader className="flex flex-row items-center justify-between pb-2">
+        <CardTitle className="text-sm font-medium text-muted-foreground">
+          {t("dashboard.stats.collectionTitle")}
+        </CardTitle>
+        <Trophy className="h-5 w-5 text-amber-500" />
+      </CardHeader>
+      <CardContent>
+        <div className="text-2xl font-bold">{perfectionPct}%</div>
+        <p className="text-xs text-muted-foreground mt-1">
+          {t("dashboard.stats.collectionDesc", { percent: perfectionPct })}
+        </p>
+      </CardContent>
+    </Card>
   )
 }
 
 registerWidget({
-  id: "stats-grid",
-  nameKey: "dashboard.widgetPicker.statsGrid.name",
-  descriptionKey: "dashboard.widgetPicker.statsGrid.description",
-  icon: Coins,
-  defaultSize: "full",
+  id: "perfection",
+  nameKey: "dashboard.widgetPicker.perfection.name",
+  descriptionKey: "dashboard.widgetPicker.perfection.description",
+  icon: Trophy,
+  defaultSize: "small",
   category: "stats",
-  render: (props) => <StatsGridContent {...props} />,
+  render: (props) => <PerfectionWidget {...props} />,
 })

@@ -18,7 +18,7 @@ use std::{
 
 use crate::download_control::{pause_download_task, resume_download_task, DownloadControlState};
 use crate::farmer_avatar::get_npc_portraits;
-use crate::game::{auto_detect_game_dir, get_game_version, launch_game};
+use crate::game::{auto_detect_game_dir, check_game_process_running, force_kill_game, get_game_version, launch_game};
 use crate::game_data::{
     check_item_prices_mod_running, get_animal_game_data, get_bundle_game_data,
     get_calendar_game_data, get_crop_game_data, get_fishing_map_data, get_fishing_map_detail,
@@ -513,6 +513,8 @@ pub fn run() {
             get_npc_game_data,
             get_secret_notes_game_data,
             launch_game,
+            check_game_process_running,
+            force_kill_game,
             install_smapi,
             uninstall_smapi,
             list_save_files,

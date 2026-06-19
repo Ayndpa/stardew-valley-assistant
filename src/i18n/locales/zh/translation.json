@@ -24,6 +24,8 @@
     "gameRunning": "游戏运行中",
     "launchVanilla": "启动原版游戏",
     "selectLaunchMode": "选择启动方式",
+    "forceQuit": "强制退出",
+    "forceQuitTooltip": "强制退出游戏进程",
     "collapseSidebar": "收起侧边栏",
     "expandSidebar": "展开侧边栏",
     "version": "超级星露谷",
@@ -447,9 +449,21 @@
         "name": "天气预报",
         "description": "7天天气预报及今日详情"
       },
-      "statsGrid": {
-        "name": "农场数据",
-        "description": "金币、等级、关系和完美度概览"
+      "coins": {
+        "name": "金币",
+        "description": "当前金币与总收益概览"
+      },
+      "farmLevel": {
+        "name": "农场等级",
+        "description": "五项技能平均等级"
+      },
+      "friendshipProgress": {
+        "name": "关系进度",
+        "description": "已达满心的村民数量"
+      },
+      "perfection": {
+        "name": "完美度",
+        "description": "总收集进度百分比"
       },
       "collectionProgress": {
         "name": "收集进度",
@@ -1597,7 +1611,13 @@
     "launching": "游戏启动中…",
     "launchingVanilla": "原版游戏启动中…",
     "launchFailed": "启动游戏失败: {{error}}",
-    "gameExited": "游戏已退出，模组管理已恢复可修改。"
+    "gameExited": "游戏已退出，模组管理已恢复可修改。",
+    "forceQuitSuccess": "游戏进程已终止。",
+    "forceQuitFailed": "强制退出失败: {{error}}",
+    "forceQuitConfirmTitle": "强制退出游戏",
+    "forceQuitConfirmMessage": "确定要强制终止游戏进程吗？\n\n⚠️ 警告：强制退出可能导致未保存的存档数据丢失、存档损坏或其他不可预期的问题。建议先在游戏内正常保存后再执行此操作。",
+    "forceQuitConfirmButton": "强制退出",
+    "forceQuitCancelButton": "取消"
   },
     "onboarding": {
       "steps": {

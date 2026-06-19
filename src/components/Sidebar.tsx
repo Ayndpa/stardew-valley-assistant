@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { useConfirm } from "@/hooks/useConfirm"
 import type { Page, SaveSummary } from "@/App"
 import { useTranslation } from "react-i18next"
 import {
@@ -19,6 +20,7 @@ import {
   User,
   Download,
   Play,
+  Square,
   ListChecks,
   Map,
   Baby,
@@ -39,6 +41,7 @@ interface SidebarProps {
   collapsed: boolean
   onToggleCollapse: () => void
   onLaunchGame: (launchMode?: "default" | "vanilla") => void
+  onForceKillGame: () => void
   isGameRunning: boolean
   downloadStats: {
     running: number
@@ -110,11 +113,13 @@ export function Sidebar({
   collapsed,
   onToggleCollapse,
   onLaunchGame,
+  onForceKillGame,
   isGameRunning,
   downloadStats,
   enabledFeatures,
 }: SidebarProps) {
   const { t } = useTranslation()
+  const { confirm, ConfirmDialogElement } = useConfirm()
   const [isOpen, setIsOpen] = useState(false)
   const [isLaunchMenuOpen, setIsLaunchMenuOpen] = useState(false)
   const [appVersion, setAppVersion] = useState<string>("")
@@ -150,6 +155,19 @@ export function Sidebar({
   const handleLaunch = (launchMode?: "default" | "vanilla") => {
     setIsLaunchMenuOpen(false)
     onLaunchGame(launchMode)
+  }
+
+  const handleForceQuit = async () => {
+    const ok = await confirm({
+      title: t("gameLauncher.forceQuitConfirmTitle"),
+      message: t("gameLauncher.forceQuitConfirmMessage"),
+      confirmText: t("gameLauncher.forceQuitConfirmButton"),
+      cancelText: t("gameLauncher.forceQuitCancelButton"),
+      variant: "destructive",
+    })
+    if (ok) {
+      onForceKillGame()
+    }
   }
 
   return (
@@ -259,14 +277,34 @@ export function Sidebar({
 
       <div className={cn("py-4", collapsed ? "px-2" : "px-3")}>
         <div className="relative" ref={launchDropdownRef}>
-          {collapsed ? (
+          {isGameRunning ? (
+            collapsed ? (
+              <Button
+                variant="destructive"
+                className="h-10 w-full justify-center border border-destructive/40 px-0 transition-all duration-200"
+                onClick={handleForceQuit}
+                title={t("sidebar.forceQuitTooltip")}
+              >
+                <Square className="h-4 w-4" />
+              </Button>
+            ) : (
+              <Button
+                variant="destructive"
+                className="w-full justify-center gap-2 border border-destructive/40 px-3 text-sm font-medium transition-all duration-200"
+                onClick={handleForceQuit}
+                title={t("sidebar.forceQuitTooltip")}
+              >
+                <Square className="h-4 w-4" />
+                {t("sidebar.forceQuit")}
+              </Button>
+            )
+          ) : collapsed ? (
             <div className="flex flex-col gap-1">
               <Button
                 variant="ghost"
                 className="h-10 w-full justify-center border border-border/40 px-0 text-sidebar-foreground transition-all duration-200 hover:bg-sidebar-accent/50"
                 onClick={() => handleLaunch()}
-                disabled={isGameRunning}
-                title={isGameRunning ? t("sidebar.gameRunning") : t("sidebar.launchGameTooltip")}
+                title={t("sidebar.launchGameTooltip")}
               >
                 <Play className="h-4 w-4 text-primary" />
               </Button>
@@ -274,24 +312,14 @@ export function Sidebar({
                 variant="ghost"
                 className="h-7 w-full justify-center border border-border/40 px-0 text-sidebar-foreground transition-all duration-200 hover:bg-sidebar-accent/50"
                 onClick={() => setIsLaunchMenuOpen((value) => !value)}
-                disabled={isGameRunning}
-                title={isGameRunning ? t("sidebar.gameRunning") : t("sidebar.selectLaunchMode")}
+                title={t("sidebar.selectLaunchMode")}
               >
-                {collapsed ? (
-                  <ChevronRight
-                    className={cn(
-                      "h-3.5 w-3.5 text-muted-foreground transition-transform duration-200",
-                      isLaunchMenuOpen && "text-sidebar-foreground"
-                    )}
-                  />
-                ) : (
-                  <ChevronDown
-                    className={cn(
-                      "h-3.5 w-3.5 text-muted-foreground transition-transform duration-200",
-                      isLaunchMenuOpen && "rotate-180 text-sidebar-foreground"
-                    )}
-                  />
-                )}
+                <ChevronRight
+                  className={cn(
+                    "h-3.5 w-3.5 text-muted-foreground transition-transform duration-200",
+                    isLaunchMenuOpen && "text-sidebar-foreground"
+                  )}
+                />
               </Button>
             </div>
           ) : (
@@ -300,20 +328,18 @@ export function Sidebar({
                 variant="ghost"
                 className="flex-1 justify-start gap-3 rounded-r-none border border-border/40 px-3 text-sm font-medium text-sidebar-foreground transition-all duration-200 hover:bg-sidebar-accent/50"
                 onClick={() => handleLaunch()}
-                disabled={isGameRunning}
-                title={isGameRunning ? t("sidebar.gameRunning") : t("sidebar.launchGameTooltip")}
+                title={t("sidebar.launchGameTooltip")}
               >
                 <span className="shrink-0">
                   <Play className="h-4 w-4 text-primary" />
                 </span>
-                {isGameRunning ? t("sidebar.gameRunning") : t("sidebar.launchGame")}
+                {t("sidebar.launchGame")}
               </Button>
               <Button
                 variant="ghost"
                 className="h-10 w-8 shrink-0 rounded-l-none border border-l-0 border-border/40 px-2 text-sidebar-foreground hover:bg-sidebar-accent/50"
                 onClick={() => setIsLaunchMenuOpen((value) => !value)}
-                disabled={isGameRunning}
-                title={isGameRunning ? t("sidebar.gameRunning") : t("sidebar.selectLaunchMode")}
+                title={t("sidebar.selectLaunchMode")}
               >
                 <ChevronDown
                   className={cn(
@@ -324,7 +350,7 @@ export function Sidebar({
               </Button>
             </div>
           )}
-          {isLaunchMenuOpen && (
+          {!isGameRunning && isLaunchMenuOpen && (
             <div
               className={cn(
                 "absolute rounded-lg border border-sidebar-border/80 bg-sidebar py-1 shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150",
@@ -399,6 +425,7 @@ export function Sidebar({
           {!collapsed && <span className="text-xs">{t("sidebar.collapseSidebar")}</span>}
         </button>
       </div>
+      {ConfirmDialogElement}
     </aside>
   )
 }

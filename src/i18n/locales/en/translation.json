@@ -24,6 +24,8 @@
     "gameRunning": "Running",
     "launchVanilla": "Launch Vanilla",
     "selectLaunchMode": "Launch Mode",
+    "forceQuit": "Force Quit",
+    "forceQuitTooltip": "Force quit the game process",
     "collapseSidebar": "Collapse Sidebar",
     "expandSidebar": "Expand Sidebar",
     "version": "Stardew Valley Assistant",
@@ -447,9 +449,21 @@
         "name": "Weather Forecast",
         "description": "7-day weather forecast with today's details"
       },
-      "statsGrid": {
-        "name": "Farm Stats",
-        "description": "Money, level, friendships and perfection overview"
+      "coins": {
+        "name": "Coins",
+        "description": "Current gold and total earnings"
+      },
+      "farmLevel": {
+        "name": "Farm Level",
+        "description": "Average skill level across all five skills"
+      },
+      "friendshipProgress": {
+        "name": "Friendships",
+        "description": "Villagers with 8+ hearts"
+      },
+      "perfection": {
+        "name": "Perfection",
+        "description": "Overall collection progress percentage"
       },
       "collectionProgress": {
         "name": "Collection Progress",
@@ -1727,7 +1741,13 @@
     "launching": "Launching game…",
     "launchingVanilla": "Launching vanilla game…",
     "launchFailed": "Failed to launch game: {{error}}",
-    "gameExited": "Game has exited. Mod management is now editable."
+    "gameExited": "Game has exited. Mod management is now editable.",
+    "forceQuitSuccess": "Game process has been terminated.",
+    "forceQuitFailed": "Force quit failed: {{error}}",
+    "forceQuitConfirmTitle": "Force Quit Game",
+    "forceQuitConfirmMessage": "Are you sure you want to forcefully terminate the game process?\n\n⚠️ Warning: Force quitting may cause unsaved progress loss, save file corruption, or other unexpected issues. It is recommended to save your game normally before using this option.",
+    "forceQuitConfirmButton": "Force Quit",
+    "forceQuitCancelButton": "Cancel"
   },
   "onboarding": {
     "steps": {

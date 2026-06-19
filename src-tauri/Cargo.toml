@@ -34,6 +34,7 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 lzxd = "0.2.6"
 zip = "2"
 chrono = { version = "0.4", features = ["serde"] }
+sysinfo = "0.34"
 
 [target."cfg(any(target_os = \"macos\", windows, target_os = \"linux\"))".dependencies]
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
