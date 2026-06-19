@@ -492,7 +492,11 @@ pub fn run() {
                 show_main_window_in_front(&window);
             });
         }))
-        .plugin(tauri_plugin_log::Builder::default().build())
+        .plugin(
+            tauri_plugin_log::Builder::default()
+                .level(log::LevelFilter::Debug)
+                .build(),
+        )
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -623,6 +627,9 @@ pub fn run() {
             }
 
             if let Some(window) = app_handle.get_webview_window("main") {
+                // Always enable devtools for debugging
+                window.open_devtools();
+
                 let _ = window.set_min_size(Some(Size::Logical(tauri::LogicalSize::new(
                     MAIN_WINDOW_MIN_WIDTH,
                     MAIN_WINDOW_MIN_HEIGHT,

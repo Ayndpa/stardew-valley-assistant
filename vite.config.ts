@@ -10,6 +10,7 @@ const host = process.env.TAURI_DEV_HOST;
 // https://vite.dev/config/
 export default defineConfig(async () => ({
   plugins: [react(), tailwindcss()],
+  base: "./",
 
   define: {
     "process.env.NODE_ENV": JSON.stringify(process.env.NODE_ENV || "development"),
@@ -46,17 +47,10 @@ export default defineConfig(async () => ({
           if (id.includes("@tauri-apps")) {
             return "tauri";
           }
-          if (id.includes("react-grid-layout") || id.includes("react-draggable")) {
-            return "grid-layout";
-          }
           if (id.includes("@radix-ui")) {
             return "radix";
           }
-          if (id.includes("react-router-dom")) {
-            return "router";
-          }
-          // 只把 React 核心包放到 react-vendor，避免 lucide-react 等包被误分入该 chunk
-          // 引起 vendor <-> react-vendor 循环依赖，导致生产构建运行时 TypeError
+          // React 核心包单独分包
           const reactCorePackages = ["react", "react-dom", "scheduler"];
           const isReactCore = reactCorePackages.some(
             (pkg) => id === pkg || id.includes(`/${pkg}/`) || id.includes(`node_modules/${pkg}/`),
@@ -64,6 +58,7 @@ export default defineConfig(async () => ({
           if (isReactCore) {
             return "react-vendor";
           }
+          // 其他所有依赖放到 vendor，避免循环依赖
           return "vendor";
         },
       },
