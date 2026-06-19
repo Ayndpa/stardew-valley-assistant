@@ -69,6 +69,7 @@ interface ModListProps {
   onGoOnline?: () => void
   isGameRunning?: boolean
   translationSyncingModIds?: Set<string>
+  confirm: (options: { title: string; message: string; confirmText?: string; cancelText?: string; variant?: "default" | "destructive" }) => Promise<boolean>
 }
 
 /** A node in the mod folder tree */
@@ -145,6 +146,7 @@ export function ModList({
   onGoOnline,
   isGameRunning = false,
   translationSyncingModIds = new Set(),
+  confirm,
 }: ModListProps) {
   const { t } = useTranslation()
   const lockedTitle = isGameRunning ? t("mods.toast.gameRunningNoModify") : undefined
@@ -303,10 +305,10 @@ export function ModList({
 
             {/* Delete Button (Only displays on hover/select) */}
             <button
-              onClick={(e) => {
+              onClick={async (e) => {
                 e.stopPropagation()
                 if (isGameRunning) return
-                if (confirm(t("mods.list.confirmRemove", { name: mod.name }))) {
+                if (await confirm({ title: t("mods.list.removeMod"), message: t("mods.list.confirmRemove", { name: mod.name }), variant: "destructive" })) {
                   onDeleteMod(mod.id)
                 }
               }}

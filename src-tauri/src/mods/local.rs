@@ -263,6 +263,14 @@ pub fn toggle_mod(game_dir: String, folder_name: String, enable: bool) -> Result
         return Err("Mods folder does not exist".to_string());
     }
 
+    // Reject empty or whitespace-only names (would resolve to Mods/ itself)
+    if folder_name.trim().is_empty() {
+        return Err("模组文件夹名不能为空".to_string());
+    }
+    // Reject "." (current directory = Mods/)
+    if folder_name == "." {
+        return Err("非法的模组文件夹名".to_string());
+    }
     // Reject path traversal
     if folder_name.contains("..") {
         return Err("非法的模组文件夹名".to_string());
@@ -331,6 +339,14 @@ pub fn delete_mod(game_dir: String, folder_name: String) -> Result<(), String> {
         return Err("Mods 文件夹不存在".to_string());
     }
 
+    // Reject empty or whitespace-only names (would resolve to Mods/ itself)
+    if folder_name.trim().is_empty() {
+        return Err("模组文件夹名不能为空".to_string());
+    }
+    // Reject "." (current directory = Mods/)
+    if folder_name == "." {
+        return Err("非法的模组文件夹名".to_string());
+    }
     // Allow nested paths (e.g. "美化类/xxxMod") but reject path traversal
     if folder_name.contains("..") {
         return Err("非法的模组文件夹名".to_string());

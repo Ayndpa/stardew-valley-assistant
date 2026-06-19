@@ -232,9 +232,9 @@ export function Mods({ onNavigate, refreshSignal, isGameRunning = false, onQueue
                   </Button>
                 )}
               </div>
-              <p className="text-muted-foreground mt-2 text-sm max-w-xl">
-                {t("mods.description")}
-              </p>
+              <p className="text-muted-foreground mt-2 text-sm max-w-xl [&_code]:bg-muted [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-xs [&_code]:font-mono"
+                dangerouslySetInnerHTML={{ __html: t("mods.description") }}
+              />
             </div>
 
             {/* Global Statistics Panel */}
@@ -293,6 +293,7 @@ export function Mods({ onNavigate, refreshSignal, isGameRunning = false, onQueue
             onApplyProfile={handleApplyProfile}
             showToast={showToast}
             isGameRunning={isGameRunning}
+            confirm={confirm}
           />
 
           {/* Main Split Layout */}
@@ -323,6 +324,7 @@ export function Mods({ onNavigate, refreshSignal, isGameRunning = false, onQueue
                 }}
                 isGameRunning={isGameRunning}
                 translationSyncingModIds={translationSyncingModIds}
+                confirm={confirm}
               />
             </div>
 

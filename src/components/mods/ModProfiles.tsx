@@ -76,6 +76,7 @@ interface ModProfilesProps {
   // Toast helper
   showToast: (message: string, type: "success" | "info" | "warning") => void
   isGameRunning?: boolean
+  confirm: (options: { title: string; message: string; confirmText?: string; cancelText?: string; variant?: "default" | "destructive" }) => Promise<boolean>
 }
 
 function formatTimestamp(ts: string): string {
@@ -91,7 +92,7 @@ function formatTimestamp(ts: string): string {
   })
 }
 
-export function ModProfiles({ currentMods, onApplyProfile, showToast, isGameRunning = false }: ModProfilesProps) {
+export function ModProfiles({ currentMods, onApplyProfile, showToast, isGameRunning = false, confirm }: ModProfilesProps) {
   const { t } = useTranslation()
   const [profiles, setProfiles] = useState<ModProfile[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -201,7 +202,7 @@ export function ModProfiles({ currentMods, onApplyProfile, showToast, isGameRunn
       return
     }
 
-    if (!confirm(t("mods.profiles.confirmDelete", { name: profile.name }))) return
+    if (!await confirm({ title: t("mods.profiles.deleteProfile", "删除模组配置"), message: t("mods.profiles.confirmDelete", { name: profile.name }), variant: "destructive" })) return
 
     const invoke = await getTauriInvoke()
     if (invoke) {
