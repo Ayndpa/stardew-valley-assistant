@@ -22,10 +22,10 @@ use crate::game::{auto_detect_game_dir, check_game_process_running, force_kill_g
 use crate::game_data::{
     cheat_add_item, cheat_add_money, cheat_grow_crops, cheat_kill_monsters, cheat_max_friendship,
     cheat_refill_energy, cheat_refill_health, cheat_set_weather, cheat_teleport,
-    cheat_toggle_freeze_time, cheat_toggle_speed, cheat_water_crops, check_item_prices_mod_running,
+    cheat_toggle_freeze_time, cheat_toggle_speed, cheat_water_crops,
     export_mod_data_to_file, get_animal_game_data, get_bundle_game_data, get_calendar_game_data,
     get_cheat_states, get_crop_game_data, get_fishing_map_data, get_fishing_map_detail,
-    get_item_game_data, get_item_game_data_overview, get_item_prices_from_mod, get_mod_export_data,
+    get_item_game_data, get_item_game_data_overview, get_mod_export_data,
     get_npc_game_data, get_secret_notes_game_data, live_state::LiveGameState,
     pipe_server::{self, PipeWriterHandle}, query_item_game_data,
 };
@@ -48,6 +48,12 @@ use crate::log_persist::{clear_log_files, get_log_dir_path, read_log_files, writ
 use crate::smapi::{check_smapi_status, install_smapi, uninstall_smapi};
 use crate::updater::check_for_updates;
 use crate::utils::{open_in_file_manager, path_exists};
+
+/// Returns true if this is a beta/test build (set at compile time via tauri.conf.json "beta" field)
+#[tauri::command]
+fn get_app_beta() -> bool {
+    option_env!("APP_BETA").map(|v| v == "true").unwrap_or(false)
+}
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, Monitor, PhysicalPosition, PhysicalSize, Size, State};
 use tauri_plugin_deep_link::DeepLinkExt;
@@ -531,8 +537,6 @@ pub fn run() {
             get_npc_schedule,
             check_game_running,
             check_pipe_status,
-            get_item_prices_from_mod,
-            check_item_prices_mod_running,
             get_save_editor_data,
             update_save_editor_data,
             get_children_data,
@@ -584,7 +588,8 @@ pub fn run() {
             cheat_set_weather,
             get_cheat_states,
             get_mod_export_data,
-            export_mod_data_to_file
+            export_mod_data_to_file,
+            get_app_beta
         ])
         .setup(|app| {
             let app_handle = app.handle();

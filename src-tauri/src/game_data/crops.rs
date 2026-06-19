@@ -87,8 +87,8 @@ pub fn get_crop_game_data(
     let mut lookup = HashMap::new();
     let mut texture_cache = HashMap::new();
 
-    // Try to load mod prices (from SMAPI mod runtime snapshot)
-    let mod_prices = super::item_prices::read_realtime_item_prices();
+    // Try to load prices from game data export file
+    let mod_prices = super::item_prices::read_item_prices_from_export();
 
     for (seed_id, crop) in crops {
         let Some(obj) = objects.get(&crop.harvest_item_id) else {
@@ -121,11 +121,11 @@ pub fn get_crop_game_data(
         };
         let icon = render_object_icon(&content_dir, obj, &mut texture_cache).ok();
 
-        // Use mod price if available, otherwise fall back to XNB price
+        // Use export price if available, otherwise fall back to XNB price
         let harvest_id = &crop.harvest_item_id;
         let (sell_price, price_source) = mod_prices
             .as_ref()
-            .and_then(|mp| mp.get(harvest_id).map(|&p| (p, "mod")))
+            .and_then(|mp| mp.get(harvest_id).map(|&p| (p, "export")))
             .unwrap_or((obj.price, "xnb"));
 
         let entry = CropEncyclopediaEntry {

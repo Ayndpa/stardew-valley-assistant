@@ -280,6 +280,9 @@ export function FishingInfoPanel({
                           {fish.priceSource === "mod" && (
                             <span className="ml-0.5 text-orange-500">Mod</span>
                           )}
+                          {fish.priceSource === "export" && (
+                            <span className="ml-0.5 text-blue-500">导出</span>
+                          )}
                         </span>
                       )}
                     </div>

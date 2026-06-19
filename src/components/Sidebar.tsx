@@ -127,11 +127,17 @@ export function Sidebar({
   const [isOpen, setIsOpen] = useState(false)
   const [isLaunchMenuOpen, setIsLaunchMenuOpen] = useState(false)
   const [appVersion, setAppVersion] = useState<string>("")
+  const [isBeta, setIsBeta] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const launchDropdownRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     getVersion().then(setAppVersion).catch(() => setAppVersion(""))
+    if (typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__) {
+      import("@tauri-apps/api/core").then(({ invoke }) => {
+        invoke<boolean>("get_app_beta").then(setIsBeta).catch(() => {})
+      })
+    }
   }, [])
 
   // Click outside to close
@@ -183,8 +189,15 @@ export function Sidebar({
     >
       {!collapsed && appVersion && (
         <div className="px-4 py-2.5">
-          <div className="rounded-full border border-sidebar-border/60 bg-sidebar-accent/20 px-3 py-1 text-[10px] font-medium tracking-wide text-muted-foreground">
-            v{appVersion}
+          <div className="flex items-center gap-1.5">
+            <div className="rounded-full border border-sidebar-border/60 bg-sidebar-accent/20 px-3 py-1 text-[10px] font-medium tracking-wide text-muted-foreground">
+              v{appVersion}
+            </div>
+            {isBeta && (
+              <div className="rounded-full bg-amber-500/15 border border-amber-500/30 px-2 py-1 text-[10px] font-bold tracking-wide text-amber-600 dark:text-amber-400">
+                {t("beta.label")}
+              </div>
+            )}
           </div>
         </div>
       )}

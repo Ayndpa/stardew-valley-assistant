@@ -1,4 +1,10 @@
 {
+  "beta": {
+    "label": "测试版",
+    "dialogTitle": "测试版本提示",
+    "dialogMessage": "您当前使用的是测试版本，可能包含未完善的功能或已知问题。\n如遇到异常请反馈给开发者，感谢您的理解与支持！",
+    "dialogConfirm": "我知道了"
+  },
   "sidebar": {
     "dashboard": "仪表盘",
     "collections": "收集进度",

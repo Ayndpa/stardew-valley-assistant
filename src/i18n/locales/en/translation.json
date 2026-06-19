@@ -1,4 +1,10 @@
 {
+  "beta": {
+    "label": "Beta",
+    "dialogTitle": "Beta Version Notice",
+    "dialogMessage": "You are using a beta version which may contain incomplete features or known issues.\nPlease report any bugs to the developer. Thank you for your support!",
+    "dialogConfirm": "Got it"
+  },
   "sidebar": {
     "dashboard": "Dashboard",
     "collections": "Collections",

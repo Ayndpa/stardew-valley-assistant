@@ -37,6 +37,9 @@ public sealed class ModEntry : Mod
     private bool SpeedBoostActive;
     private bool FreezeTimeActive;
 
+    // ── 数据导出状态 ─────────────────────────────────────
+    private volatile bool _exportDone;
+
     public override void Entry(IModHelper helper)
     {
         this.Monitor.Log("助手 Mod 已加载，开始连接管道...", LogLevel.Info);
@@ -57,6 +60,9 @@ public sealed class ModEntry : Mod
         this.SpeedBoostActive = false;
         this.FreezeTimeActive = false;
         _ = this.SendNpcLocationsAsync();
+
+        // 显示 HUD 提示后在后台线程导出数据
+        Game1.addHUDMessage(new HUDMessage("助手模组：正在导出游戏数据…", 3500f));
         _ = Task.Run(() => this.ExportModData());
     }
 
@@ -77,6 +83,13 @@ public sealed class ModEntry : Mod
         if (this.FreezeTimeActive)
         {
             Game1.gameTimeInterval = 0;
+        }
+
+        // 数据导出完成提示（从后台线程同步到游戏线程）
+        if (this._exportDone)
+        {
+            this._exportDone = false;
+            Game1.addHUDMessage(new HUDMessage("助手模组：游戏数据导出完成", 3500f));
         }
     }
 
@@ -252,10 +265,6 @@ public sealed class ModEntry : Mod
             this.Monitor.Log($"[处理] 消息类型: {type}", LogLevel.Info);
             switch (type)
             {
-                case "requestItemPrices":
-                    this.Monitor.Log("[处理] 收到物品价格请求，开始收集...", LogLevel.Info);
-                    _ = this.SendItemPricesAsync();
-                    break;
                 case "requestNpcLocations":
                     this.Monitor.Log("[处理] 收到 NPC 位置请求", LogLevel.Info);
                     _ = this.SendNpcLocationsAsync();
@@ -622,35 +631,6 @@ public sealed class ModEntry : Mod
         }
     }
 
-    private async Task SendItemPricesAsync()
-    {
-        if (!Context.IsWorldReady || !this.IsConnected)
-            return;
-
-        try
-        {
-            var prices = this.CollectItemPrices();
-
-            var snapshot = new ItemPricesSnapshot(
-                SaveId: this.GetSaveId(),
-                GeneratedAt: DateTimeOffset.Now.ToString("O"),
-                Prices: prices
-            );
-
-            var message = new ModMessageWrapper
-            {
-                Type = "itemPrices",
-                Data = snapshot,
-            };
-
-            await this.SendMessageAsync(message);
-        }
-        catch (Exception ex)
-        {
-            this.Monitor.Log($"发送物品价格失败: {ex.Message}", LogLevel.Debug);
-        }
-    }
-
     private async Task SendCheatResultAsync(string action, bool success, string message)
     {
         if (!this.IsConnected)
@@ -693,41 +673,67 @@ public sealed class ModEntry : Mod
                 "StardewValley", "StardewValleyAssistant");
             Directory.CreateDirectory(exportDir);
 
-            var snapshot = new ModExportSnapshot(
+            // 收集所有数据（原版 + 模组）
+            var allItems = this.CollectAllItems();
+            var allCrops = this.CollectAllCrops();
+            var allAnimals = this.CollectAllAnimals();
+
+            // 1. 写入 game-data.json（所有数据，供软件使用）
+            var gameSnapshot = new ModExportSnapshot(
                 SaveId: this.GetSaveId(),
                 GeneratedAt: DateTimeOffset.Now.ToString("O"),
-                Items: this.CollectModAddedItems(),
-                Crops: this.CollectModAddedCrops(),
-                Animals: this.CollectModAddedAnimals(),
+                Items: allItems,
+                Crops: allCrops,
+                Animals: allAnimals,
+                Villagers: new List<ModExportVillagerEntry>()
+            );
+            this.WriteExportFile(Path.Combine(exportDir, "game-data.json"), gameSnapshot,
+                $"[导出] 已写入游戏数据: {allItems.Count} 物品, {allCrops.Count} 作物, {allAnimals.Count} 动物");
+
+            // 2. 写入 mod-data.json（仅模组添加的数据，供模组数据页面使用）
+            var modSnapshot = new ModExportSnapshot(
+                SaveId: this.GetSaveId(),
+                GeneratedAt: DateTimeOffset.Now.ToString("O"),
+                Items: allItems.Where(i => this.IsModAddedId(i.Id)).ToList(),
+                Crops: allCrops.Where(c => this.IsModAddedId(c.Id)).ToList(),
+                Animals: allAnimals.Where(a => this.IsModAddedId(a.Id)).ToList(),
                 Villagers: this.CollectModAddedVillagers()
             );
-
-            var json = JsonSerializer.Serialize(snapshot, new JsonSerializerOptions
-            {
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                WriteIndented = false,
-            });
-
-            var filePath = Path.Combine(exportDir, "mod-data.json");
-
-            // 仅在内容变化时写入
-            if (File.Exists(filePath))
-            {
-                var existing = File.ReadAllText(filePath);
-                if (existing == json)
-                {
-                    this.Monitor.Log("[导出] 模组数据无变化，跳过写入", LogLevel.Debug);
-                    return;
-                }
-            }
-
-            File.WriteAllText(filePath, json);
-            this.Monitor.Log($"[导出] 已写入模组数据: {snapshot.Items.Count} 物品, {snapshot.Crops.Count} 作物, {snapshot.Animals.Count} 动物, {snapshot.Villagers.Count} 村民", LogLevel.Info);
+            this.WriteExportFile(Path.Combine(exportDir, "mod-data.json"), modSnapshot,
+                $"[导出] 已写入模组数据: {modSnapshot.Items.Count} 物品, {modSnapshot.Crops.Count} 作物, {modSnapshot.Animals.Count} 动物, {modSnapshot.Villagers.Count} 村民");
         }
         catch (Exception ex)
         {
-            this.Monitor.Log($"[导出] 写入模组数据失败: {ex.Message}", LogLevel.Warn);
+            this.Monitor.Log($"[导出] 写入数据失败: {ex.Message}", LogLevel.Warn);
         }
+        finally
+        {
+            // 通知游戏线程显示完成提示
+            this._exportDone = true;
+        }
+    }
+
+    private void WriteExportFile<T>(string filePath, T snapshot, string logMessage)
+    {
+        var json = JsonSerializer.Serialize(snapshot, new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            WriteIndented = false,
+        });
+
+        // 仅在内容变化时写入
+        if (File.Exists(filePath))
+        {
+            var existing = File.ReadAllText(filePath);
+            if (existing == json)
+            {
+                this.Monitor.Log($"[导出] {Path.GetFileName(filePath)} 无变化，跳过写入", LogLevel.Debug);
+                return;
+            }
+        }
+
+        File.WriteAllText(filePath, json);
+        this.Monitor.Log(logMessage, LogLevel.Info);
     }
 
     private bool IsModAddedId(string id)
@@ -736,7 +742,7 @@ public sealed class ModEntry : Mod
         return !string.IsNullOrEmpty(id) && !int.TryParse(id, out _);
     }
 
-    private List<ModExportItemEntry> CollectModAddedItems()
+    private List<ModExportItemEntry> CollectAllItems()
     {
         var result = new List<ModExportItemEntry>();
         try
@@ -744,11 +750,11 @@ public sealed class ModEntry : Mod
             var objects = DataLoader.Objects(Game1.content);
             foreach (var entry in objects)
             {
-                if (!this.IsModAddedId(entry.Key)) continue;
                 var data = entry.Value;
                 result.Add(new ModExportItemEntry(
                     Id: entry.Key,
                     Name: data.DisplayName,
+                    InternalName: data.Name,
                     Description: data.Description,
                     Category: data.Category,
                     Price: data.Price,
@@ -764,7 +770,7 @@ public sealed class ModEntry : Mod
         return result;
     }
 
-    private List<ModExportCropEntry> CollectModAddedCrops()
+    private List<ModExportCropEntry> CollectAllCrops()
     {
         var result = new List<ModExportCropEntry>();
         try
@@ -772,14 +778,14 @@ public sealed class ModEntry : Mod
             var crops = DataLoader.Crops(Game1.content);
             foreach (var entry in crops)
             {
-                if (!this.IsModAddedId(entry.Key)) continue;
                 var data = entry.Value;
                 result.Add(new ModExportCropEntry(
                     Id: entry.Key,
                     Seasons: data.Seasons?.Select(s => s.ToString()).ToList() ?? new List<string>(),
                     HarvestItemId: data.HarvestItemId,
                     RegrowDays: data.RegrowDays,
-                    Phases: data.DaysInPhase ?? new List<int>()
+                    Phases: data.DaysInPhase ?? new List<int>(),
+                    NeedsWatering: data.NeedsWatering
                 ));
             }
         }
@@ -790,7 +796,7 @@ public sealed class ModEntry : Mod
         return result;
     }
 
-    private List<ModExportAnimalEntry> CollectModAddedAnimals()
+    private List<ModExportAnimalEntry> CollectAllAnimals()
     {
         var result = new List<ModExportAnimalEntry>();
         try
@@ -798,7 +804,6 @@ public sealed class ModEntry : Mod
             var animals = DataLoader.FarmAnimals(Game1.content);
             foreach (var entry in animals)
             {
-                if (!this.IsModAddedId(entry.Key)) continue;
                 var data = entry.Value;
                 result.Add(new ModExportAnimalEntry(
                     Id: entry.Key,
@@ -951,31 +956,6 @@ public sealed class ModEntry : Mod
         }
     }
 
-    private Dictionary<string, int> CollectItemPrices()
-    {
-        var prices = new Dictionary<string, int>();
-
-        try
-        {
-            var objects = DataLoader.Objects(Game1.content);
-            foreach (var entry in objects)
-            {
-                string id = entry.Key;
-                var objectData = entry.Value;
-
-                if (objectData.Price > 0)
-                {
-                    prices[id] = objectData.Price;
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            this.Monitor.Log($"读取物品数据失败: {ex.Message}", LogLevel.Warn);
-        }
-
-        return prices;
-    }
 }
 
 // Message wrapper for JSON serialization
@@ -1004,13 +984,6 @@ internal sealed record NpcLocationEntry(
     int Direction
 );
 
-// Item Prices data structures
-internal sealed record ItemPricesSnapshot(
-    string? SaveId,
-    string GeneratedAt,
-    Dictionary<string, int> Prices
-);
-
 // Cheat Result data structure
 internal sealed record CheatResultPayload(
     string Action,
@@ -1031,6 +1004,7 @@ internal sealed record ModExportSnapshot(
 internal sealed record ModExportItemEntry(
     string Id,
     string Name,
+    string InternalName,
     string Description,
     int Category,
     int Price,
@@ -1043,7 +1017,8 @@ internal sealed record ModExportCropEntry(
     List<string> Seasons,
     string HarvestItemId,
     int RegrowDays,
-    List<int> Phases
+    List<int> Phases,
+    bool NeedsWatering
 );
 
 internal sealed record ModExportAnimalEntry(

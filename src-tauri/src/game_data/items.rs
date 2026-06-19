@@ -255,8 +255,8 @@ fn build_item_snapshot(content_dir: PathBuf, lang: Option<&str>) -> Result<ItemS
     // Build reverse index: fish_id -> list of location display names
     let fish_locations_map = build_fish_locations_map(&content_dir, is_zh);
 
-    // Try to load mod prices (from SMAPI mod runtime snapshot)
-    let mod_prices = super::item_prices::read_realtime_item_prices();
+    // Try to load prices from game data export file
+    let mod_prices = super::item_prices::read_item_prices_from_export();
 
     let mut encyclopedia = Vec::with_capacity(objects.len());
 
@@ -288,10 +288,10 @@ fn build_item_snapshot(content_dir: PathBuf, lang: Option<&str>) -> Result<ItemS
             }
         });
 
-        // Use mod price if available, otherwise fall back to XNB price
+        // Use export price if available, otherwise fall back to XNB price
         let (sell_price, price_source) = mod_prices
             .as_ref()
-            .and_then(|mp| mp.get(&id).map(|&p| (p, "mod")))
+            .and_then(|mp| mp.get(&id).map(|&p| (p, "export")))
             .unwrap_or((object.price, "xnb"));
 
         encyclopedia.push(IndexedItemEntry {

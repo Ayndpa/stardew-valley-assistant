@@ -520,8 +520,8 @@ fn load_fishing_areas_for_map(
     );
     let mut texture_cache = HashMap::new();
 
-    // Try to load mod prices (from SMAPI mod runtime snapshot)
-    let mod_prices = super::item_prices::read_realtime_item_prices();
+    // Try to load prices from game data export file
+    let mod_prices = super::item_prices::read_item_prices_from_export();
 
     let Some(location_key) = resolve_location_key(map_id, &location_data) else {
         return Ok(Vec::new());
@@ -620,10 +620,10 @@ fn load_fishing_areas_for_map(
                         )
                     });
 
-                // Use mod price if available, otherwise fall back to XNB price
+                // Use export price if available, otherwise fall back to XNB price
                 let (price, price_source) = mod_prices
                     .as_ref()
-                    .and_then(|mp| mp.get(&object_id).map(|&p| (p, "mod")))
+                    .and_then(|mp| mp.get(&object_id).map(|&p| (p, "export")))
                     .unwrap_or((object.price, "xnb"));
 
                 area.fish.push(FishingAreaFish {

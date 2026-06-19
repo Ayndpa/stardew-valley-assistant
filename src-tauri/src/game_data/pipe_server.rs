@@ -6,7 +6,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::windows::named_pipe::{NamedPipeServer, ServerOptions};
 use tokio::sync::{mpsc, Mutex};
 
-use super::live_state::{ItemPricesPayload, LiveGameState, NpcLocationsPayload};
+use super::live_state::{LiveGameState, NpcLocationsPayload};
 
 const PIPE_NAME: &str = r"\\.\pipe\stardew-valley-assistant";
 
@@ -15,8 +15,6 @@ const PIPE_NAME: &str = r"\\.\pipe\stardew-valley-assistant";
 pub enum ModMessage {
     #[serde(rename = "npcLocations")]
     NpcLocations { data: NpcLocationsPayload },
-    #[serde(rename = "itemPrices")]
-    ItemPrices { data: ItemPricesPayload },
     #[serde(rename = "cheatResult")]
     CheatResult { data: CheatResultPayload },
     #[serde(rename = "clear")]
@@ -38,8 +36,6 @@ pub struct CheatResultPayload {
 pub enum TauriMessage {
     #[serde(rename = "requestNpcLocations")]
     RequestNpcLocations,
-    #[serde(rename = "requestItemPrices")]
-    RequestItemPrices,
     #[serde(rename = "pong")]
     Pong,
 
@@ -241,10 +237,6 @@ async fn handle_mod_message(msg: ModMessage, state: &LiveGameState) {
         ModMessage::NpcLocations { data } => {
             println!("[处理] npcLocations: {} 个NPC, 时间={:?}", data.npcs.len(), data.game_time);
             state.update_npc_locations(data).await;
-        }
-        ModMessage::ItemPrices { data } => {
-            println!("[处理] itemPrices: {} 个物品", data.prices.len());
-            state.update_item_prices(data).await;
         }
         ModMessage::CheatResult { data } => {
             println!("[处理] cheatResult: action={}, success={}, message={}", data.action, data.success, data.message);

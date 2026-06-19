@@ -2,206 +2,87 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::OnceLock;
 
-use super::live_state::LiveGameState;
-use super::pipe_server::{PipeWriterHandle, TauriMessage};
+/// 游戏数据导出快照（与 C# Mod 的 ModExportSnapshot 对应）
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct GameDataExport {
+    pub save_id: Option<String>,
+    pub generated_at: Option<String>,
+    pub items: Vec<GameDataItemEntry>,
+    pub crops: Vec<GameDataCropEntry>,
+    pub animals: Vec<GameDataAnimalEntry>,
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct ItemPricesResult {
-    pub source: String,
-    pub save_id: Option<String>,
-    pub prices: HashMap<String, i32>,
-    pub error: Option<String>,
+pub struct GameDataItemEntry {
+    pub id: String,
+    pub name: String,
+    pub internal_name: String,
+    pub description: String,
+    pub category: i32,
+    pub price: i32,
+    pub edibility: i32,
+    #[serde(rename = "type")]
+    pub item_type: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-struct ItemPricesSnapshot {
-    save_id: Option<String>,
-    prices: HashMap<String, i32>,
+pub struct GameDataCropEntry {
+    pub id: String,
+    pub seasons: Vec<String>,
+    pub harvest_item_id: String,
+    pub regrow_days: i32,
+    pub phases: Vec<i32>,
+    pub needs_watering: bool,
 }
 
-/// Read real-time item prices written by the SMAPI mod.
-/// Returns `None` if the snapshot is missing or stale (>30s old).
-pub fn read_realtime_item_prices() -> Option<HashMap<String, i32>> {
-    let path = realtime_item_prices_snapshot_path()?;
-
-    if !path.exists() {
-        return None;
-    }
-
-    let metadata = fs::metadata(&path).ok()?;
-    let modified = metadata.modified().ok()?;
-    let elapsed = std::time::SystemTime::now()
-        .duration_since(modified)
-        .unwrap_or_else(|_| std::time::Duration::from_secs(0));
-
-    if elapsed.as_secs() > 30 {
-        return None;
-    }
-
-    let raw = fs::read_to_string(&path).ok()?;
-    let snapshot: ItemPricesSnapshot = serde_json::from_str(&raw).ok()?;
-
-    Some(snapshot.prices)
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct GameDataAnimalEntry {
+    pub id: String,
+    pub display_name: String,
+    pub house: String,
+    pub purchase_price: i32,
+    pub days_to_mature: i32,
+    pub days_to_produce: i32,
+    pub produce_item_ids: Vec<String>,
 }
 
-/// Get item prices from the mod, with fallback to file.
-/// Sends a request to the mod via pipe and waits for the response.
-#[tauri::command]
-pub async fn get_item_prices_from_mod(
-    live_state: tauri::State<'_, LiveGameState>,
-    writer: tauri::State<'_, PipeWriterHandle>,
-) -> Result<ItemPricesResult, String> {
-    // Try cached data first
-    if let Some(payload) = live_state.get_item_prices().await {
-        return Ok(ItemPricesResult {
-            source: "mod".to_string(),
-            save_id: payload.save_id,
-            prices: payload.prices,
-            error: None,
-        });
-    }
+/// 缓存：首次读取后缓存结果，避免重复磁盘 I/O
+static CACHED_EXPORT: OnceLock<Option<GameDataExport>> = OnceLock::new();
 
-    // If pipe connected, request prices from mod
-    if live_state.is_pipe_connected().await {
-        let _ = writer.send(TauriMessage::RequestItemPrices).await;
-        // Wait for response (mod sends back itemPrices message)
-        for _ in 0..30 {
-            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-            if let Some(payload) = live_state.get_item_prices().await {
-                return Ok(ItemPricesResult {
-                    source: "mod".to_string(),
-                    save_id: payload.save_id,
-                    prices: payload.prices,
-                    error: None,
-                });
+/// 读取 game-data.json 导出文件。
+/// 首次调用时读取并缓存，后续调用直接返回缓存。
+pub fn read_game_data_export() -> Option<&'static GameDataExport> {
+    CACHED_EXPORT
+        .get_or_init(|| {
+            let path = game_data_export_path()?;
+            if !path.exists() {
+                return None;
             }
-        }
-    }
-
-    // Fall back to file-based
-    Ok(get_item_prices_from_file())
+            let raw = fs::read_to_string(&path).ok()?;
+            serde_json::from_str(&raw).ok()
+        })
+        .as_ref()
 }
 
-/// Check if the item prices mod is running.
-#[tauri::command]
-pub async fn check_item_prices_mod_running(live_state: tauri::State<'_, LiveGameState>) -> Result<bool, String> {
-    // Check live state first
-    if live_state.is_game_running().await {
-        return Ok(true);
-    }
-
-    // Fall back to file check
-    Ok(check_item_prices_file_running())
+/// 从导出文件构建物品价格映射表。
+pub fn read_item_prices_from_export() -> Option<HashMap<String, i32>> {
+    let export = read_game_data_export()?;
+    let map: HashMap<String, i32> = export
+        .items
+        .iter()
+        .filter(|item| item.price > 0)
+        .map(|item| (item.id.clone(), item.price))
+        .collect();
+    Some(map)
 }
 
-fn get_item_prices_from_file() -> ItemPricesResult {
-    let path = match realtime_item_prices_snapshot_path() {
-        Some(p) => p,
-        None => {
-            return ItemPricesResult {
-                source: "unavailable".to_string(),
-                save_id: None,
-                prices: HashMap::new(),
-                error: Some("无法定位星露谷用户数据目录。".to_string()),
-            };
-        }
-    };
-
-    if !path.exists() {
-        return ItemPricesResult {
-            source: "unavailable".to_string(),
-            save_id: None,
-            prices: HashMap::new(),
-            error: Some("游戏未运行或 Mod 未安装，实时价格不可用。".to_string()),
-        };
-    }
-
-    let metadata = match fs::metadata(&path) {
-        Ok(m) => m,
-        Err(e) => {
-            return ItemPricesResult {
-                source: "error".to_string(),
-                save_id: None,
-                prices: HashMap::new(),
-                error: Some(format!("无法读取价格快照元数据: {}", e)),
-            };
-        }
-    };
-
-    let modified = match metadata.modified() {
-        Ok(m) => m,
-        Err(e) => {
-            return ItemPricesResult {
-                source: "error".to_string(),
-                save_id: None,
-                prices: HashMap::new(),
-                error: Some(format!("无法获取价格快照修改时间: {}", e)),
-            };
-        }
-    };
-
-    let elapsed = std::time::SystemTime::now()
-        .duration_since(modified)
-        .unwrap_or_else(|_| std::time::Duration::from_secs(0));
-
-    if elapsed.as_secs() > 30 {
-        return ItemPricesResult {
-            source: "stale".to_string(),
-            save_id: None,
-            prices: HashMap::new(),
-            error: Some("游戏未运行，实时价格不可用。".to_string()),
-        };
-    }
-
-    let raw = match fs::read_to_string(&path) {
-        Ok(r) => r,
-        Err(e) => {
-            return ItemPricesResult {
-                source: "error".to_string(),
-                save_id: None,
-                prices: HashMap::new(),
-                error: Some(format!("无法读取价格快照: {}", e)),
-            };
-        }
-    };
-
-    let snapshot: ItemPricesSnapshot = match serde_json::from_str(&raw) {
-        Ok(s) => s,
-        Err(e) => {
-            return ItemPricesResult {
-                source: "error".to_string(),
-                save_id: None,
-                prices: HashMap::new(),
-                error: Some(format!("价格快照格式无效: {}", e)),
-            };
-        }
-    };
-
-    ItemPricesResult {
-        source: "mod".to_string(),
-        save_id: snapshot.save_id,
-        prices: snapshot.prices,
-        error: None,
-    }
-}
-
-fn check_item_prices_file_running() -> bool {
-    if let Some(path) = realtime_item_prices_snapshot_path() {
-        if let Ok(metadata) = fs::metadata(&path) {
-            if let Ok(modified) = metadata.modified() {
-                if let Ok(elapsed) = std::time::SystemTime::now().duration_since(modified) {
-                    return elapsed.as_secs() < 30;
-                }
-            }
-        }
-    }
-    false
-}
-
-fn realtime_item_prices_snapshot_path() -> Option<PathBuf> {
+fn game_data_export_path() -> Option<PathBuf> {
     #[cfg(target_os = "windows")]
     {
         let appdata = std::env::var("APPDATA").ok()?;
@@ -209,7 +90,7 @@ fn realtime_item_prices_snapshot_path() -> Option<PathBuf> {
             PathBuf::from(appdata)
                 .join("StardewValley")
                 .join("StardewValleyAssistant")
-                .join("item-prices.json"),
+                .join("game-data.json"),
         )
     }
     #[cfg(not(target_os = "windows"))]
@@ -220,7 +101,7 @@ fn realtime_item_prices_snapshot_path() -> Option<PathBuf> {
                 .join(".config")
                 .join("StardewValley")
                 .join("StardewValleyAssistant")
-                .join("item-prices.json"),
+                .join("game-data.json"),
         )
     }
 }

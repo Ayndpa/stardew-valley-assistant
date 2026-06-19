@@ -491,6 +491,9 @@ export function PlantedCropsDashboard({
                           {crop.priceSource === "mod" && (
                             <span className="text-xs px-1 py-0.5 rounded bg-orange-500/10 text-orange-500">Mod</span>
                           )}
+                          {crop.priceSource === "export" && (
+                            <span className="text-xs px-1 py-0.5 rounded bg-blue-500/10 text-blue-500">导出</span>
+                          )}
                         </span>
                       )}
                     </div>

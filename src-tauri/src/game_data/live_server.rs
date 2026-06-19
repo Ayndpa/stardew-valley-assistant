@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use tower_http::cors::{Any, CorsLayer};
 
 use super::live_state::{
-    ItemPricesPayload, LiveGameState, NpcLocationsPayload,
+    LiveGameState, NpcLocationsPayload,
 };
 
 /// Start the local HTTP server for receiving live game data from the SMAPI mod.
@@ -23,7 +23,6 @@ pub async fn start_live_server(state: LiveGameState) -> Result<u16, String> {
     let app = Router::new()
         .route("/api/health", get(health_handler))
         .route("/api/npc-locations", post(npc_locations_handler))
-        .route("/api/item-prices", post(item_prices_handler))
         .route("/api/clear", post(clear_handler))
         .layer(cors)
         .with_state(state);
@@ -60,14 +59,6 @@ async fn npc_locations_handler(
     Json(payload): Json<NpcLocationsPayload>,
 ) -> StatusCode {
     state.update_npc_locations(payload).await;
-    StatusCode::OK
-}
-
-async fn item_prices_handler(
-    State(state): State<LiveGameState>,
-    Json(payload): Json<ItemPricesPayload>,
-) -> StatusCode {
-    state.update_item_prices(payload).await;
     StatusCode::OK
 }
 

@@ -22,6 +22,7 @@ import { Onboarding } from "@/components/Onboarding"
 import { TitleBar } from "@/components/TitleBar"
 import { UpdateDialog, DISMISSED_UPDATE_VERSION_KEY } from "@/components/UpdateDialog"
 import type { UpdateInfo } from "@/components/UpdateDialog"
+import { BetaDialog } from "@/components/BetaDialog"
 import { useDownloadManager } from "@/hooks/useDownloadManager"
 import { useSavesList } from "@/hooks/useSavesList"
 import { useGameLauncher } from "@/hooks/useGameLauncher"
@@ -102,6 +103,7 @@ function App() {
   const [saveEditorAcknowledged, setSaveEditorAcknowledged] = useState(false)
   const [cheatsAcknowledged, setCheatsAcknowledged] = useState(false)
   const [updateDialogInfo, setUpdateDialogInfo] = useState<UpdateInfo | null>(null)
+  const [showBetaDialog, setShowBetaDialog] = useState(false)
 
   // Custom Hooks
   const { saves, selectedSaveId, fetchSavesList, handleSaveChange } = useSavesList()
@@ -288,6 +290,23 @@ function App() {
       }
     }
     checkUpdateOnStart()
+  }, [])
+
+  // Check beta status on startup and show warning dialog
+  useEffect(() => {
+    const checkBetaOnStart = async () => {
+      if (typeof window === "undefined" || !(window as any).__TAURI_INTERNALS__) return
+      try {
+        const { invoke } = await import("@tauri-apps/api/core")
+        const isBeta = await invoke<boolean>("get_app_beta")
+        if (isBeta) {
+          setShowBetaDialog(true)
+        }
+      } catch {
+        // Silently ignore
+      }
+    }
+    checkBetaOnStart()
   }, [])
 
   // Auto-upgrade bundled assistant mod on startup
@@ -648,6 +667,10 @@ function App() {
           setUpdateDialogInfo(null)
         }}
         onDownload={handleDownloadUpdate}
+      />
+      <BetaDialog
+        isOpen={showBetaDialog}
+        onClose={() => setShowBetaDialog(false)}
       />
     </div>
   )

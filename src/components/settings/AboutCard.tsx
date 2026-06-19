@@ -39,6 +39,7 @@ async function getTauriInvoke() {
 export function AboutCard({ onUpdateFound }: { onUpdateFound?: (info: UpdateInfo) => void }) {
   const { t } = useTranslation()
   const [appVersion, setAppVersion] = useState<string>("")
+  const [isBeta, setIsBeta] = useState(false)
   const [checking, setChecking] = useState(false)
   const [upToDate, setUpToDate] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -49,6 +50,11 @@ export function AboutCard({ onUpdateFound }: { onUpdateFound?: (info: UpdateInfo
 
   useEffect(() => {
     getVersion().then(setAppVersion).catch(() => setAppVersion(""))
+    if (typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__) {
+      import("@tauri-apps/api/core").then(({ invoke }) => {
+        invoke<boolean>("get_app_beta").then(setIsBeta).catch(() => {})
+      })
+    }
   }, [])
 
   useEffect(() => {
@@ -127,7 +133,14 @@ export function AboutCard({ onUpdateFound }: { onUpdateFound?: (info: UpdateInfo
       <CardContent className="space-y-3">
         <div className="flex items-center justify-between text-sm">
           <span className="text-muted-foreground">{t("settings.about.version")}</span>
-          <span>{appVersion || "—"}</span>
+          <div className="flex items-center gap-2">
+            <span>{appVersion || "—"}</span>
+            {isBeta && (
+              <span className="rounded-full bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 text-[10px] font-bold text-amber-600 dark:text-amber-400">
+                {t("beta.label")}
+              </span>
+            )}
+          </div>
         </div>
         <Separator />
         <div className="flex items-center justify-between text-sm">

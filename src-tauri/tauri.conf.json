@@ -30,6 +30,9 @@
     }
   },
   "plugins": {
+    "stardew-valley-assistant": {
+      "beta": true
+    },
     "deep-link": {
       "desktop": {
         "schemes": ["nxm"]
