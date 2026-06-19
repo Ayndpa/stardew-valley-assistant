@@ -23,10 +23,11 @@ use crate::game_data::{
     cheat_add_item, cheat_add_money, cheat_grow_crops, cheat_kill_monsters, cheat_max_friendship,
     cheat_refill_energy, cheat_refill_health, cheat_set_weather, cheat_teleport,
     cheat_toggle_freeze_time, cheat_toggle_speed, cheat_water_crops, check_item_prices_mod_running,
-    get_animal_game_data, get_bundle_game_data, get_calendar_game_data, get_cheat_states,
-    get_crop_game_data, get_fishing_map_data, get_fishing_map_detail, get_item_game_data,
-    get_item_game_data_overview, get_item_prices_from_mod, get_npc_game_data,
-    get_secret_notes_game_data, live_state::LiveGameState, pipe_server::{self, PipeWriterHandle}, query_item_game_data,
+    export_mod_data_to_file, get_animal_game_data, get_bundle_game_data, get_calendar_game_data,
+    get_cheat_states, get_crop_game_data, get_fishing_map_data, get_fishing_map_detail,
+    get_item_game_data, get_item_game_data_overview, get_item_prices_from_mod, get_mod_export_data,
+    get_npc_game_data, get_secret_notes_game_data, live_state::LiveGameState,
+    pipe_server::{self, PipeWriterHandle}, query_item_game_data,
 };
 use crate::mods::{
     apply_profile, auto_upgrade_bundled_mod, check_mod_updates, check_nexus_login_status,
@@ -581,7 +582,9 @@ pub fn run() {
             cheat_max_friendship,
             cheat_kill_monsters,
             cheat_set_weather,
-            get_cheat_states
+            get_cheat_states,
+            get_mod_export_data,
+            export_mod_data_to_file
         ])
         .setup(|app| {
             let app_handle = app.handle();

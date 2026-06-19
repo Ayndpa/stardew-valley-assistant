@@ -14,6 +14,7 @@ import { Children } from "@/pages/Children"
 import { Animals } from "@/pages/Animals"
 import { Settings } from "@/pages/Settings"
 import { Cheats } from "@/pages/Cheats"
+import { ModData } from "@/pages/ModData"
 import { Mods } from "@/pages/Mods"
 import { Downloads } from "@/pages/Downloads"
 import { OnlineMods } from "@/components/mods/OnlineMods"
@@ -58,7 +59,7 @@ function BackgroundImageLayer({ filePath }: { filePath: string }) {
   )
 }
 
-export type Page = "dashboard" | "collections" | "crops" | "items" | "npcs" | "calendar" | "fishingMap" | "saveEditor" | "saveBackups" | "settings" | "mods" | "onlineMods" | "downloads" | "bundles" | "children" | "animals" | "cheats"
+export type Page = "dashboard" | "collections" | "crops" | "items" | "npcs" | "calendar" | "fishingMap" | "saveEditor" | "saveBackups" | "settings" | "mods" | "onlineMods" | "downloads" | "bundles" | "children" | "animals" | "cheats" | "modData"
 
 export interface SaveSummary {
   id: string
@@ -159,12 +160,16 @@ function App() {
         if (!parsed.includes("cheats")) {
           parsed.push("cheats")
         }
+        // 迁移：新增的 modData 功能需要补上
+        if (!parsed.includes("modData")) {
+          parsed.push("modData")
+        }
         return parsed
       } catch (e) {
         // ignore
       }
     }
-    return ["collections", "crops", "items", "npcs", "calendar", "bundles", "animals", "fishingMap", "children", "cheats", "saveEditor", "saveBackups", "mods", "onlineMods", "downloads"]
+    return ["collections", "crops", "items", "npcs", "calendar", "bundles", "animals", "fishingMap", "children", "cheats", "modData", "saveEditor", "saveBackups", "mods", "onlineMods", "downloads"]
   })
 
   const updateEnabledFeatures = useCallback((value: Page[]) => {
@@ -512,6 +517,12 @@ function App() {
             warningAcknowledged={cheatsAcknowledged}
             onAcknowledgeWarning={() => setCheatsAcknowledged(true)}
             onCancel={() => setCurrentPage("dashboard")}
+          />
+        )
+      case "modData":
+        return (
+          <ModData
+            onShowToast={showGlobalToast}
           />
         )
       case "mods":

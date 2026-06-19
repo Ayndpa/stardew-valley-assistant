@@ -12,6 +12,7 @@
     "children": "孩子管理",
     "saveEditor": "存档编辑",
     "cheats": "游戏作弊",
+    "modData": "模组数据",
     "saveBackups": "存档备份",
     "mods": "模组管理",
     "onlineMods": "获取模组",
@@ -1143,6 +1144,44 @@
       "webModeError": "Web 模式下不能写回游戏存档。",
       "saveSuccess": "存档已保存，并自动生成原文件备份。",
       "saveError": "保存存档失败，请检查字段范围。"
+    }
+  },
+  "modData": {
+    "title": "模组数据",
+    "subtitle": "查看其他模组添加到游戏中的物品、作物、动物和村民信息",
+    "refresh": "刷新",
+    "export": "导出 JSON",
+    "loading": "正在加载模组数据...",
+    "totalEntries": "共 {{count}} 条数据",
+    "crop": "作物",
+    "harvestItem": "收获物品",
+    "totalDays": "总生长时间",
+    "regrowDays": "再生天数",
+    "house": "畜舍",
+    "purchasePrice": "购买价格",
+    "daysToMature": "成年天数",
+    "produce": "产出",
+    "birthday": "生日",
+    "homeRegion": "家乡",
+    "loves": "最爱",
+    "likes": "喜欢",
+    "emptyCategory": "该分类暂无数据",
+    "tabs": {
+      "items": "物品",
+      "crops": "作物",
+      "animals": "动物",
+      "villagers": "村民"
+    },
+    "empty": {
+      "title": "暂无模组数据",
+      "description": "请先启动游戏并加载存档，模组会在存档加载时自动将其他模组添加的数据写入本地文件。",
+      "retry": "重新加载"
+    },
+    "toast": {
+      "loaded": "模组数据加载成功",
+      "noData": "未找到模组数据文件，请先启动游戏并加载存档",
+      "exported": "已导出到: {{path}}",
+      "webModeError": "当前环境不支持读取模组数据"
     }
   },
   "cheats": {

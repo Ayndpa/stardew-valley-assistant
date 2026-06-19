@@ -12,6 +12,7 @@
     "children": "Children",
     "saveEditor": "Save Editor",
     "cheats": "Game Cheats",
+    "modData": "Mod Data",
     "saveBackups": "Save Backups",
     "mods": "Mod Manager",
     "onlineMods": "Get Mods",
@@ -1273,6 +1274,44 @@
       "webModeError": "Cannot write back to game saves in Web mode.",
       "saveSuccess": "Save file saved, and a backup of the original was automatically created.",
       "saveError": "Failed to save. Please check field values are within valid ranges."
+    }
+  },
+  "modData": {
+    "title": "Mod Data",
+    "subtitle": "View items, crops, animals, and villagers added by other mods",
+    "refresh": "Refresh",
+    "export": "Export JSON",
+    "loading": "Loading mod data...",
+    "totalEntries": "{{count}} entries total",
+    "crop": "Crop",
+    "harvestItem": "Harvest Item",
+    "totalDays": "Total Growth",
+    "regrowDays": "Regrow Days",
+    "house": "House",
+    "purchasePrice": "Purchase Price",
+    "daysToMature": "Days to Mature",
+    "produce": "Produce",
+    "birthday": "Birthday",
+    "homeRegion": "Home Region",
+    "loves": "Loves",
+    "likes": "Likes",
+    "emptyCategory": "No data in this category",
+    "tabs": {
+      "items": "Items",
+      "crops": "Crops",
+      "animals": "Animals",
+      "villagers": "Villagers"
+    },
+    "empty": {
+      "title": "No Mod Data",
+      "description": "Launch the game and load a save to collect mod-added data. The mod automatically writes data when a save is loaded.",
+      "retry": "Reload"
+    },
+    "toast": {
+      "loaded": "Mod data loaded successfully",
+      "noData": "No mod data file found. Launch the game and load a save first.",
+      "exported": "Exported to: {{path}}",
+      "webModeError": "Reading mod data is not supported in this environment"
     }
   },
   "cheats": {

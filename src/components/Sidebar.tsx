@@ -31,6 +31,7 @@ import {
   PawPrint,
   Trophy,
   Zap,
+  Database,
 } from "lucide-react"
 
 interface SidebarProps {
@@ -68,6 +69,7 @@ const navItems: { id: Page; label: string; icon: React.ReactNode }[] = [
   { id: "fishingMap", label: "游戏地图", icon: <Map className="h-4 w-4" /> },
   { id: "children", label: "孩子管理", icon: <Baby className="h-4 w-4" /> },
   { id: "cheats", label: "游戏作弊", icon: <Zap className="h-4 w-4" /> },
+  { id: "modData", label: "模组数据", icon: <Database className="h-4 w-4" /> },
   { id: "saveEditor", label: "存档编辑", icon: <PencilRuler className="h-4 w-4" /> },
   { id: "saveBackups", label: "存档备份", icon: <ArchiveRestore className="h-4 w-4" /> },
   { id: "mods", label: "模组管理", icon: <Puzzle /> },

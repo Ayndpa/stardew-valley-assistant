@@ -57,6 +57,7 @@ public sealed class ModEntry : Mod
         this.SpeedBoostActive = false;
         this.FreezeTimeActive = false;
         _ = this.SendNpcLocationsAsync();
+        _ = Task.Run(() => this.ExportModData());
     }
 
     private void OnOneSecondUpdateTicked(object? sender, OneSecondUpdateTickedEventArgs e)
@@ -677,6 +678,195 @@ public sealed class ModEntry : Mod
         }
     }
 
+    // ── 模组数据导出 ────────────────────────────────────────
+
+    /// <summary>
+    /// 导出其他模组添加的物品、作物、动物、村民数据到本地文件。
+    /// 仅在数据发生变化时才写入。
+    /// </summary>
+    private void ExportModData()
+    {
+        try
+        {
+            var exportDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "StardewValley", "StardewValleyAssistant");
+            Directory.CreateDirectory(exportDir);
+
+            var snapshot = new ModExportSnapshot(
+                SaveId: this.GetSaveId(),
+                GeneratedAt: DateTimeOffset.Now.ToString("O"),
+                Items: this.CollectModAddedItems(),
+                Crops: this.CollectModAddedCrops(),
+                Animals: this.CollectModAddedAnimals(),
+                Villagers: this.CollectModAddedVillagers()
+            );
+
+            var json = JsonSerializer.Serialize(snapshot, new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                WriteIndented = false,
+            });
+
+            var filePath = Path.Combine(exportDir, "mod-data.json");
+
+            // 仅在内容变化时写入
+            if (File.Exists(filePath))
+            {
+                var existing = File.ReadAllText(filePath);
+                if (existing == json)
+                {
+                    this.Monitor.Log("[导出] 模组数据无变化，跳过写入", LogLevel.Debug);
+                    return;
+                }
+            }
+
+            File.WriteAllText(filePath, json);
+            this.Monitor.Log($"[导出] 已写入模组数据: {snapshot.Items.Count} 物品, {snapshot.Crops.Count} 作物, {snapshot.Animals.Count} 动物, {snapshot.Villagers.Count} 村民", LogLevel.Info);
+        }
+        catch (Exception ex)
+        {
+            this.Monitor.Log($"[导出] 写入模组数据失败: {ex.Message}", LogLevel.Warn);
+        }
+    }
+
+    private bool IsModAddedId(string id)
+    {
+        // 原版物品/作物/动物 ID 都是纯数字，模组添加的使用字符串 ID
+        return !string.IsNullOrEmpty(id) && !int.TryParse(id, out _);
+    }
+
+    private List<ModExportItemEntry> CollectModAddedItems()
+    {
+        var result = new List<ModExportItemEntry>();
+        try
+        {
+            var objects = DataLoader.Objects(Game1.content);
+            foreach (var entry in objects)
+            {
+                if (!this.IsModAddedId(entry.Key)) continue;
+                var data = entry.Value;
+                result.Add(new ModExportItemEntry(
+                    Id: entry.Key,
+                    Name: data.DisplayName,
+                    Description: data.Description,
+                    Category: data.Category,
+                    Price: data.Price,
+                    Edibility: data.Edibility,
+                    Type: data.Type
+                ));
+            }
+        }
+        catch (Exception ex)
+        {
+            this.Monitor.Log($"[导出] 读取物品数据失败: {ex.Message}", LogLevel.Warn);
+        }
+        return result;
+    }
+
+    private List<ModExportCropEntry> CollectModAddedCrops()
+    {
+        var result = new List<ModExportCropEntry>();
+        try
+        {
+            var crops = DataLoader.Crops(Game1.content);
+            foreach (var entry in crops)
+            {
+                if (!this.IsModAddedId(entry.Key)) continue;
+                var data = entry.Value;
+                result.Add(new ModExportCropEntry(
+                    Id: entry.Key,
+                    Seasons: data.Seasons?.Select(s => s.ToString()).ToList() ?? new List<string>(),
+                    HarvestItemId: data.HarvestItemId,
+                    RegrowDays: data.RegrowDays,
+                    Phases: data.DaysInPhase ?? new List<int>()
+                ));
+            }
+        }
+        catch (Exception ex)
+        {
+            this.Monitor.Log($"[导出] 读取作物数据失败: {ex.Message}", LogLevel.Warn);
+        }
+        return result;
+    }
+
+    private List<ModExportAnimalEntry> CollectModAddedAnimals()
+    {
+        var result = new List<ModExportAnimalEntry>();
+        try
+        {
+            var animals = DataLoader.FarmAnimals(Game1.content);
+            foreach (var entry in animals)
+            {
+                if (!this.IsModAddedId(entry.Key)) continue;
+                var data = entry.Value;
+                result.Add(new ModExportAnimalEntry(
+                    Id: entry.Key,
+                    DisplayName: data.DisplayName,
+                    House: data.House,
+                    PurchasePrice: data.PurchasePrice,
+                    DaysToMature: data.DaysToMature,
+                    DaysToProduce: data.DaysToProduce,
+                    ProduceItemIds: data.ProduceItemIds?.Select(p => p.ItemId).ToList() ?? new List<string>()
+                ));
+            }
+        }
+        catch (Exception ex)
+        {
+            this.Monitor.Log($"[导出] 读取动物数据失败: {ex.Message}", LogLevel.Warn);
+        }
+        return result;
+    }
+
+    private List<ModExportVillagerEntry> CollectModAddedVillagers()
+    {
+        var result = new List<ModExportVillagerEntry>();
+        try
+        {
+            var characters = DataLoader.Characters(Game1.content);
+            var giftTastes = DataLoader.NpcGiftTastes(Game1.content);
+            foreach (var entry in characters)
+            {
+                if (!this.IsModAddedId(entry.Key)) continue;
+                var data = entry.Value;
+
+                // 生日
+                string birthday = "";
+                if (data.BirthSeason.HasValue && data.BirthDay > 0)
+                {
+                    birthday = $"{data.BirthSeason.Value} {data.BirthDay}";
+                }
+
+                // 好感礼物 (格式: "love_id1 love_id2/like_id1 like_id2/dislike/hate/neutral")
+                var loves = new List<string>();
+                var likes = new List<string>();
+                if (giftTastes.TryGetValue(entry.Key, out var tasteStr))
+                {
+                    var parts = tasteStr.Split('/');
+                    if (parts.Length > 0 && !string.IsNullOrEmpty(parts[0]))
+                        loves = parts[0].Split(' ').Where(s => !string.IsNullOrEmpty(s)).ToList();
+                    if (parts.Length > 1 && !string.IsNullOrEmpty(parts[1]))
+                        likes = parts[1].Split(' ').Where(s => !string.IsNullOrEmpty(s)).ToList();
+                }
+
+                result.Add(new ModExportVillagerEntry(
+                    Id: entry.Key,
+                    DisplayName: data.DisplayName,
+                    Birthday: birthday,
+                    HomeRegion: data.HomeRegion ?? "",
+                    CanSocialize: data.CanSocialize ?? "",
+                    Loves: loves,
+                    Likes: likes
+                ));
+            }
+        }
+        catch (Exception ex)
+        {
+            this.Monitor.Log($"[导出] 读取村民数据失败: {ex.Message}", LogLevel.Warn);
+        }
+        return result;
+    }
+
     private async Task SendClearAsync()
     {
         if (!this.IsConnected)
@@ -826,4 +1016,52 @@ internal sealed record CheatResultPayload(
     string Action,
     bool Success,
     string Message
+);
+
+// Mod Export data structures
+internal sealed record ModExportSnapshot(
+    string? SaveId,
+    string GeneratedAt,
+    List<ModExportItemEntry> Items,
+    List<ModExportCropEntry> Crops,
+    List<ModExportAnimalEntry> Animals,
+    List<ModExportVillagerEntry> Villagers
+);
+
+internal sealed record ModExportItemEntry(
+    string Id,
+    string Name,
+    string Description,
+    int Category,
+    int Price,
+    int Edibility,
+    string Type
+);
+
+internal sealed record ModExportCropEntry(
+    string Id,
+    List<string> Seasons,
+    string HarvestItemId,
+    int RegrowDays,
+    List<int> Phases
+);
+
+internal sealed record ModExportAnimalEntry(
+    string Id,
+    string DisplayName,
+    string House,
+    int PurchasePrice,
+    int DaysToMature,
+    int DaysToProduce,
+    List<string> ProduceItemIds
+);
+
+internal sealed record ModExportVillagerEntry(
+    string Id,
+    string DisplayName,
+    string Birthday,
+    string HomeRegion,
+    string CanSocialize,
+    List<string> Loves,
+    List<string> Likes
 );
