@@ -11,10 +11,9 @@ import type {
   AnimalEncyclopediaEntry,
 } from "./animals/types"
 import {
+  getSaveAnimalsCacheKey,
   readCache,
   writeCache,
-  getAnimalGameDataCacheKey,
-  getSaveAnimalsCacheKey,
 } from "./animals/types"
 
 interface AnimalsProps {
@@ -51,11 +50,8 @@ export function Animals({ selectedSaveId }: AnimalsProps) {
   const activeLang = i18n.resolvedLanguage || i18n.language || "zh"
 
   const handleRefresh = useCallback(() => {
-    const gameDir = localStorage.getItem("stardewGameDirectory") || ""
-    const cacheKey = getAnimalGameDataCacheKey(gameDir, activeLang)
-    localStorage.removeItem(cacheKey)
     setRefreshKey((k) => k + 1)
-  }, [activeLang])
+  }, [])
 
   // Load animal game data (encyclopedia)
   useEffect(() => {
@@ -64,14 +60,6 @@ export function Animals({ selectedSaveId }: AnimalsProps) {
     async function loadAnimalGameData() {
       const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__
       const gameDir = localStorage.getItem("stardewGameDirectory") || ""
-      const cacheKey = getAnimalGameDataCacheKey(gameDir, activeLang)
-      const cached = readCache<AnimalGameData>(cacheKey)
-
-      if (cached && !canceled) {
-        applyAnimalGameData(cached.data, setEncyclopedia, setHouses, setDataSource, setGeneratedAt)
-        setLoadingGameData(false)
-        setGameDataError(null)
-      }
 
       if (!isTauri) {
         if (!canceled) {
@@ -80,7 +68,7 @@ export function Animals({ selectedSaveId }: AnimalsProps) {
         return
       }
 
-      if (!cached && !canceled) {
+      if (!canceled) {
         setLoadingGameData(true)
         setGameDataError(null)
       }
@@ -96,15 +84,12 @@ export function Animals({ selectedSaveId }: AnimalsProps) {
           applyAnimalGameData(data, setEncyclopedia, setHouses, setDataSource, setGeneratedAt)
           setGameDataError(null)
         }
-        writeCache(cacheKey, data)
       } catch (err) {
         console.error("Error loading animal game data:", err)
         if (!canceled) {
           setGameDataError(String(err))
-          if (!cached) {
-            setEncyclopedia([])
-            setHouses([])
-          }
+          setEncyclopedia([])
+          setHouses([])
         }
       } finally {
         if (!canceled) {

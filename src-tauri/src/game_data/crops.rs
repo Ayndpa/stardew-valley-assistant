@@ -59,7 +59,7 @@ pub fn get_crop_game_data(
 
     // 优先使用导出文件（图标缺失时回退 XNB）
     if let Some(export) = super::item_prices::read_game_data_export() {
-        return Ok(build_crop_data_from_export(export, &content_dir, is_zh));
+        return Ok(build_crop_data_from_export(&export, &content_dir, is_zh));
     }
 
     // 回退到 XNB 解析

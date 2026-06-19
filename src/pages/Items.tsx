@@ -11,9 +11,6 @@ import {
   ItemEntry,
   ItemGameDataOverview,
   ItemGameDataQueryResult,
-  getItemGameDataCacheKey,
-  readCache,
-  writeCache,
 } from "./items/types"
 import { CodeFlowGenerator } from "./items/CodeFlowGenerator"
 
@@ -41,17 +38,14 @@ export function Items({ navigationTarget, onNavigationHandled }: ItemsProps) {
   const [generatedAt, setGeneratedAt] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
 
-  const handleRefresh = useCallback(() => {
-    const gameDir = localStorage.getItem("stardewGameDirectory") || ""
-    const cacheKey = getItemGameDataCacheKey(gameDir, activeLang)
-    localStorage.removeItem(cacheKey)
-    setRefreshKey((k) => k + 1)
-  }, [activeLang])
-
   // Code flow selected item IDs
   const [codeFlowSelected, setCodeFlowSelected] = useState<string[]>([])
 
   const activeLang = i18n.resolvedLanguage || i18n.language || "zh"
+
+  const handleRefresh = useCallback(() => {
+    setRefreshKey((k) => k + 1)
+  }, [])
   const allLabel = activeLang.toLowerCase().startsWith("zh") ? "全部" : "All"
 
   const [activeCategory, setActiveCategory] = useState(allLabel)
@@ -90,17 +84,6 @@ export function Items({ navigationTarget, onNavigationHandled }: ItemsProps) {
     async function loadOverview() {
       const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__
       const gameDir = localStorage.getItem("stardewGameDirectory") || ""
-      const cacheKey = getItemGameDataCacheKey(gameDir, activeLang)
-      const cached = readCache<ItemGameDataOverview>(cacheKey)
-
-      if (cached && !canceled) {
-        setCategories(cached.data.categories)
-        setItemTypes(cached.data.itemTypes)
-        setTotalCount(cached.data.totalCount)
-        setDataSource(cached.data.dataSource || "xnb")
-        setGeneratedAt(cached.data.generatedAt || null)
-        setError(null)
-      }
 
       if (!isTauri) {
         if (!canceled) {
@@ -110,7 +93,7 @@ export function Items({ navigationTarget, onNavigationHandled }: ItemsProps) {
         return
       }
 
-      if (!cached && !canceled) {
+      if (!canceled) {
         setLoading(true)
         setError(null)
       }
@@ -129,17 +112,14 @@ export function Items({ navigationTarget, onNavigationHandled }: ItemsProps) {
           setGeneratedAt(data.generatedAt || null)
           setError(null)
         }
-        writeCache(cacheKey, data)
       } catch (err) {
         console.error("Error loading item game data overview:", err)
         if (!canceled) {
           setLoading(false)
           setError(String(err))
-          if (!cached) {
-            setCategories([])
-            setItemTypes([])
-            setTotalCount(0)
-          }
+          setCategories([])
+          setItemTypes([])
+          setTotalCount(0)
         }
       }
     }

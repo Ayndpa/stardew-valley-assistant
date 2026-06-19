@@ -2,7 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::OnceLock;
+use std::sync::Mutex;
+use std::time::SystemTime;
 
 /// 游戏数据导出快照（与 C# Mod 的 ModExportSnapshot 对应）
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -60,22 +61,44 @@ pub struct GameDataAnimalEntry {
     pub can_eat_golden_crackers: bool,
 }
 
-/// 缓存：首次读取后缓存结果，避免重复磁盘 I/O
-static CACHED_EXPORT: OnceLock<Option<GameDataExport>> = OnceLock::new();
+/// 带时间戳的缓存，文件变化时自动失效
+struct ExportCache {
+    data: GameDataExport,
+    modified: SystemTime,
+}
+
+static CACHED_EXPORT: Mutex<Option<ExportCache>> = Mutex::new(None);
 
 /// 读取 game-data.json 导出文件。
-/// 首次调用时读取并缓存，后续调用直接返回缓存。
-pub fn read_game_data_export() -> Option<&'static GameDataExport> {
-    CACHED_EXPORT
-        .get_or_init(|| {
-            let path = game_data_export_path()?;
-            if !path.exists() {
-                return None;
+/// 文件变化时自动重新读取，文件删除后返回 None。
+pub fn read_game_data_export() -> Option<GameDataExport> {
+    let path = game_data_export_path()?;
+
+    let metadata = fs::metadata(&path).ok()?;
+    let modified = metadata.modified().ok()?;
+
+    // 检查缓存是否有效
+    if let Ok(cache) = CACHED_EXPORT.lock() {
+        if let Some(ref c) = *cache {
+            if c.modified == modified {
+                return Some(c.data.clone());
             }
-            let raw = fs::read_to_string(&path).ok()?;
-            serde_json::from_str(&raw).ok()
-        })
-        .as_ref()
+        }
+    }
+
+    // 重新读取
+    let raw = fs::read_to_string(&path).ok()?;
+    let data: GameDataExport = serde_json::from_str(&raw).ok()?;
+
+    // 更新缓存
+    if let Ok(mut cache) = CACHED_EXPORT.lock() {
+        *cache = Some(ExportCache {
+            data: data.clone(),
+            modified,
+        });
+    }
+
+    Some(data)
 }
 
 /// 从导出文件构建物品价格映射表。
@@ -102,11 +125,11 @@ pub fn build_item_name_map_from_export() -> Option<HashMap<String, String>> {
 }
 
 /// 从导出文件构建物品条目映射表（id -> item entry）。
-pub fn build_item_map_from_export() -> Option<HashMap<String, &'static GameDataItemEntry>> {
+pub fn build_item_map_from_export() -> Option<HashMap<String, GameDataItemEntry>> {
     let export = read_game_data_export()?;
-    let map: HashMap<String, &GameDataItemEntry> = export
+    let map: HashMap<String, GameDataItemEntry> = export
         .items
-        .iter()
+        .into_iter()
         .map(|item| (item.id.clone(), item))
         .collect();
     Some(map)

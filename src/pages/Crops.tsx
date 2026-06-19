@@ -12,7 +12,6 @@ import {
   CropGameData,
   readCache,
   writeCache,
-  getCropGameDataCacheKey,
   getPlantedCropsCacheKey,
 } from "./crops/types"
 
@@ -51,12 +50,8 @@ export function Crops({ selectedSaveId }: CropsProps) {
   const activeLang = i18n.resolvedLanguage || i18n.language || "zh"
 
   const handleRefresh = useCallback(() => {
-    // 清除该游戏目录+语言的缓存
-    const gameDir = localStorage.getItem("stardewGameDirectory") || ""
-    const cacheKey = getCropGameDataCacheKey(gameDir, activeLang)
-    localStorage.removeItem(cacheKey)
     setRefreshKey((k) => k + 1)
-  }, [activeLang])
+  }, [])
 
   useEffect(() => {
     let canceled = false
@@ -64,21 +59,6 @@ export function Crops({ selectedSaveId }: CropsProps) {
     async function loadCropGameData() {
       const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__
       const gameDir = localStorage.getItem("stardewGameDirectory") || ""
-      const cacheKey = getCropGameDataCacheKey(gameDir, activeLang)
-      const cached = readCache<CropGameData>(cacheKey)
-
-      if (cached && !canceled) {
-        applyCropGameData(
-          cached.data,
-          setEncyclopediaCrops,
-          setCropLookup,
-          setSeasons,
-          setDataSource,
-          setGeneratedAt,
-        )
-        setLoadingGameData(false)
-        setGameDataError(null)
-      }
 
       if (!isTauri) {
         if (!canceled) {
@@ -87,7 +67,7 @@ export function Crops({ selectedSaveId }: CropsProps) {
         return
       }
 
-      if (!cached && !canceled) {
+      if (!canceled) {
         setLoadingGameData(true)
         setGameDataError(null)
       }
@@ -110,16 +90,13 @@ export function Crops({ selectedSaveId }: CropsProps) {
           )
           setGameDataError(null)
         }
-        writeCache(cacheKey, data)
       } catch (err) {
         console.error("Error loading crop game data:", err)
         if (!canceled) {
           setGameDataError(String(err))
-          if (!cached) {
-            setEncyclopediaCrops([])
-            setCropLookup({})
-            setSeasons([])
-          }
+          setEncyclopediaCrops([])
+          setCropLookup({})
+          setSeasons([])
         }
       } finally {
         if (!canceled) {
