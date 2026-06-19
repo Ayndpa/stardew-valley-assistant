@@ -10,12 +10,17 @@ pub struct LiveGameState {
     inner: Arc<RwLock<LiveGameStateInner>>,
 }
 
+use super::pipe_server::CheatResultPayload;
+
 struct LiveGameStateInner {
     npc_locations: Option<NpcLocationsPayload>,
     item_prices: Option<ItemPricesPayload>,
     last_npc_update: Option<Instant>,
     last_price_update: Option<Instant>,
     pipe_connected: bool,
+    cheat_results: Vec<CheatResultPayload>,
+    speed_enabled: bool,
+    freeze_time_enabled: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -54,6 +59,9 @@ impl LiveGameState {
                 last_npc_update: None,
                 last_price_update: None,
                 pipe_connected: false,
+                cheat_results: Vec::new(),
+                speed_enabled: false,
+                freeze_time_enabled: false,
             })),
         }
     }
@@ -127,6 +135,40 @@ impl LiveGameState {
         state.pipe_connected
     }
 
+    /// Update cheat result from the mod.
+    pub async fn update_cheat_result(&self, payload: CheatResultPayload) {
+        let mut state = self.inner.write().await;
+        // Track toggle states
+        if payload.success {
+            match payload.action.as_str() {
+                "toggleSpeed" => {
+                    state.speed_enabled = !state.speed_enabled;
+                }
+                "toggleFreezeTime" => {
+                    state.freeze_time_enabled = !state.freeze_time_enabled;
+                }
+                _ => {}
+            }
+        }
+        // Keep last 50 results
+        state.cheat_results.push(payload);
+        if state.cheat_results.len() > 50 {
+            state.cheat_results.remove(0);
+        }
+    }
+
+    /// Get cheat results and clear the buffer.
+    pub async fn take_cheat_results(&self) -> Vec<CheatResultPayload> {
+        let mut state = self.inner.write().await;
+        std::mem::take(&mut state.cheat_results)
+    }
+
+    /// Get current cheat toggle states.
+    pub async fn get_cheat_states(&self) -> (bool, bool) {
+        let state = self.inner.read().await;
+        (state.speed_enabled, state.freeze_time_enabled)
+    }
+
     /// Clear all data (called when game exits).
     pub async fn clear(&self) {
         let mut state = self.inner.write().await;
@@ -134,5 +176,8 @@ impl LiveGameState {
         state.item_prices = None;
         state.last_npc_update = None;
         state.last_price_update = None;
+        state.cheat_results.clear();
+        state.speed_enabled = false;
+        state.freeze_time_enabled = false;
     }
 }

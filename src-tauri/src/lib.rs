@@ -20,9 +20,12 @@ use crate::download_control::{pause_download_task, resume_download_task, Downloa
 use crate::farmer_avatar::get_npc_portraits;
 use crate::game::{auto_detect_game_dir, check_game_process_running, force_kill_game, get_game_version, launch_game};
 use crate::game_data::{
-    check_item_prices_mod_running, get_animal_game_data, get_bundle_game_data,
-    get_calendar_game_data, get_crop_game_data, get_fishing_map_data, get_fishing_map_detail,
-    get_item_game_data, get_item_game_data_overview, get_item_prices_from_mod, get_npc_game_data,
+    cheat_add_item, cheat_add_money, cheat_grow_crops, cheat_kill_monsters, cheat_max_friendship,
+    cheat_refill_energy, cheat_refill_health, cheat_set_weather, cheat_teleport,
+    cheat_toggle_freeze_time, cheat_toggle_speed, cheat_water_crops, check_item_prices_mod_running,
+    get_animal_game_data, get_bundle_game_data, get_calendar_game_data, get_cheat_states,
+    get_crop_game_data, get_fishing_map_data, get_fishing_map_detail, get_item_game_data,
+    get_item_game_data_overview, get_item_prices_from_mod, get_npc_game_data,
     get_secret_notes_game_data, live_state::LiveGameState, pipe_server::{self, PipeWriterHandle}, query_item_game_data,
 };
 use crate::mods::{
@@ -565,7 +568,20 @@ pub fn run() {
             clear_log_files,
             set_window_backdrop,
             set_background_image,
-            clear_background_image
+            clear_background_image,
+            cheat_refill_energy,
+            cheat_refill_health,
+            cheat_toggle_speed,
+            cheat_toggle_freeze_time,
+            cheat_water_crops,
+            cheat_grow_crops,
+            cheat_teleport,
+            cheat_add_item,
+            cheat_add_money,
+            cheat_max_friendship,
+            cheat_kill_monsters,
+            cheat_set_weather,
+            get_cheat_states
         ])
         .setup(|app| {
             let app_handle = app.handle();

@@ -1,6 +1,7 @@
 pub mod animals;
 pub mod bundles;
 pub mod calendar;
+pub mod cheats;
 pub mod crops;
 pub mod fishing;
 pub mod image_utils;
@@ -21,6 +22,11 @@ use std::path::{Path, PathBuf};
 pub use animals::get_animal_game_data;
 pub use bundles::get_bundle_game_data;
 pub use calendar::get_calendar_game_data;
+pub use cheats::{
+    cheat_add_item, cheat_add_money, cheat_grow_crops, cheat_kill_monsters, cheat_max_friendship,
+    cheat_refill_energy, cheat_refill_health, cheat_set_weather, cheat_teleport,
+    cheat_toggle_freeze_time, cheat_toggle_speed, cheat_water_crops, get_cheat_states,
+};
 pub use crops::get_crop_game_data;
 pub use fishing::{get_fishing_map_data, get_fishing_map_detail};
 pub use item_prices::{check_item_prices_mod_running, get_item_prices_from_mod};

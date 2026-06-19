@@ -12,6 +12,7 @@ using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
 using StardewValley.GameData;
+using Microsoft.Xna.Framework;
 
 namespace StardewValleyAssistant;
 
@@ -32,6 +33,10 @@ public sealed class ModEntry : Mod
     private volatile bool IsConnected;
     private int ConnectAttempt;
 
+    // ── 作弊状态 ─────────────────────────────────────────
+    private bool SpeedBoostActive;
+    private bool FreezeTimeActive;
+
     public override void Entry(IModHelper helper)
     {
         this.Monitor.Log("助手 Mod 已加载，开始连接管道...", LogLevel.Info);
@@ -39,6 +44,7 @@ public sealed class ModEntry : Mod
         helper.Events.GameLoop.SaveLoaded += this.OnSaveLoaded;
         helper.Events.GameLoop.TimeChanged += this.OnTimeChanged;
         helper.Events.GameLoop.OneSecondUpdateTicked += this.OnOneSecondUpdateTicked;
+        helper.Events.GameLoop.UpdateTicked += this.OnUpdateTicked;
         helper.Events.GameLoop.ReturnedToTitle += this.OnReturnedToTitle;
         helper.Events.Player.Warped += this.OnWarped;
     }
@@ -48,6 +54,8 @@ public sealed class ModEntry : Mod
     private void OnSaveLoaded(object? sender, SaveLoadedEventArgs e)
     {
         this.Monitor.Log($"[发送] 存档已加载, IsConnected={this.IsConnected}, IsWorldReady={Context.IsWorldReady}", LogLevel.Info);
+        this.SpeedBoostActive = false;
+        this.FreezeTimeActive = false;
         _ = this.SendNpcLocationsAsync();
     }
 
@@ -56,6 +64,18 @@ public sealed class ModEntry : Mod
         if (!this.IsConnected && !this.IsConnecting)
         {
             this.TryConnectAsync();
+        }
+    }
+
+    private void OnUpdateTicked(object? sender, UpdateTickedEventArgs e)
+    {
+        if (!Context.IsWorldReady || Game1.player is null)
+            return;
+
+        // 冻结时间：每帧将时间间隔重置为0
+        if (this.FreezeTimeActive)
+        {
+            Game1.gameTimeInterval = 0;
         }
     }
 
@@ -76,6 +96,8 @@ public sealed class ModEntry : Mod
 
     private async void OnReturnedToTitle(object? sender, ReturnedToTitleEventArgs e)
     {
+        this.SpeedBoostActive = false;
+        this.FreezeTimeActive = false;
         await this.SendClearAsync();
         this.Disconnect();
     }
@@ -239,6 +261,45 @@ public sealed class ModEntry : Mod
                     break;
                 case "pong":
                     break;
+
+                // ── 作弊指令 ──────────────────────────────
+                case "cheatRefillEnergy":
+                    this.HandleCheatRefillEnergy();
+                    break;
+                case "cheatRefillHealth":
+                    this.HandleCheatRefillHealth();
+                    break;
+                case "cheatToggleSpeed":
+                    this.HandleCheatToggleSpeed(root);
+                    break;
+                case "cheatToggleFreezeTime":
+                    this.HandleCheatToggleFreezeTime(root);
+                    break;
+                case "cheatWaterCrops":
+                    this.HandleCheatWaterCrops();
+                    break;
+                case "cheatGrowCrops":
+                    this.HandleCheatGrowCrops();
+                    break;
+                case "cheatTeleport":
+                    this.HandleCheatTeleport(root);
+                    break;
+                case "cheatAddItem":
+                    this.HandleCheatAddItem(root);
+                    break;
+                case "cheatAddMoney":
+                    this.HandleCheatAddMoney(root);
+                    break;
+                case "cheatMaxFriendship":
+                    this.HandleCheatMaxFriendship();
+                    break;
+                case "cheatKillMonsters":
+                    this.HandleCheatKillMonsters();
+                    break;
+                case "cheatSetWeather":
+                    this.HandleCheatSetWeather(root);
+                    break;
+
                 default:
                     this.Monitor.Log($"[处理] 未知消息类型: {type}", LogLevel.Warn);
                     break;
@@ -247,6 +308,281 @@ public sealed class ModEntry : Mod
         catch (Exception ex)
         {
             this.Monitor.Log($"[处理] 解析消息失败: {ex.Message}", LogLevel.Warn);
+        }
+    }
+
+    // ── 作弊指令处理 ──────────────────────────────────────
+
+    private void HandleCheatRefillEnergy()
+    {
+        this.ExecuteCheat("refillEnergy", () =>
+        {
+            Game1.player.stamina = Game1.player.MaxStamina;
+            return $"体力已补满 ({Game1.player.MaxStamina})";
+        });
+    }
+
+    private void HandleCheatRefillHealth()
+    {
+        this.ExecuteCheat("refillHealth", () =>
+        {
+            Game1.player.health = Game1.player.maxHealth;
+            return $"生命已补满 ({Game1.player.maxHealth})";
+        });
+    }
+
+    private void HandleCheatToggleSpeed(JsonElement root)
+    {
+        bool enabled = false;
+        if (root.TryGetProperty("enabled", out var enabledProp))
+        {
+            enabled = enabledProp.GetBoolean();
+        }
+
+        this.ExecuteCheat("toggleSpeed", () =>
+        {
+            if (enabled)
+            {
+                // 添加速度Buff (speed index = 9)
+                Game1.player.applyBuff("9");
+                this.SpeedBoostActive = true;
+                return "速度加成已开启";
+            }
+            else
+            {
+                Game1.player.buffs.Remove("9");
+                this.SpeedBoostActive = false;
+                return "速度加成已关闭";
+            }
+        });
+    }
+
+    private void HandleCheatToggleFreezeTime(JsonElement root)
+    {
+        bool enabled = false;
+        if (root.TryGetProperty("enabled", out var enabledProp))
+        {
+            enabled = enabledProp.GetBoolean();
+        }
+
+        this.FreezeTimeActive = enabled;
+        this.SendCheatResultAsync("toggleFreezeTime", true, enabled ? "时间已冻结" : "时间已恢复流动").Wait();
+    }
+
+    private void HandleCheatWaterCrops()
+    {
+        this.ExecuteCheat("waterCrops", () =>
+        {
+            int count = 0;
+            var farm = Game1.getFarm();
+            if (farm == null) return "未找到农场";
+
+            foreach (var pair in farm.terrainFeatures.Pairs)
+            {
+                if (pair.Value is StardewValley.TerrainFeatures.HoeDirt dirt)
+                {
+                    if (dirt.crop != null && dirt.state.Value == 0) // 0 = not watered
+                    {
+                        dirt.state.Value = 1; // 1 = watered
+                        count++;
+                    }
+                }
+            }
+            return $"已浇水 {count} 块农田";
+        });
+    }
+
+    private void HandleCheatGrowCrops()
+    {
+        this.ExecuteCheat("growCrops", () =>
+        {
+            int count = 0;
+            var farm = Game1.getFarm();
+            if (farm == null) return "未找到农场";
+
+            foreach (var pair in farm.terrainFeatures.Pairs)
+            {
+                if (pair.Value is StardewValley.TerrainFeatures.HoeDirt dirt)
+                {
+                    if (dirt.crop != null)
+                    {
+                        while (!dirt.crop.fullyGrown.Value)
+                        {
+                            dirt.crop.newDay(1);
+                        }
+                        count++;
+                    }
+                }
+            }
+            return $"已催熟 {count} 块作物";
+        });
+    }
+
+    private void HandleCheatTeleport(JsonElement root)
+    {
+        string location = "";
+        if (root.TryGetProperty("location", out var locProp))
+        {
+            location = locProp.GetString() ?? "";
+        }
+
+        this.ExecuteCheat("teleport", () =>
+        {
+            if (string.IsNullOrWhiteSpace(location))
+                return "未指定传送位置";
+
+            // 常用传送点映射
+            var teleportTargets = new Dictionary<string, (string name, int x, int y)>
+            {
+                ["farm"] = ("Farm", 64, 15),
+                ["town"] = ("Town", 53, 67),
+                ["forest"] = ("Forest", 52, 94),
+                ["mountain"] = ("Mountain", 31, 20),
+                ["mine"] = ("Mine", 13, 9),
+                ["beach"] = ("Beach", 20, 4),
+                ["desert"] = ("Desert", 35, 43),
+                ["island"] = ("IslandWest", 77, 40),
+            };
+
+            if (teleportTargets.TryGetValue(location.ToLower(), out var target))
+            {
+                Game1.warpFarmer(target.name, target.x, target.y, false);
+                return $"已传送到 {target.name}";
+            }
+            else
+            {
+                // 尝试直接传送到指定位置
+                Game1.warpFarmer(location, 64, 64, false);
+                return $"已传送到 {location}";
+            }
+        });
+    }
+
+    private void HandleCheatAddItem(JsonElement root)
+    {
+        string itemId = "";
+        int count = 1;
+
+        if (root.TryGetProperty("itemId", out var idProp))
+            itemId = idProp.GetString() ?? "";
+        if (root.TryGetProperty("count", out var countProp))
+            count = countProp.GetInt32();
+
+        this.ExecuteCheat("addItem", () =>
+        {
+            if (string.IsNullOrWhiteSpace(itemId))
+                return "未指定物品ID";
+
+            count = Math.Clamp(count, 1, 999);
+
+            // 尝试创建物品
+            var item = ItemRegistry.Create(itemId, count);
+            if (item == null)
+                return $"无法创建物品: {itemId}";
+
+            Game1.player.addItemByMenuIfNecessary(item);
+            return $"已添加 {item.DisplayName} x{count}";
+        });
+    }
+
+    private void HandleCheatAddMoney(JsonElement root)
+    {
+        int amount = 0;
+        if (root.TryGetProperty("amount", out var amountProp))
+            amount = amountProp.GetInt32();
+
+        this.ExecuteCheat("addMoney", () =>
+        {
+            if (amount == 0) return "未指定金额";
+            Game1.player.Money += amount;
+            return $"金币 {(amount > 0 ? "+" : "")}{amount:N0}，当前: {Game1.player.Money:N0}";
+        });
+    }
+
+    private void HandleCheatMaxFriendship()
+    {
+        this.ExecuteCheat("maxFriendship", () =>
+        {
+            int count = 0;
+            foreach (var pair in Game1.player.friendshipData.Pairs)
+            {
+                if (pair.Value.Points < 2500)
+                {
+                    pair.Value.Points = 2500;
+                    count++;
+                }
+            }
+            return $"已将 {count} 个NPC好感度设为满值 (10❤)";
+        });
+    }
+
+    private void HandleCheatKillMonsters()
+    {
+        this.ExecuteCheat("killMonsters", () =>
+        {
+            var location = Game1.currentLocation;
+            if (location == null) return "未找到当前地图";
+
+            int count = 0;
+            var monsters = location.characters.Where(c => c is StardewValley.Monsters.Monster).ToList();
+            foreach (var monster in monsters)
+            {
+                location.characters.Remove(monster);
+                count++;
+            }
+            return $"已清除 {count} 个怪物";
+        });
+    }
+
+    private void HandleCheatSetWeather(JsonElement root)
+    {
+        string weather = "";
+        if (root.TryGetProperty("weather", out var weatherProp))
+            weather = weatherProp.GetString() ?? "";
+
+        this.ExecuteCheat("setWeather", () =>
+        {
+            if (string.IsNullOrWhiteSpace(weather))
+                return "未指定天气类型";
+
+            var weatherMap = new Dictionary<string, (string id, string name)>
+            {
+                ["sunny"] = ("Sun", "晴天"),
+                ["rain"] = ("Rain", "雨天"),
+                ["thunder"] = ("Storm", "雷暴"),
+                ["snow"] = ("Snow", "雪天"),
+            };
+
+            if (weatherMap.TryGetValue(weather.ToLower(), out var target))
+            {
+                Game1.weatherForTomorrow = target.id;
+                return $"明天天气已设为: {target.name}";
+            }
+            return $"未知天气类型: {weather}";
+        });
+    }
+
+    /// <summary>
+    /// 统一的作弊执行包装器，处理异常和结果发送。
+    /// </summary>
+    private void ExecuteCheat(string action, Func<string> execute)
+    {
+        if (!Context.IsWorldReady || Game1.player is null)
+        {
+            _ = this.SendCheatResultAsync(action, false, "游戏未就绪，请先加载存档");
+            return;
+        }
+
+        try
+        {
+            string message = execute();
+            this.Monitor.Log($"[作弊] {action}: {message}", LogLevel.Info);
+            _ = this.SendCheatResultAsync(action, true, message);
+        }
+        catch (Exception ex)
+        {
+            this.Monitor.Log($"[作弊] {action} 失败: {ex.Message}", LogLevel.Warn);
+            _ = this.SendCheatResultAsync(action, false, $"执行失败: {ex.Message}");
         }
     }
 
@@ -311,6 +647,33 @@ public sealed class ModEntry : Mod
         catch (Exception ex)
         {
             this.Monitor.Log($"发送物品价格失败: {ex.Message}", LogLevel.Debug);
+        }
+    }
+
+    private async Task SendCheatResultAsync(string action, bool success, string message)
+    {
+        if (!this.IsConnected)
+            return;
+
+        try
+        {
+            var result = new CheatResultPayload(
+                Action: action,
+                Success: success,
+                Message: message
+            );
+
+            var wrapper = new ModMessageWrapper
+            {
+                Type = "cheatResult",
+                Data = result,
+            };
+
+            await this.SendMessageAsync(wrapper);
+        }
+        catch (Exception ex)
+        {
+            this.Monitor.Log($"发送作弊结果失败: {ex.Message}", LogLevel.Debug);
         }
     }
 
@@ -456,4 +819,11 @@ internal sealed record ItemPricesSnapshot(
     string? SaveId,
     string GeneratedAt,
     Dictionary<string, int> Prices
+);
+
+// Cheat Result data structure
+internal sealed record CheatResultPayload(
+    string Action,
+    bool Success,
+    string Message
 );

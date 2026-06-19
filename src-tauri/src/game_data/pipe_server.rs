@@ -17,10 +17,20 @@ pub enum ModMessage {
     NpcLocations { data: NpcLocationsPayload },
     #[serde(rename = "itemPrices")]
     ItemPrices { data: ItemPricesPayload },
+    #[serde(rename = "cheatResult")]
+    CheatResult { data: CheatResultPayload },
     #[serde(rename = "clear")]
     Clear,
     #[serde(rename = "ping")]
     Ping,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CheatResultPayload {
+    pub action: String,
+    pub success: bool,
+    pub message: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -32,6 +42,32 @@ pub enum TauriMessage {
     RequestItemPrices,
     #[serde(rename = "pong")]
     Pong,
+
+    // 作弊指令
+    #[serde(rename = "cheatRefillEnergy")]
+    CheatRefillEnergy,
+    #[serde(rename = "cheatRefillHealth")]
+    CheatRefillHealth,
+    #[serde(rename = "cheatToggleSpeed")]
+    CheatToggleSpeed { enabled: bool },
+    #[serde(rename = "cheatToggleFreezeTime")]
+    CheatToggleFreezeTime { enabled: bool },
+    #[serde(rename = "cheatWaterCrops")]
+    CheatWaterCrops,
+    #[serde(rename = "cheatGrowCrops")]
+    CheatGrowCrops,
+    #[serde(rename = "cheatTeleport")]
+    CheatTeleport { location: String },
+    #[serde(rename = "cheatAddItem")]
+    CheatAddItem { item_id: String, count: i32 },
+    #[serde(rename = "cheatAddMoney")]
+    CheatAddMoney { amount: i32 },
+    #[serde(rename = "cheatMaxFriendship")]
+    CheatMaxFriendship,
+    #[serde(rename = "cheatKillMonsters")]
+    CheatKillMonsters,
+    #[serde(rename = "cheatSetWeather")]
+    CheatSetWeather { weather: String },
 }
 
 #[derive(Clone)]
@@ -209,6 +245,10 @@ async fn handle_mod_message(msg: ModMessage, state: &LiveGameState) {
         ModMessage::ItemPrices { data } => {
             println!("[处理] itemPrices: {} 个物品", data.prices.len());
             state.update_item_prices(data).await;
+        }
+        ModMessage::CheatResult { data } => {
+            println!("[处理] cheatResult: action={}, success={}, message={}", data.action, data.success, data.message);
+            state.update_cheat_result(data).await;
         }
         ModMessage::Clear => {
             println!("[处理] clear");

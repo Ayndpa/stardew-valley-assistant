@@ -13,6 +13,7 @@ import { SaveBackups } from "@/pages/SaveBackups"
 import { Children } from "@/pages/Children"
 import { Animals } from "@/pages/Animals"
 import { Settings } from "@/pages/Settings"
+import { Cheats } from "@/pages/Cheats"
 import { Mods } from "@/pages/Mods"
 import { Downloads } from "@/pages/Downloads"
 import { OnlineMods } from "@/components/mods/OnlineMods"
@@ -57,7 +58,7 @@ function BackgroundImageLayer({ filePath }: { filePath: string }) {
   )
 }
 
-export type Page = "dashboard" | "collections" | "crops" | "items" | "npcs" | "calendar" | "fishingMap" | "saveEditor" | "saveBackups" | "settings" | "mods" | "onlineMods" | "downloads" | "bundles" | "children" | "animals"
+export type Page = "dashboard" | "collections" | "crops" | "items" | "npcs" | "calendar" | "fishingMap" | "saveEditor" | "saveBackups" | "settings" | "mods" | "onlineMods" | "downloads" | "bundles" | "children" | "animals" | "cheats"
 
 export interface SaveSummary {
   id: string
@@ -98,6 +99,7 @@ function App() {
   const [modListRefreshSignal, setModListRefreshSignal] = useState(0)
   const [globalToast, setGlobalToast] = useState<{ message: string; type: "success" | "info" | "warning" } | null>(null)
   const [saveEditorAcknowledged, setSaveEditorAcknowledged] = useState(false)
+  const [cheatsAcknowledged, setCheatsAcknowledged] = useState(false)
   const [updateDialogInfo, setUpdateDialogInfo] = useState<UpdateInfo | null>(null)
 
   // Custom Hooks
@@ -153,12 +155,16 @@ function App() {
         if (!parsed.includes("animals")) {
           parsed.push("animals")
         }
+        // 迁移：新增的 cheats 功能需要补上
+        if (!parsed.includes("cheats")) {
+          parsed.push("cheats")
+        }
         return parsed
       } catch (e) {
         // ignore
       }
     }
-    return ["collections", "crops", "items", "npcs", "calendar", "bundles", "animals", "fishingMap", "children", "saveEditor", "saveBackups", "mods", "onlineMods", "downloads"]
+    return ["collections", "crops", "items", "npcs", "calendar", "bundles", "animals", "fishingMap", "children", "cheats", "saveEditor", "saveBackups", "mods", "onlineMods", "downloads"]
   })
 
   const updateEnabledFeatures = useCallback((value: Page[]) => {
@@ -199,6 +205,9 @@ function App() {
   useEffect(() => {
     if (currentPage !== "saveEditor") {
       setSaveEditorAcknowledged(false)
+    }
+    if (currentPage !== "cheats") {
+      setCheatsAcknowledged(false)
     }
   }, [currentPage])
 
@@ -493,6 +502,15 @@ function App() {
             onSaved={fetchSavesList}
             warningAcknowledged={saveEditorAcknowledged}
             onAcknowledgeWarning={() => setSaveEditorAcknowledged(true)}
+            onCancel={() => setCurrentPage("dashboard")}
+          />
+        )
+      case "cheats":
+        return (
+          <Cheats
+            onShowToast={showGlobalToast}
+            warningAcknowledged={cheatsAcknowledged}
+            onAcknowledgeWarning={() => setCheatsAcknowledged(true)}
             onCancel={() => setCurrentPage("dashboard")}
           />
         )

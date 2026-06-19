@@ -11,6 +11,7 @@
     "fishingMap": "Game Map",
     "children": "Children",
     "saveEditor": "Save Editor",
+    "cheats": "Game Cheats",
     "saveBackups": "Save Backups",
     "mods": "Mod Manager",
     "onlineMods": "Get Mods",
@@ -1272,6 +1273,75 @@
       "webModeError": "Cannot write back to game saves in Web mode.",
       "saveSuccess": "Save file saved, and a backup of the original was automatically created.",
       "saveError": "Failed to save. Please check field values are within valid ranges."
+    }
+  },
+  "cheats": {
+    "warningTitle": "Game Cheats Warning",
+    "warningDesc": "Before continuing, please read the instructions below carefully. This feature can directly modify the game's runtime state.",
+    "warningCardTitle": "This is a Real-Time Cheat Feature",
+    "warningCardDesc": "Once inside, you can directly modify energy, health, time, crops, gold and more while the game is running. These changes take effect instantly.",
+    "warningP1": "Using real-time cheats essentially bypasses the game's design. You no longer face consequences for running out of energy, or need to invest time into earning money, upgrading tools, or building relationships. In the short term this lets you do whatever you want, but the cost is usually not 'less hassle' — it's skipping the core growth process that makes the game meaningful.",
+    "warningP2": "A large part of Stardew Valley's appeal comes from its rhythm: recovering from a wrong crop, making tradeoffs when money is tight early on, replanning after a bad gift, judging risk in the mines, and looking back at the end of a season to see what you've built. Once you can cheat at any time, the processes that would have become memorable moments are often reduced to results with no journey.",
+    "warningP3": "More practically, cheating causes many systems to lose meaning. Set gold too high and the production chain loses pressure; unlimited energy makes stamina management and tool upgrades hollow; one-click monster clearing strips the mines of tension. It may look like you're 'saving time', but you're actually compressing dozens of hours of experience that were meant to unfold gradually.",
+    "warningP4": "Unlike save editing, real-time cheats take effect instantly while the game is running and are always available. This means you can 'cheat' to solve problems at any time, but it also means that once you develop a dependency, the game's strategy and challenge are completely hollowed out.",
+    "warningP5": "If you're doing this because of a stuck moment, lack of time, or simply wanting to try it out, you should at least be clear: this is not a cost-free convenience feature. It can solve immediate problems, but it will diminish the game experience, especially on a first playthrough or an actively progressing save.",
+    "warningP6": "Only continue using real-time cheats if you fully understand the above consequences and explicitly accept that this will break part — or much — of the game experience.",
+    "backToDashboard": "Back to Dashboard",
+    "acknowledgeAndContinue": "I understand, continue anyway",
+    "title": "Game Cheats Control",
+    "subtitle": "Control real-time in-game cheats through the assistant",
+    "connected": "Connected",
+    "disconnected": "Disconnected",
+    "gameRunning": "Game Running",
+    "connectionWarning": "The game mod must be connected to use cheats. Please install the assistant mod and launch the game first.",
+    "survival": {
+      "title": "Survival",
+      "desc": "Energy, health, and movement speed",
+      "refillEnergy": "Refill Energy",
+      "refillHealth": "Refill Health",
+      "speedOn": "Speed Boost ✓",
+      "speedOff": "Speed Boost"
+    },
+    "time": {
+      "title": "Time Control",
+      "desc": "Freeze or resume in-game time flow",
+      "freezeOn": "Freeze Time ✓",
+      "freezeOff": "Freeze Time"
+    },
+    "farm": {
+      "title": "Farm",
+      "desc": "Crop watering, growth, and teleportation",
+      "waterCrops": "Water All Crops",
+      "growCrops": "Instant Growth",
+      "teleport": "Teleport"
+    },
+    "economy": {
+      "title": "Economy",
+      "desc": "Gold and items",
+      "moneyPlaceholder": "Enter amount (negative to deduct)",
+      "addMoney": "Add Gold",
+      "itemPlaceholder": "Item ID (e.g. 434)",
+      "countPlaceholder": "Count",
+      "addItem": "Add Item"
+    },
+    "social": {
+      "title": "Social & Combat",
+      "desc": "NPC friendship and monster clearing",
+      "maxFriendship": "Max Friendship",
+      "killMonsters": "Kill All Monsters"
+    },
+    "weather": {
+      "title": "Weather Control",
+      "desc": "Set tomorrow's weather"
+    },
+    "log": {
+      "title": "Execution Log",
+      "desc": "Recent cheat operation records",
+      "executing": "Executing...",
+      "empty": "No operation records yet"
+    },
+    "toast": {
+      "webModeError": "Cannot use cheats in Web mode."
     }
   },
   "mods": {

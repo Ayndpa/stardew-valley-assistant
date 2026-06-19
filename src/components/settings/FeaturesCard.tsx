@@ -19,6 +19,7 @@ import {
   Sliders,
   Trophy,
   PawPrint,
+  Zap,
 } from "lucide-react"
 
 interface FeaturesCardProps {
@@ -41,6 +42,7 @@ export function FeaturesCard({
     { id: "npcs", icon: Users },
     { id: "calendar", icon: CalendarDays },
     { id: "fishingMap", icon: Fish },
+    { id: "cheats", icon: Zap },
     { id: "saveEditor", icon: PencilRuler },
     { id: "saveBackups", icon: ArchiveRestore },
     { id: "mods", icon: Puzzle },
