@@ -43,6 +43,8 @@ export interface CropGameData {
   encyclopedia: Crop[]
   lookup: Record<string, CropLookup>
   seasons: string[]
+  dataSource: "export" | "xnb"
+  generatedAt?: string | null
 }
 
 export interface LocalCacheEntry<T> {

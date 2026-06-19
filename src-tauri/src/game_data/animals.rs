@@ -39,6 +39,10 @@ pub struct AnimalEncyclopediaEntry {
 pub struct AnimalGameData {
     pub encyclopedia: Vec<AnimalEncyclopediaEntry>,
     pub houses: Vec<String>,
+    /// 数据来源："export" = 游戏导出文件, "xnb" = 游戏数据解包
+    pub data_source: String,
+    /// 导出文件的生成时间（ISO 8601），仅 data_source="export" 时有值
+    pub generated_at: Option<String>,
 }
 
 fn harvest_type_name(harvest_type: i32, is_zh: bool) -> String {
@@ -153,12 +157,138 @@ pub fn get_animal_game_data(
     game_dir: Option<String>,
     lang: Option<String>,
 ) -> Result<AnimalGameData, String> {
-    let content_dir = super::locate_content_dir(game_dir.as_deref())?;
-    let animals = load_farm_animals_xnb(&content_dir.join("Data").join("FarmAnimals.xnb"))?;
-    let objects = load_objects_xnb(&content_dir.join("Data").join("Objects.xnb"))?;
-
     let lang_str = lang.as_deref().unwrap_or("zh");
     let is_zh = lang_str.to_lowercase().starts_with("zh");
+    let content_dir = super::locate_content_dir(game_dir.as_deref())?;
+
+    // 优先使用导出文件（图标缺失时回退 XNB）
+    if let Some(export) = super::item_prices::read_game_data_export() {
+        return Ok(build_animal_data_from_export(export, &content_dir, is_zh));
+    }
+
+    // 回退到 XNB 解析
+    build_animal_data_from_xnb(&content_dir, lang_str, is_zh)
+}
+
+/// 从 game-data.json 导出文件构建动物数据（无图标）
+fn build_animal_data_from_export(
+    export: &super::item_prices::GameDataExport,
+    content_dir: &std::path::Path,
+    is_zh: bool,
+) -> AnimalGameData {
+    let item_names = super::item_prices::build_item_name_map_from_export()
+        .unwrap_or_default();
+
+    // 预加载 XNB 动物数据，用于图标回退
+    let animals_xnb = load_farm_animals_xnb(&content_dir.join("Data").join("FarmAnimals.xnb"))
+        .unwrap_or_default();
+    let mut texture_cache = HashMap::new();
+
+    let mut encyclopedia = Vec::new();
+    let mut houses_set = std::collections::HashSet::new();
+
+    for animal in &export.animals {
+        if animal.house.is_empty() {
+            continue;
+        }
+
+        let house_display = house_display_name(&animal.house, is_zh);
+        houses_set.insert(animal.house.clone());
+
+        let resolve_produce_name = |item_id: &str| -> String {
+            item_names
+                .get(item_id)
+                .cloned()
+                .unwrap_or_else(|| format!("Item #{}", item_id))
+        };
+
+        let produce_items: Vec<AnimalProduceInfo> = animal
+            .produce_item_ids
+            .iter()
+            .map(|id| AnimalProduceInfo {
+                item_id: id.clone(),
+                name: resolve_produce_name(id),
+            })
+            .collect();
+
+        let deluxe_produce_items: Vec<AnimalProduceInfo> = animal
+            .deluxe_produce_item_ids
+            .iter()
+            .map(|id| AnimalProduceInfo {
+                item_id: id.clone(),
+                name: resolve_produce_name(id),
+            })
+            .collect();
+
+        // 图标：优先从 icons/ 目录加载，缺失时回退 XNB 解包
+        let icon = super::item_prices::read_icon_from_export("animal_", &animal.id)
+            .or_else(|| {
+                animals_xnb.get(&animal.id).and_then(|data| {
+                    let texture_key = if data.texture.is_empty() {
+                        format!("Animals/{}", animal.id)
+                    } else {
+                        object_texture_key(&data.texture)
+                    };
+                    render_animal_icon(
+                        content_dir,
+                        &texture_key,
+                        0,
+                        data.sprite_width,
+                        data.sprite_height,
+                        &mut texture_cache,
+                    )
+                    .ok()
+                })
+            });
+
+        let entry = AnimalEncyclopediaEntry {
+            id: animal.id.clone(),
+            name: animal.display_name.clone(),
+            house: animal.house.clone(),
+            house_display,
+            purchase_price: if animal.purchase_price >= 0 {
+                animal.purchase_price * 2
+            } else {
+                -1
+            },
+            sell_price: animal.sell_price,
+            days_to_mature: animal.days_to_mature,
+            days_to_produce: animal.days_to_produce,
+            can_get_pregnant: animal.can_get_pregnant,
+            harvest_type: harvest_type_name(animal.harvest_type, is_zh),
+            harvest_tool: animal.harvest_tool.clone(),
+            produce_items,
+            deluxe_produce_items,
+            deluxe_produce_min_friendship: animal.deluxe_produce_min_friendship,
+            can_swim: animal.can_swim,
+            can_eat_golden_crackers: animal.can_eat_golden_crackers,
+            icon,
+        };
+
+        encyclopedia.push(entry);
+    }
+
+    encyclopedia.sort_by(|a, b| a.house.cmp(&b.house).then(a.name.cmp(&b.name)));
+
+    let mut houses: Vec<String> = houses_set.into_iter().collect();
+    houses.sort();
+
+    AnimalGameData {
+        encyclopedia,
+        houses,
+        data_source: "export".to_string(),
+        generated_at: export.generated_at.clone(),
+    }
+}
+
+/// 从 XNB 文件解析动物数据（含图标）
+fn build_animal_data_from_xnb(
+    content_dir: &std::path::Path,
+    lang_str: &str,
+    is_zh: bool,
+) -> Result<AnimalGameData, String> {
+    let animals = load_farm_animals_xnb(&content_dir.join("Data").join("FarmAnimals.xnb"))?;
+    let objects = load_objects_xnb(&content_dir.join("Data").join("Objects.xnb"))?;
 
     let suffix = match lang_str.to_lowercase().as_str() {
         "zh" | "zh-cn" => ".zh-CN",
@@ -203,7 +333,6 @@ pub fn get_animal_game_data(
     let mut texture_cache = HashMap::new();
 
     for (id, animal) in &animals {
-        // Skip baby-only entries or entries with negative purchase price that aren't useful
         if animal.house.is_empty() {
             continue;
         }
@@ -218,9 +347,7 @@ pub fn get_animal_game_data(
             .map(|p| {
                 let item_name = objects
                     .get(&p.item_id)
-                    .map(|obj| {
-                        resolve_localized_name(&obj.display_name, &object_strings)
-                    })
+                    .map(|obj| resolve_localized_name(&obj.display_name, &object_strings))
                     .unwrap_or_else(|| format!("Item #{}", p.item_id));
                 AnimalProduceInfo {
                     item_id: p.item_id.clone(),
@@ -235,9 +362,7 @@ pub fn get_animal_game_data(
             .map(|p| {
                 let item_name = objects
                     .get(&p.item_id)
-                    .map(|obj| {
-                        resolve_localized_name(&obj.display_name, &object_strings)
-                    })
+                    .map(|obj| resolve_localized_name(&obj.display_name, &object_strings))
                     .unwrap_or_else(|| format!("Item #{}", p.item_id));
                 AnimalProduceInfo {
                     item_id: p.item_id.clone(),
@@ -289,7 +414,6 @@ pub fn get_animal_game_data(
         encyclopedia.push(entry);
     }
 
-    // Sort by house type, then by name
     encyclopedia.sort_by(|a, b| a.house.cmp(&b.house).then(a.name.cmp(&b.name)));
 
     let mut houses: Vec<String> = houses_set.into_iter().collect();
@@ -298,5 +422,7 @@ pub fn get_animal_game_data(
     Ok(AnimalGameData {
         encyclopedia,
         houses,
+        data_source: "xnb".to_string(),
+        generated_at: None,
     })
 }

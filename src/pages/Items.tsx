@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef } from "react"
+import { useEffect, useMemo, useState, useRef, useCallback } from "react"
 import { useTranslation } from "react-i18next"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
-import { BookOpen, ChevronLeft, ChevronRight, Clock, Coins, Fish, Gift, MapPin, Package, Search, Soup, Tag, Trash2, Zap } from "lucide-react"
+import { BookOpen, ChevronLeft, ChevronRight, Clock, Coins, Fish, Gift, MapPin, Package, RefreshCw, Search, Soup, Tag, Trash2, Zap } from "lucide-react"
 import {
   ItemEntry,
   ItemGameDataOverview,
@@ -37,6 +37,16 @@ export function Items({ navigationTarget, onNavigationHandled }: ItemsProps) {
   const [page, setPage] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
   const [activeTab, setActiveTab] = useState("encyclopedia")
+  const [dataSource, setDataSource] = useState<string>("xnb")
+  const [generatedAt, setGeneratedAt] = useState<string | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  const handleRefresh = useCallback(() => {
+    const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+    const cacheKey = getItemGameDataCacheKey(gameDir, activeLang)
+    localStorage.removeItem(cacheKey)
+    setRefreshKey((k) => k + 1)
+  }, [activeLang])
 
   // Code flow selected item IDs
   const [codeFlowSelected, setCodeFlowSelected] = useState<string[]>([])
@@ -87,6 +97,8 @@ export function Items({ navigationTarget, onNavigationHandled }: ItemsProps) {
         setCategories(cached.data.categories)
         setItemTypes(cached.data.itemTypes)
         setTotalCount(cached.data.totalCount)
+        setDataSource(cached.data.dataSource || "xnb")
+        setGeneratedAt(cached.data.generatedAt || null)
         setError(null)
       }
 
@@ -113,6 +125,8 @@ export function Items({ navigationTarget, onNavigationHandled }: ItemsProps) {
           setCategories(data.categories)
           setItemTypes(data.itemTypes)
           setTotalCount(data.totalCount)
+          setDataSource(data.dataSource || "xnb")
+          setGeneratedAt(data.generatedAt || null)
           setError(null)
         }
         writeCache(cacheKey, data)
@@ -135,7 +149,7 @@ export function Items({ navigationTarget, onNavigationHandled }: ItemsProps) {
     return () => {
       canceled = true
     }
-  }, [activeLang, t])
+  }, [activeLang, t, refreshKey])
 
   useEffect(() => {
     setPage(1)
@@ -323,6 +337,32 @@ export function Items({ navigationTarget, onNavigationHandled }: ItemsProps) {
             {t("items.tabCodeFlow")}
           </TabsTrigger>
         </TabsList>
+
+        {/* 数据来源提示 */}
+        <div className="flex items-center gap-2 px-1 py-1 text-xs text-muted-foreground">
+          {dataSource === "export" ? (
+            <span className="inline-flex items-center gap-1 rounded bg-blue-500/10 px-1.5 py-0.5 text-blue-500">
+              ✓ {t("dataSource.export", { defaultValue: "从游戏导出数据加载" })}
+              {generatedAt && (
+                <span className="text-muted-foreground ml-1">
+                  · {new Date(generatedAt).toLocaleString()}
+                </span>
+              )}
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-amber-500">
+              ⚙ {t("dataSource.xnb", { defaultValue: "从游戏数据解析" })}
+            </span>
+          )}
+          <button
+            onClick={handleRefresh}
+            disabled={loading}
+            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-50"
+            title={t("dataSource.refresh", { defaultValue: "刷新数据" })}
+          >
+            <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} />
+          </button>
+        </div>
 
         {/* Encyclopedia Tab */}
         <TabsContent value="encyclopedia">

@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useTranslation } from "react-i18next"
+import { RefreshCw } from "lucide-react"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { CropEncyclopedia } from "./crops/CropEncyclopedia"
 import { CropProfitCalculator } from "./crops/CropProfitCalculator"
@@ -24,10 +25,14 @@ function applyCropGameData(
   setEncyclopediaCrops: (value: Crop[]) => void,
   setCropLookup: (value: Record<string, CropLookup>) => void,
   setSeasons: (value: string[]) => void,
+  setDataSource: (value: string) => void,
+  setGeneratedAt: (value: string | null) => void,
 ) {
   setEncyclopediaCrops(data.encyclopedia)
   setCropLookup(data.lookup)
   setSeasons(data.seasons || [])
+  setDataSource(data.dataSource || "xnb")
+  setGeneratedAt(data.generatedAt || null)
 }
 
 export function Crops({ selectedSaveId }: CropsProps) {
@@ -39,8 +44,19 @@ export function Crops({ selectedSaveId }: CropsProps) {
   const [seasons, setSeasons] = useState<string[]>([])
   const [loadingGameData, setLoadingGameData] = useState(false)
   const [gameDataError, setGameDataError] = useState<string | null>(null)
+  const [dataSource, setDataSource] = useState<string>("xnb")
+  const [generatedAt, setGeneratedAt] = useState<string | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
 
   const activeLang = i18n.resolvedLanguage || i18n.language || "zh"
+
+  const handleRefresh = useCallback(() => {
+    // 清除该游戏目录+语言的缓存
+    const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+    const cacheKey = getCropGameDataCacheKey(gameDir, activeLang)
+    localStorage.removeItem(cacheKey)
+    setRefreshKey((k) => k + 1)
+  }, [activeLang])
 
   useEffect(() => {
     let canceled = false
@@ -57,6 +73,8 @@ export function Crops({ selectedSaveId }: CropsProps) {
           setEncyclopediaCrops,
           setCropLookup,
           setSeasons,
+          setDataSource,
+          setGeneratedAt,
         )
         setLoadingGameData(false)
         setGameDataError(null)
@@ -87,6 +105,8 @@ export function Crops({ selectedSaveId }: CropsProps) {
             setEncyclopediaCrops,
             setCropLookup,
             setSeasons,
+            setDataSource,
+            setGeneratedAt,
           )
           setGameDataError(null)
         }
@@ -113,7 +133,7 @@ export function Crops({ selectedSaveId }: CropsProps) {
     return () => {
       canceled = true
     }
-  }, [activeLang])
+  }, [activeLang, refreshKey])
 
   // Fetch real crops
   useEffect(() => {
@@ -187,6 +207,32 @@ export function Crops({ selectedSaveId }: CropsProps) {
           <TabsTrigger value="all">{t("crops.tabs.encyclopedia")}</TabsTrigger>
           <TabsTrigger value="profit">{t("crops.tabs.profitCalculator")}</TabsTrigger>
         </TabsList>
+
+        {/* 数据来源提示 */}
+        <div className="flex items-center gap-2 px-1 py-1 text-xs text-muted-foreground">
+          {dataSource === "export" ? (
+            <span className="inline-flex items-center gap-1 rounded bg-blue-500/10 px-1.5 py-0.5 text-blue-500">
+              ✓ {t("dataSource.export", { defaultValue: "从游戏导出数据加载" })}
+              {generatedAt && (
+                <span className="text-muted-foreground ml-1">
+                  · {new Date(generatedAt).toLocaleString()}
+                </span>
+              )}
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-amber-500">
+              ⚙ {t("dataSource.xnb", { defaultValue: "从游戏数据解析" })}
+            </span>
+          )}
+          <button
+            onClick={handleRefresh}
+            disabled={loadingGameData}
+            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-50"
+            title={t("dataSource.refresh", { defaultValue: "刷新数据" })}
+          >
+            <RefreshCw className={`h-3 w-3 ${loadingGameData ? "animate-spin" : ""}`} />
+          </button>
+        </div>
 
         <TabsContent value="my-farm" className="space-y-6">
           <PlantedCropsDashboard

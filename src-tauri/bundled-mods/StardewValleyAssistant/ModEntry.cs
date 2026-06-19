@@ -13,6 +13,7 @@ using StardewModdingAPI.Events;
 using StardewValley;
 using StardewValley.GameData;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 
 namespace StardewValleyAssistant;
 
@@ -39,6 +40,12 @@ public sealed class ModEntry : Mod
 
     // ── 数据导出状态 ─────────────────────────────────────
     private volatile bool _exportDone;
+    private volatile bool _iconsExportDone;
+    private readonly Queue<(string id, string texturePath, int spriteIndex, int iconW, int iconH, string outputPath)> _iconExportQueue = new();
+    private int _iconExportTotal;
+    private int _iconExported;
+    private int _iconSkipped;
+    private int _iconFailed;
 
     public override void Entry(IModHelper helper)
     {
@@ -61,9 +68,12 @@ public sealed class ModEntry : Mod
         this.FreezeTimeActive = false;
         _ = this.SendNpcLocationsAsync();
 
-        // 显示 HUD 提示后在后台线程导出数据
+        // 在游戏线程收集数据并排队图标导出任务
+        this.QueueIconExport();
+
+        // HUD 提示后在后台线程导出 JSON 数据
         Game1.addHUDMessage(new HUDMessage("助手模组：正在导出游戏数据…", 3500f));
-        _ = Task.Run(() => this.ExportModData());
+        _ = Task.Run(() => this.ExportGameDataJson());
     }
 
     private void OnOneSecondUpdateTicked(object? sender, OneSecondUpdateTickedEventArgs e)
@@ -90,6 +100,19 @@ public sealed class ModEntry : Mod
         {
             this._exportDone = false;
             Game1.addHUDMessage(new HUDMessage("助手模组：游戏数据导出完成", 3500f));
+        }
+
+        // 图标导出：每帧处理一批（游戏线程才能访问 GraphicsDevice）
+        if (!this._iconsExportDone && this._iconExportQueue.Count > 0)
+        {
+            this.ProcessIconExportBatch(20); // 每帧最多处理 20 个图标
+        }
+        if (this._iconsExportDone && this._iconExportQueue.Count == 0)
+        {
+            this._iconsExportDone = false;
+            this.Monitor.Log($"[导出] 图标: 新增 {this._iconExported}, 跳过 {this._iconSkipped}, 失败 {this._iconFailed}", LogLevel.Info);
+            Game1.addHUDMessage(new HUDMessage(
+                $"助手模组：图标导出完成 ({this._iconExported} 新增)", 3500f));
         }
     }
 
@@ -664,7 +687,7 @@ public sealed class ModEntry : Mod
     /// 导出其他模组添加的物品、作物、动物、村民数据到本地文件。
     /// 仅在数据发生变化时才写入。
     /// </summary>
-    private void ExportModData()
+    private void ExportGameDataJson()
     {
         try
         {
@@ -673,7 +696,7 @@ public sealed class ModEntry : Mod
                 "StardewValley", "StardewValleyAssistant");
             Directory.CreateDirectory(exportDir);
 
-            // 收集所有数据（原版 + 模组）
+            // 收集所有数据（原版 + 模组），在游戏线程已预加载内容
             var allItems = this.CollectAllItems();
             var allCrops = this.CollectAllCrops();
             var allAnimals = this.CollectAllAnimals();
@@ -736,10 +759,167 @@ public sealed class ModEntry : Mod
         this.Monitor.Log(logMessage, LogLevel.Info);
     }
 
+    // ── 图标导出 ──────────────────────────────────────────────
+
+    private const int IconSize = 16;
+
+    /// <summary>
+    /// 在游戏线程收集图标导出任务到队列（DataLoader 需要游戏线程）。
+    /// </summary>
+    private void QueueIconExport()
+    {
+        try
+        {
+            var exportDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "StardewValley", "StardewValleyAssistant");
+            var iconsDir = Path.Combine(exportDir, "icons");
+            Directory.CreateDirectory(iconsDir);
+
+            this._iconExportQueue.Clear();
+            this._iconExported = 0;
+            this._iconSkipped = 0;
+            this._iconFailed = 0;
+
+            // 收集物品图标任务
+            var objects = DataLoader.Objects(Game1.content);
+            foreach (var entry in objects)
+            {
+                var iconPath = Path.Combine(iconsDir, $"{entry.Key}.png");
+                if (File.Exists(iconPath)) { this._iconSkipped++; continue; }
+
+                var data = entry.Value;
+                var texturePath = string.IsNullOrWhiteSpace(data.Texture) ? "Maps/springobjects" : data.Texture;
+                this._iconExportQueue.Enqueue((entry.Key, texturePath, data.SpriteIndex, IconSize, IconSize, iconPath));
+            }
+
+            // 收集动物图标任务
+            var animals = DataLoader.FarmAnimals(Game1.content);
+            foreach (var entry in animals)
+            {
+                var iconPath = Path.Combine(iconsDir, $"animal_{entry.Key}.png");
+                if (File.Exists(iconPath)) { this._iconSkipped++; continue; }
+
+                var data = entry.Value;
+                var texturePath = string.IsNullOrWhiteSpace(data.Texture) ? $"Animals/{entry.Key}" : data.Texture;
+                var sw = Math.Max(data.SpriteWidth, 1);
+                var sh = Math.Max(data.SpriteHeight, 1);
+                this._iconExportQueue.Enqueue(($"animal_{entry.Key}", texturePath, 0, sw, sh, iconPath));
+            }
+
+            this._iconExportTotal = this._iconExportQueue.Count;
+            this._iconsExportDone = this._iconExportQueue.Count == 0;
+            this.Monitor.Log($"[导出] 图标队列: {this._iconExportTotal} 待处理, {this._iconSkipped} 已跳过", LogLevel.Info);
+        }
+        catch (Exception ex)
+        {
+            this.Monitor.Log($"[导出] 收集图标任务失败: {ex.Message}", LogLevel.Warn);
+            this._iconsExportDone = true;
+        }
+    }
+
+    /// <summary>
+    /// 在游戏线程（UpdateTicked）中处理一批图标导出任务。
+    /// </summary>
+    private void ProcessIconExportBatch(int batchSize)
+    {
+        for (int i = 0; i < batchSize && this._iconExportQueue.Count > 0; i++)
+        {
+            var (id, texturePath, spriteIndex, iconW, iconH, outputPath) = this._iconExportQueue.Dequeue();
+            try
+            {
+                var texture = Game1.content.Load<Texture2D>(texturePath);
+                if (texture != null && this.SaveSpriteAsPng(texture, spriteIndex, iconW, iconH, outputPath))
+                    this._iconExported++;
+                else
+                    this._iconFailed++;
+            }
+            catch (Exception ex)
+            {
+                this._iconFailed++;
+                this.Monitor.Log($"[导出] 图标失败 {id}: {ex.Message}", LogLevel.Debug);
+            }
+        }
+
+        if (this._iconExportQueue.Count == 0)
+            this._iconsExportDone = true;
+    }
+
+    /// <summary>
+    /// 从精灵图中裁剪指定索引的正方形图标并保存为 PNG。
+    /// </summary>
+    private bool SaveSpriteAsPng(Texture2D texture, int spriteIndex, int iconSize, string outputPath)
+        => this.SaveSpriteAsPng(texture, spriteIndex, iconSize, iconSize, outputPath);
+
+    /// <summary>
+    /// 从精灵图中裁剪指定索引的图标并保存为 PNG。
+    /// </summary>
+    private bool SaveSpriteAsPng(Texture2D texture, int spriteIndex, int iconW, int iconH, string outputPath)
+    {
+        var columns = texture.Width / iconW;
+        if (columns == 0) return false;
+
+        var srcX = (spriteIndex % columns) * iconW;
+        var srcY = (spriteIndex / columns) * iconH;
+        if (srcX + iconW > texture.Width || srcY + iconH > texture.Height)
+            return false;
+
+        // 提取精灵图像素
+        var pixels = new Color[iconW * iconH];
+        var fullData = new Color[texture.Width * texture.Height];
+        texture.GetData(fullData);
+
+        for (var y = 0; y < iconH; y++)
+        {
+            for (var x = 0; x < iconW; x++)
+            {
+                pixels[y * iconW + x] = fullData[(srcY + y) * texture.Width + (srcX + x)];
+            }
+        }
+
+        // 创建裁剪后的纹理并保存为 PNG
+        var cropped = new Texture2D(texture.GraphicsDevice, iconW, iconH);
+        cropped.SetData(pixels);
+
+        var dir = Path.GetDirectoryName(outputPath);
+        if (!string.IsNullOrEmpty(dir))
+            Directory.CreateDirectory(dir);
+
+        using var stream = File.Create(outputPath);
+        cropped.SaveAsPng(stream, iconW, iconH);
+        cropped.Dispose();
+        return true;
+    }
+
     private bool IsModAddedId(string id)
     {
         // 原版物品/作物/动物 ID 都是纯数字，模组添加的使用字符串 ID
         return !string.IsNullOrEmpty(id) && !int.TryParse(id, out _);
+    }
+
+    /// <summary>
+    /// 解析 [LocalizedText Strings\Objects:Parsnip_Name] 格式的本地化令牌。
+    /// 使用 Game1.content.LoadString 直接解析，与游戏内部逻辑一致。
+    /// </summary>
+    private string ResolveToken(string? text)
+    {
+        if (string.IsNullOrEmpty(text) || !text.StartsWith("[LocalizedText ") || !text.EndsWith("]"))
+            return text ?? "";
+
+        try
+        {
+            // 提取令牌内容: "[LocalizedText Strings\Objects:Parsnip_Name]" → "Strings\Objects:Parsnip_Name"
+            var key = text[14..^1].Trim();
+            var resolved = Game1.content.LoadString(key);
+            if (!string.IsNullOrEmpty(resolved) && resolved != key)
+                return resolved;
+        }
+        catch
+        {
+            // 解析失败返回原文
+        }
+
+        return text;
     }
 
     private List<ModExportItemEntry> CollectAllItems()
@@ -753,9 +933,9 @@ public sealed class ModEntry : Mod
                 var data = entry.Value;
                 result.Add(new ModExportItemEntry(
                     Id: entry.Key,
-                    Name: data.DisplayName,
+                    Name: this.ResolveToken(data.DisplayName),
                     InternalName: data.Name,
-                    Description: data.Description,
+                    Description: this.ResolveToken(data.Description),
                     Category: data.Category,
                     Price: data.Price,
                     Edibility: data.Edibility,
@@ -807,12 +987,20 @@ public sealed class ModEntry : Mod
                 var data = entry.Value;
                 result.Add(new ModExportAnimalEntry(
                     Id: entry.Key,
-                    DisplayName: data.DisplayName,
+                    DisplayName: this.ResolveToken(data.DisplayName),
                     House: data.House,
                     PurchasePrice: data.PurchasePrice,
+                    SellPrice: data.SellPrice,
                     DaysToMature: data.DaysToMature,
                     DaysToProduce: data.DaysToProduce,
-                    ProduceItemIds: data.ProduceItemIds?.Select(p => p.ItemId).ToList() ?? new List<string>()
+                    CanGetPregnant: data.CanGetPregnant,
+                    HarvestType: (int)data.HarvestType,
+                    HarvestTool: data.HarvestTool ?? "",
+                    ProduceItemIds: data.ProduceItemIds?.Select(p => p.ItemId).ToList() ?? new List<string>(),
+                    DeluxeProduceItemIds: data.DeluxeProduceItemIds?.Select(p => p.ItemId).ToList() ?? new List<string>(),
+                    DeluxeProduceMinFriendship: data.DeluxeProduceMinimumFriendship,
+                    CanSwim: data.CanSwim,
+                    CanEatGoldenCrackers: data.CanEatGoldenCrackers
                 ));
             }
         }
@@ -1026,9 +1214,17 @@ internal sealed record ModExportAnimalEntry(
     string DisplayName,
     string House,
     int PurchasePrice,
+    int SellPrice,
     int DaysToMature,
     int DaysToProduce,
-    List<string> ProduceItemIds
+    bool CanGetPregnant,
+    int HarvestType,
+    string HarvestTool,
+    List<string> ProduceItemIds,
+    List<string> DeluxeProduceItemIds,
+    int DeluxeProduceMinFriendship,
+    bool CanSwim,
+    bool CanEatGoldenCrackers
 );
 
 internal sealed record ModExportVillagerEntry(

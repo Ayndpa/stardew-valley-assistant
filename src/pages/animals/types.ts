@@ -26,6 +26,8 @@ export interface AnimalEncyclopediaEntry {
 export interface AnimalGameData {
   encyclopedia: AnimalEncyclopediaEntry[]
   houses: string[]
+  dataSource: "export" | "xnb"
+  generatedAt?: string | null
 }
 
 export interface OwnedAnimal {

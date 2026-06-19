@@ -30,12 +30,16 @@ export interface ItemGameData {
   encyclopedia: ItemEntry[]
   categories: string[]
   itemTypes: string[]
+  dataSource: "export" | "xnb"
+  generatedAt?: string | null
 }
 
 export interface ItemGameDataOverview {
   categories: string[]
   itemTypes: string[]
   totalCount: number
+  dataSource: "export" | "xnb"
+  generatedAt?: string | null
 }
 
 export interface ItemGameDataQueryResult {

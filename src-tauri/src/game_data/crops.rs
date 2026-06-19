@@ -42,6 +42,10 @@ pub struct CropGameData {
     pub encyclopedia: Vec<CropEncyclopediaEntry>,
     pub lookup: HashMap<String, CropLookup>,
     pub seasons: Vec<String>,
+    /// 数据来源："export" = 游戏导出文件, "xnb" = 游戏数据解包
+    pub data_source: String,
+    /// 导出文件的生成时间（ISO 8601），仅 data_source="export" 时有值
+    pub generated_at: Option<String>,
 }
 
 #[tauri::command]
@@ -49,12 +53,125 @@ pub fn get_crop_game_data(
     game_dir: Option<String>,
     lang: Option<String>,
 ) -> Result<CropGameData, String> {
-    let content_dir = super::locate_content_dir(game_dir.as_deref())?;
-    let crops = load_crops_xnb(&content_dir.join("Data").join("Crops.xnb"))?;
-    let objects = load_objects_xnb(&content_dir.join("Data").join("Objects.xnb"))?;
-
     let lang_str = lang.as_deref().unwrap_or("zh");
     let is_zh = lang_str.to_lowercase().starts_with("zh");
+    let content_dir = super::locate_content_dir(game_dir.as_deref())?;
+
+    // 优先使用导出文件（图标缺失时回退 XNB）
+    if let Some(export) = super::item_prices::read_game_data_export() {
+        return Ok(build_crop_data_from_export(export, &content_dir, is_zh));
+    }
+
+    // 回退到 XNB 解析
+    build_crop_data_from_xnb(&content_dir, lang_str, is_zh)
+}
+
+/// 从 game-data.json 导出文件构建作物数据（图标缺失时回退 XNB）
+fn build_crop_data_from_export(
+    export: &super::item_prices::GameDataExport,
+    content_dir: &std::path::Path,
+    is_zh: bool,
+) -> CropGameData {
+    let item_map = super::item_prices::build_item_map_from_export()
+        .unwrap_or_default();
+
+    // 预加载 XNB 对象数据，用于图标回退
+    let objects_xnb = load_objects_xnb(&content_dir.join("Data").join("Objects.xnb"))
+        .unwrap_or_default();
+    let mut texture_cache = HashMap::new();
+
+    let mut encyclopedia = Vec::new();
+    let mut lookup = HashMap::new();
+
+    for crop in &export.crops {
+        let harvest_item = item_map.get(&crop.harvest_item_id);
+        let name = harvest_item
+            .map(|i| i.name.clone())
+            .unwrap_or_else(|| crop.harvest_item_id.clone());
+        let internal_name = harvest_item
+            .map(|i| i.internal_name.clone())
+            .unwrap_or_default();
+        let sell_price = harvest_item.map(|i| i.price).unwrap_or(0);
+        let category = harvest_item.map(|i| i.category).unwrap_or(0);
+
+        // 图标：优先从 icons/ 目录加载，缺失时回退 XNB 解包
+        let icon = super::item_prices::read_icon_from_export("", &crop.harvest_item_id)
+            .or_else(|| {
+                objects_xnb
+                    .get(&crop.harvest_item_id)
+                    .and_then(|obj| render_object_icon(content_dir, obj, &mut texture_cache).ok())
+            });
+
+        let seasons: Vec<String> = crop
+            .seasons
+            .iter()
+            .map(|s| season_name_from_str(s, is_zh).to_string())
+            .collect();
+        let season = compact_season_label_from_strings(&seasons, is_zh);
+        let grow_days: i32 = crop.phases.iter().sum();
+        let regrows = crop.regrow_days >= 0;
+        let regrow_days = regrows.then_some(crop.regrow_days);
+        let water_needs = if crop.needs_watering {
+            if is_zh { "每天" } else { "Daily" }.to_string()
+        } else {
+            if is_zh { "无需" } else { "No" }.to_string()
+        };
+
+        let entry = CropEncyclopediaEntry {
+            seed_id: crop.id.clone(),
+            harvest_id: crop.harvest_item_id.clone(),
+            internal_name,
+            name: name.clone(),
+            icon: icon.clone(),
+            season,
+            seasons,
+            grow_days,
+            sell_price,
+            price_source: "export".to_string(),
+            category_key: classify_crop_category_key(category),
+            regrows,
+            regrow_days,
+            needs_watering: crop.needs_watering,
+            water_needs,
+        };
+
+        let lookup_entry = CropLookup {
+            name,
+            sell_price,
+            price_source: "export".to_string(),
+            regrows,
+            regrow_days,
+            icon: icon.clone(),
+        };
+        lookup.insert(crop.id.clone(), lookup_entry.clone());
+        lookup.insert(crop.harvest_item_id.clone(), lookup_entry);
+        encyclopedia.push(entry);
+    }
+
+    encyclopedia.sort_by(|a, b| {
+        season_sort_key_localized(&a.seasons, is_zh)
+            .cmp(&season_sort_key_localized(&b.seasons, is_zh))
+            .then(a.grow_days.cmp(&b.grow_days))
+            .then(a.name.cmp(&b.name))
+    });
+
+    CropGameData {
+        encyclopedia,
+        lookup,
+        seasons: derive_season_filters_localized(is_zh),
+        data_source: "export".to_string(),
+        generated_at: export.generated_at.clone(),
+    }
+}
+
+/// 从 XNB 文件解析作物数据（含图标）
+fn build_crop_data_from_xnb(
+    content_dir: &std::path::Path,
+    lang_str: &str,
+    is_zh: bool,
+) -> Result<CropGameData, String> {
+    let crops = load_crops_xnb(&content_dir.join("Data").join("Crops.xnb"))?;
+    let objects = load_objects_xnb(&content_dir.join("Data").join("Objects.xnb"))?;
 
     let suffix = match lang_str.to_lowercase().as_str() {
         "zh" | "zh-cn" => ".zh-CN",
@@ -80,15 +197,11 @@ pub fn get_crop_game_data(
         );
     }
     object_strings_paths.push(content_dir.join("Strings").join("Objects.xnb"));
-
     let object_strings = load_string_dictionary_best_effort(&object_strings_paths);
 
     let mut encyclopedia = Vec::new();
     let mut lookup = HashMap::new();
     let mut texture_cache = HashMap::new();
-
-    // Try to load prices from game data export file
-    let mod_prices = super::item_prices::read_item_prices_from_export();
 
     for (seed_id, crop) in crops {
         let Some(obj) = objects.get(&crop.harvest_item_id) else {
@@ -107,26 +220,11 @@ pub fn get_crop_game_data(
         let regrows = crop.regrow_days >= 0;
         let regrow_days = regrows.then_some(crop.regrow_days);
         let water_needs = if crop.needs_watering {
-            if is_zh {
-                "每天".to_string()
-            } else {
-                "Daily".to_string()
-            }
+            if is_zh { "每天" } else { "Daily" }.to_string()
         } else {
-            if is_zh {
-                "无需".to_string()
-            } else {
-                "No".to_string()
-            }
+            if is_zh { "无需" } else { "No" }.to_string()
         };
         let icon = render_object_icon(&content_dir, obj, &mut texture_cache).ok();
-
-        // Use export price if available, otherwise fall back to XNB price
-        let harvest_id = &crop.harvest_item_id;
-        let (sell_price, price_source) = mod_prices
-            .as_ref()
-            .and_then(|mp| mp.get(harvest_id).map(|&p| (p, "export")))
-            .unwrap_or((obj.price, "xnb"));
 
         let entry = CropEncyclopediaEntry {
             seed_id: seed_id.clone(),
@@ -137,8 +235,8 @@ pub fn get_crop_game_data(
             season,
             seasons,
             grow_days,
-            sell_price,
-            price_source: price_source.to_string(),
+            sell_price: obj.price,
+            price_source: "xnb".to_string(),
             category_key: classify_crop_category_key(obj.category),
             regrows,
             regrow_days,
@@ -148,8 +246,8 @@ pub fn get_crop_game_data(
 
         let lookup_entry = CropLookup {
             name,
-            sell_price,
-            price_source: price_source.to_string(),
+            sell_price: obj.price,
+            price_source: "xnb".to_string(),
             regrows,
             regrow_days,
             icon,
@@ -170,6 +268,8 @@ pub fn get_crop_game_data(
         encyclopedia,
         lookup,
         seasons: derive_season_filters_localized(is_zh),
+        data_source: "xnb".to_string(),
+        generated_at: None,
     })
 }
 
@@ -324,5 +424,46 @@ fn classify_crop_category_key(category: i32) -> String {
         -77 => "forage".to_string(),
         -78 => "fruit".to_string(),
         _ => "other".to_string(),
+    }
+}
+
+/// 将英文季节名转换为本地化名称（用于导出数据）
+pub fn season_name_from_str(season: &str, is_zh: bool) -> &'static str {
+    match season {
+        "Spring" => season_name_localized(0, is_zh),
+        "Summer" => season_name_localized(1, is_zh),
+        "Fall" | "Autumn" => season_name_localized(2, is_zh),
+        "Winter" => season_name_localized(3, is_zh),
+        _ => season_name_localized(-1, is_zh),
+    }
+}
+
+/// 从已本地化的季节字符串列表生成紧凑标签（用于导出数据路径）
+pub fn compact_season_label_from_strings(seasons: &[String], is_zh: bool) -> String {
+    let mut sorted = seasons.to_vec();
+    sorted.sort_unstable();
+    sorted.dedup();
+    match sorted.len() {
+        1 => sorted[0].clone(),
+        3 if sorted.iter().all(|s| {
+            let lower = s.to_lowercase();
+            lower.contains("spring") || lower.contains("春")
+                || lower.contains("summer") || lower.contains("夏")
+                || lower.contains("fall") || lower.contains("autumn") || lower.contains("秋")
+        }) =>
+        {
+            if is_zh { "春夏秋".to_string() } else { "Spring/Summer/Fall".to_string() }
+        }
+        4 if sorted.iter().all(|s| {
+            let lower = s.to_lowercase();
+            lower.contains("spring") || lower.contains("春")
+                || lower.contains("summer") || lower.contains("夏")
+                || lower.contains("fall") || lower.contains("autumn") || lower.contains("秋")
+                || lower.contains("winter") || lower.contains("冬")
+        }) =>
+        {
+            if is_zh { "全季".to_string() } else { "All Seasons".to_string() }
+        }
+        _ => sorted.join(if is_zh { "" } else { "/" }),
     }
 }

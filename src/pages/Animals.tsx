@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useTranslation } from "react-i18next"
+import { RefreshCw } from "lucide-react"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { MyAnimals } from "./animals/MyAnimals"
 import { AnimalEncyclopedia } from "./animals/AnimalEncyclopedia"
@@ -24,9 +25,13 @@ function applyAnimalGameData(
   data: AnimalGameData,
   setEncyclopedia: (value: AnimalEncyclopediaEntry[]) => void,
   setHouses: (value: string[]) => void,
+  setDataSource: (value: string) => void,
+  setGeneratedAt: (value: string | null) => void,
 ) {
   setEncyclopedia(data.encyclopedia)
   setHouses(data.houses || [])
+  setDataSource(data.dataSource || "xnb")
+  setGeneratedAt(data.generatedAt || null)
 }
 
 export function Animals({ selectedSaveId }: AnimalsProps) {
@@ -39,8 +44,18 @@ export function Animals({ selectedSaveId }: AnimalsProps) {
   const [houses, setHouses] = useState<string[]>([])
   const [loadingGameData, setLoadingGameData] = useState(false)
   const [gameDataError, setGameDataError] = useState<string | null>(null)
+  const [dataSource, setDataSource] = useState<string>("xnb")
+  const [generatedAt, setGeneratedAt] = useState<string | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
 
   const activeLang = i18n.resolvedLanguage || i18n.language || "zh"
+
+  const handleRefresh = useCallback(() => {
+    const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+    const cacheKey = getAnimalGameDataCacheKey(gameDir, activeLang)
+    localStorage.removeItem(cacheKey)
+    setRefreshKey((k) => k + 1)
+  }, [activeLang])
 
   // Load animal game data (encyclopedia)
   useEffect(() => {
@@ -53,7 +68,7 @@ export function Animals({ selectedSaveId }: AnimalsProps) {
       const cached = readCache<AnimalGameData>(cacheKey)
 
       if (cached && !canceled) {
-        applyAnimalGameData(cached.data, setEncyclopedia, setHouses)
+        applyAnimalGameData(cached.data, setEncyclopedia, setHouses, setDataSource, setGeneratedAt)
         setLoadingGameData(false)
         setGameDataError(null)
       }
@@ -78,7 +93,7 @@ export function Animals({ selectedSaveId }: AnimalsProps) {
         })) as AnimalGameData
 
         if (!canceled) {
-          applyAnimalGameData(data, setEncyclopedia, setHouses)
+          applyAnimalGameData(data, setEncyclopedia, setHouses, setDataSource, setGeneratedAt)
           setGameDataError(null)
         }
         writeCache(cacheKey, data)
@@ -103,7 +118,7 @@ export function Animals({ selectedSaveId }: AnimalsProps) {
     return () => {
       canceled = true
     }
-  }, [activeLang])
+  }, [activeLang, refreshKey])
 
   // Load owned animals from save
   useEffect(() => {
@@ -184,6 +199,32 @@ export function Animals({ selectedSaveId }: AnimalsProps) {
           <TabsTrigger value="encyclopedia">{t("animals.tabs.encyclopedia", { defaultValue: "动物百科" })}</TabsTrigger>
           <TabsTrigger value="profit">{t("animals.tabs.profit", { defaultValue: "收益计算" })}</TabsTrigger>
         </TabsList>
+
+        {/* 数据来源提示 */}
+        <div className="flex items-center gap-2 px-1 py-1 text-xs text-muted-foreground">
+          {dataSource === "export" ? (
+            <span className="inline-flex items-center gap-1 rounded bg-blue-500/10 px-1.5 py-0.5 text-blue-500">
+              ✓ {t("dataSource.export", { defaultValue: "从游戏导出数据加载" })}
+              {generatedAt && (
+                <span className="text-muted-foreground ml-1">
+                  · {new Date(generatedAt).toLocaleString()}
+                </span>
+              )}
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-amber-500">
+              ⚙ {t("dataSource.xnb", { defaultValue: "从游戏数据解析" })}
+            </span>
+          )}
+          <button
+            onClick={handleRefresh}
+            disabled={loadingGameData}
+            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-50"
+            title={t("dataSource.refresh", { defaultValue: "刷新数据" })}
+          >
+            <RefreshCw className={`h-3 w-3 ${loadingGameData ? "animate-spin" : ""}`} />
+          </button>
+        </div>
 
         <TabsContent value="my-animals" className="space-y-6">
           <MyAnimals

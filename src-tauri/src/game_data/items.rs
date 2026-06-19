@@ -54,6 +54,10 @@ pub struct ItemGameData {
     pub encyclopedia: Vec<ItemEncyclopediaEntry>,
     pub categories: Vec<String>,
     pub item_types: Vec<String>,
+    /// 数据来源："export" = 游戏导出文件, "xnb" = 游戏数据解包
+    pub data_source: String,
+    /// 导出文件的生成时间（ISO 8601），仅 data_source="export" 时有值
+    pub generated_at: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -62,6 +66,10 @@ pub struct ItemGameDataOverview {
     pub categories: Vec<String>,
     pub item_types: Vec<String>,
     pub total_count: usize,
+    /// 数据来源："export" = 游戏导出文件, "xnb" = 游戏数据解包
+    pub data_source: String,
+    /// 导出文件的生成时间（ISO 8601），仅 data_source="export" 时有值
+    pub generated_at: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -121,6 +129,8 @@ pub fn get_item_game_data(
         encyclopedia,
         categories: snapshot.categories.clone(),
         item_types: snapshot.item_types.clone(),
+        data_source: "xnb".to_string(),
+        generated_at: None,
     })
 }
 
@@ -134,6 +144,8 @@ pub fn get_item_game_data_overview(
         categories: snapshot.categories.clone(),
         item_types: snapshot.item_types.clone(),
         total_count: snapshot.encyclopedia.len(),
+        data_source: "xnb".to_string(),
+        generated_at: None,
     })
 }
 
