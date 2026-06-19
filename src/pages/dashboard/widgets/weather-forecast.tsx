@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { useTranslation } from "react-i18next"
-import { Sun, CloudRain, CloudLightning, Snowflake, Wind } from "lucide-react"
+import { Sun, CloudRain, CloudLightning, Snowflake, Wind, Info } from "lucide-react"
 import { registerWidget } from "../widget-registry"
 import type { WidgetRenderProps } from "../types"
 
@@ -150,6 +150,7 @@ function WeatherForecastContent({ saveDetail }: WidgetRenderProps) {
     else return weather === "Rain" ? "14°C" : "18°C"
   }
 
+  // Pre-compute all forecast data for all three layouts
   const forecastData = forecastRaw.map((item) => {
     const config = getWeatherConfig(item.weather, summary.season, t)
     const DayIcon = config.icon
@@ -173,66 +174,166 @@ function WeatherForecastContent({ saveDetail }: WidgetRenderProps) {
   return (
     <Card className="overflow-hidden border-none bg-gradient-to-br from-card/50 to-card shadow-lg h-full">
       <CardContent className="p-0 h-full">
+        {/* @container enables CSS container queries; @sm / @md switch layouts based on widget width */}
         <div
-          className={`p-6 md:p-8 flex flex-col md:flex-row items-center md:items-stretch gap-8 transition-colors duration-700 bg-gradient-to-br ${currentForecast.bgGradient.replace(/\/1[05]/g, "/10")} h-full`}
+          className={`@container p-4 @sm:p-5 @md:p-6 flex flex-col h-full transition-colors duration-700 bg-gradient-to-br ${currentForecast.bgGradient.replace(/\/1[05]/g, "/10")}`}
         >
-          {/* Left: Selected Day Details */}
-          <div className="flex flex-col items-center md:items-start text-center md:text-left space-y-2 md:min-w-[200px]">
-            <p className="text-sm font-bold uppercase tracking-widest text-foreground/60">
+          {/* ── Compact layout (default, <640px) ─────────────────────── */}
+          <div className="flex flex-col items-center justify-center text-center flex-1 gap-3 @sm:hidden">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-foreground/60">
               {currentForecast.day}
             </p>
-            <div className="flex items-center gap-4">
-              <div className="p-3 rounded-3xl bg-background/40 backdrop-blur-md border border-white/10 shadow-sm">
-                <div className="scale-125 transform">{currentForecast.icon}</div>
-              </div>
-              <div>
-                <p className="text-4xl font-black tracking-tighter">{currentForecast.temp}</p>
-                <p className="font-bold text-foreground/80">{currentForecast.weather}</p>
+            <div className="p-2.5 rounded-2xl bg-background/40 backdrop-blur-md border border-white/10">
+              <div className="scale-110">{currentForecast.icon}</div>
+            </div>
+            <div>
+              <p className="text-2xl font-black tracking-tight">{currentForecast.temp}</p>
+              <p className="text-sm font-bold text-foreground/80">{currentForecast.weather}</p>
+            </div>
+            {currentForecast.tip && (
+              <p className="text-[10px] font-bold text-primary flex items-center gap-1 opacity-80 max-w-[200px]">
+                <Info className="h-3 w-3 shrink-0" />
+                {currentForecast.tip}
+              </p>
+            )}
+            <div className="w-full pt-2">
+              <div className="grid grid-cols-7 gap-1">
+                {forecastData.map((fc, idx) => {
+                  const isActive = idx === selectedForecastIndex
+                  return (
+                    <button
+                      type="button"
+                      key={`compact-${idx}`}
+                      onClick={() => setSelectedForecastIndex(idx)}
+                      className={`flex flex-col items-center p-1.5 rounded-xl transition-all duration-300 border ${
+                        isActive
+                          ? "bg-background/60 border-primary/40 shadow-sm"
+                          : "bg-transparent border-transparent hover:bg-background/30"
+                      }`}
+                    >
+                      <span className={`text-[9px] font-bold uppercase ${isActive ? "text-primary" : "text-muted-foreground"}`}>
+                        {fc.day === t("dashboard.forecast.today")
+                          ? t("dashboard.forecast.today").substring(0, 1)
+                          : fc.day.substring(0, 2)}
+                      </span>
+                      <div className="my-0.5">{fc.icon && <div className="scale-75">{fc.icon}</div>}</div>
+                      <span className="text-[9px] font-black tabular-nums">{fc.temp}</span>
+                    </button>
+                  )
+                })}
               </div>
             </div>
-            <div className="pt-2">
-              <p className="text-sm leading-relaxed text-foreground/70 max-w-[280px]">
-                {currentForecast.flavor}
-              </p>
+          </div>
+
+          {/* ── Medium layout (640px–896px) ──────────────────────────── */}
+          <div className="hidden @sm:flex @md:hidden flex-col justify-center flex-1 gap-4">
+            <div className="flex items-center gap-4">
+              <div className="p-2.5 rounded-2xl bg-background/40 backdrop-blur-md border border-white/10">
+                <div className="scale-110">{currentForecast.icon}</div>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-foreground/60">
+                  {currentForecast.day}
+                </p>
+                <p className="text-2xl font-black tracking-tight">{currentForecast.temp}</p>
+                <p className="text-sm font-bold text-foreground/80">{currentForecast.weather}</p>
+              </div>
               {currentForecast.tip && (
-                <p className="text-[11px] mt-2 font-bold text-primary flex items-center gap-1.5 opacity-80">
-                  <Sun className="h-3 w-3" />
+                <p className="text-[10px] font-bold text-primary flex items-center gap-1 opacity-80 max-w-[180px] shrink-0">
+                  <Info className="h-3 w-3 shrink-0" />
                   {currentForecast.tip}
                 </p>
               )}
             </div>
+            <div className="w-full">
+              <div className="grid grid-cols-7 gap-2">
+                {forecastData.map((fc, idx) => {
+                  const isActive = idx === selectedForecastIndex
+                  return (
+                    <button
+                      type="button"
+                      key={`medium-${idx}`}
+                      onClick={() => setSelectedForecastIndex(idx)}
+                      className={`flex flex-col items-center p-2 rounded-xl transition-all duration-300 border ${
+                        isActive
+                          ? "bg-background/60 border-primary/40 shadow-sm"
+                          : "bg-transparent border-transparent hover:bg-background/30"
+                      }`}
+                    >
+                      <span className={`text-[10px] font-bold uppercase ${isActive ? "text-primary" : "text-muted-foreground"}`}>
+                        {fc.day === t("dashboard.forecast.today")
+                          ? t("dashboard.forecast.today").substring(0, 2)
+                          : fc.day.substring(0, 3)}
+                      </span>
+                      <div className="my-1">{fc.icon && <div className="scale-85">{fc.icon}</div>}</div>
+                      <span className="text-xs font-black tabular-nums">{fc.temp}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
           </div>
 
-          {/* Right: 7-Day Timeline Strip */}
-          <div className="flex-1 flex flex-col justify-center">
-            <div className="grid grid-cols-4 sm:grid-cols-7 gap-2 md:gap-3 w-full">
-              {forecastData.map((forecast, globalIndex) => {
-                const isActive = globalIndex === selectedForecastIndex
-                return (
-                  <button
-                    type="button"
-                    key={`${forecast.day}-${globalIndex}`}
-                    onClick={() => setSelectedForecastIndex(globalIndex)}
-                    className={`flex flex-col items-center p-2 md:p-3 rounded-2xl transition-all duration-300 border ${
-                      isActive
-                        ? "bg-background/60 border-primary/40 shadow-sm scale-105"
-                        : "bg-transparent border-transparent hover:bg-background/30"
-                    }`}
-                  >
-                    <span
-                      className={`text-[10px] font-bold uppercase mb-2 ${isActive ? "text-primary" : "text-muted-foreground"}`}
+          {/* ── Expanded layout (≥896px) ─────────────────────────────── */}
+          <div className="hidden @md:flex flex-row items-stretch flex-1 gap-6">
+            {/* Left: Selected Day Details */}
+            <div className="flex flex-col items-start text-left space-y-2 min-w-[200px]">
+              <p className="text-sm font-bold uppercase tracking-widest text-foreground/60">
+                {currentForecast.day}
+              </p>
+              <div className="flex items-center gap-4">
+                <div className="p-3 rounded-3xl bg-background/40 backdrop-blur-md border border-white/10 shadow-sm">
+                  <div className="scale-125 transform">{currentForecast.icon}</div>
+                </div>
+                <div>
+                  <p className="text-4xl font-black tracking-tighter">{currentForecast.temp}</p>
+                  <p className="font-bold text-foreground/80">{currentForecast.weather}</p>
+                </div>
+              </div>
+              <div className="pt-2">
+                <p className="text-sm leading-relaxed text-foreground/70 max-w-[280px]">
+                  {currentForecast.flavor}
+                </p>
+                {currentForecast.tip && (
+                  <p className="text-[11px] mt-2 font-bold text-primary flex items-center gap-1.5 opacity-80">
+                    <Info className="h-3 w-3" />
+                    {currentForecast.tip}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Right: 7-Day Timeline Strip */}
+            <div className="flex-1 flex flex-col justify-center">
+              <div className="grid grid-cols-7 gap-2 md:gap-3 w-full">
+                {forecastData.map((fc, idx) => {
+                  const isActive = idx === selectedForecastIndex
+                  return (
+                    <button
+                      type="button"
+                      key={`expanded-${idx}`}
+                      onClick={() => setSelectedForecastIndex(idx)}
+                      className={`flex flex-col items-center p-2 md:p-3 rounded-2xl transition-all duration-300 border ${
+                        isActive
+                          ? "bg-background/60 border-primary/40 shadow-sm scale-105"
+                          : "bg-transparent border-transparent hover:bg-background/30"
+                      }`}
                     >
-                      {forecast.day === t("dashboard.forecast.today")
-                        ? t("dashboard.forecast.today").substring(0, 2)
-                        : forecast.day.substring(0, 3)}
-                    </span>
-                    <div className={`mb-2 p-1.5 rounded-xl ${isActive ? "bg-primary/10" : ""}`}>
-                      {forecast.icon && <div className="scale-90">{forecast.icon}</div>}
-                    </div>
-                    <span className="text-xs font-black tabular-nums">{forecast.temp}</span>
-                  </button>
-                )
-              })}
+                      <span
+                        className={`text-[10px] font-bold uppercase mb-2 ${isActive ? "text-primary" : "text-muted-foreground"}`}
+                      >
+                        {fc.day === t("dashboard.forecast.today")
+                          ? t("dashboard.forecast.today").substring(0, 2)
+                          : fc.day.substring(0, 3)}
+                      </span>
+                      <div className={`mb-2 p-1.5 rounded-xl ${isActive ? "bg-primary/10" : ""}`}>
+                        {fc.icon && <div className="scale-90">{fc.icon}</div>}
+                      </div>
+                      <span className="text-xs font-black tabular-nums">{fc.temp}</span>
+                    </button>
+                  )
+                })}
+              </div>
             </div>
           </div>
         </div>
