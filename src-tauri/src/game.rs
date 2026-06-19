@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use sysinfo::System;
@@ -236,6 +236,12 @@ pub fn launch_game(
     let exe_path = pick_executable(game_path, launch_mode.as_deref()).ok_or_else(|| {
         "未找到可执行文件（StardewModdingAPI.exe / Stardew Valley.exe）。".to_string()
     })?;
+
+    // 写入 SteamAppId.txt，使 Steam 能识别并计入游戏时长
+    let steam_app_id_path = game_path.join("SteamAppId.txt");
+    if let Ok(mut f) = File::create(&steam_app_id_path) {
+        let _ = f.write_all(b"413150\n");
+    }
 
     let mut child = Command::new(&exe_path)
         .current_dir(game_path)
