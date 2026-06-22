@@ -41,6 +41,7 @@ import { GamePathCard } from "@/components/settings/GamePathCard"
 import { NexusAccountCard } from "@/components/settings/NexusAccountCard"
 import { AppearanceCard } from "@/components/settings/AppearanceCard"
 import { LanguageCard } from "@/components/settings/LanguageCard"
+import { TranslationSettingsCard } from "@/components/settings/TranslationSettingsCard"
 import { AboutCard } from "@/components/settings/AboutCard"
 import { FeaturesCard } from "@/components/settings/FeaturesCard"
 import { LogCard } from "@/components/settings/LogCard"
@@ -321,6 +322,8 @@ export function Settings({
         />
 
         <LanguageCard />
+
+        <TranslationSettingsCard />
 
         <LogCard />
 

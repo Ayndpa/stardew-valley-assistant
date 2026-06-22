@@ -23,8 +23,11 @@ import {
   Upload,
   Play,
   Plus,
+  Languages,
 
 } from "lucide-react"
+
+import { ModTranslateModal } from "./ModTranslateModal"
 
 // ---- Profile types (mirrored from ModProfiles) ----
 interface ModStateEntry {
@@ -221,6 +224,7 @@ export function ModList({
 }: ModListProps) {
   const { t } = useTranslation()
   const lockedTitle = isGameRunning ? t("mods.toast.gameRunningNoModify") : undefined
+  const [showTranslateModal, setShowTranslateModal] = useState(false)
 
   // ---- Folder expand state ----
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => {
@@ -651,6 +655,17 @@ export function ModList({
             <FileUp className="h-3.5 w-3.5 text-primary" />
           </Button>
 
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 w-8 p-0 hover:bg-accent"
+            onClick={() => setShowTranslateModal(true)}
+            disabled={isGameRunning}
+            title="一键翻译模组"
+          >
+            <Languages className="h-3.5 w-3.5 text-indigo-500" />
+          </Button>
+
           {/* Profile dropdown trigger */}
           <div className="relative" ref={profileRef}>
             <Button
@@ -846,6 +861,13 @@ export function ModList({
           modTree.map((rootNode) => renderFolderNode(rootNode, 0))
         )}
       </div>
+
+      <ModTranslateModal
+        isOpen={showTranslateModal}
+        onClose={() => setShowTranslateModal(false)}
+        mods={mods}
+        onScan={onScan}
+      />
     </div>
   )
 }
