@@ -7,6 +7,7 @@
   },
   "sidebar": {
     "dashboard": "仪表盘",
+    "sponsors": "特别鸣谢",
     "collections": "收集进度",
     "crops": "作物管理",
     "items": "物品百科",
@@ -1848,5 +1849,19 @@
       "prev": "返回",
       "enter": "进入助手"
     }
+  },
+  "sponsors": {
+    "title": "特别鸣谢",
+    "description": "感谢所有为星露谷物语助手提供赞助和支持的农场主们，你们的每一份资助都是我们持续优化的动力！",
+    "totalSponsors": "累计赞助人数: {{count}}",
+    "sponsorAfdian": "前往爱发电支持我们",
+    "plan": "赞助方案",
+    "amount": "累计金额",
+    "firstSponsor": "成为赞助者时间",
+    "lastSponsor": "最近赞助时间",
+    "loading": "正在加载赞助者名单...",
+    "error": "加载失败，请检查网络或稍后重试",
+    "loadMore": "加载更多",
+    "noSponsors": "暂无赞助者记录"
   }
 }

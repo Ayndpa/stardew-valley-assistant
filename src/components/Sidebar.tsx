@@ -32,6 +32,7 @@ import {
   Trophy,
   Zap,
   Database,
+  Heart,
 } from "lucide-react"
 
 interface SidebarProps {
@@ -75,6 +76,7 @@ const navItems: { id: Page; label: string; icon: React.ReactNode }[] = [
   { id: "mods", label: "模组管理", icon: <Puzzle /> },
   { id: "onlineMods", label: "获取模组", icon: <Download className="h-4 w-4" /> },
   { id: "downloads", label: "下载管理", icon: <ListChecks className="h-4 w-4" /> },
+  { id: "sponsors", label: "特别鸣谢", icon: <Heart className="h-4 w-4 text-rose-500 animate-pulse" /> },
   { id: "settings", label: "设置", icon: <Settings /> },
 ]
 
@@ -391,7 +393,7 @@ export function Sidebar({
       <ScrollArea className={cn("flex-1 pb-4", collapsed ? "px-2" : "px-3")}>
         <nav className="flex flex-col gap-1">
           {navItems
-            .filter((item) => item.id === "dashboard" || item.id === "settings" || enabledFeatures.includes(item.id))
+            .filter((item) => item.id === "dashboard" || item.id === "settings" || item.id === "sponsors" || enabledFeatures.includes(item.id))
             .map((item) => {
               const showDownloadCount = item.id === "downloads" && activeDownloadCount > 0
               return (

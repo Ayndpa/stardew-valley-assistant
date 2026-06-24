@@ -7,6 +7,7 @@
   },
   "sidebar": {
     "dashboard": "Dashboard",
+    "sponsors": "Special Thanks",
     "collections": "Collections",
     "crops": "Crops",
     "items": "Items Wiki",
@@ -1978,5 +1979,19 @@
       "prev": "Back",
       "enter": "Enter Assistant"
     }
+  },
+  "sponsors": {
+    "title": "Special Thanks",
+    "description": "Thank you to all farmers who sponsored and supported Stardew Valley Assistant. Your generous support is our primary motivation for continuous optimization!",
+    "totalSponsors": "Total Sponsors: {{count}}",
+    "sponsorAfdian": "Support us on Afdian",
+    "plan": "Sponsorship Plan",
+    "amount": "Total Amount",
+    "firstSponsor": "First Sponsored Time",
+    "lastSponsor": "Latest Sponsored Time",
+    "loading": "Loading sponsors list...",
+    "error": "Failed to load, please check your network and try again",
+    "loadMore": "Load More",
+    "noSponsors": "No sponsorship records found"
   }
 }

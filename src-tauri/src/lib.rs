@@ -54,6 +54,41 @@ use crate::utils::{open_in_file_manager, path_exists};
 fn get_app_beta() -> bool {
     option_env!("APP_BETA").map(|v| v == "true").unwrap_or(false)
 }
+
+#[tauri::command]
+async fn fetch_afdian_sponsors(page: i32) -> Result<String, String> {
+    let token = "CGxDFafj7sQpVcyUqBYH8Pug3RKEt6vw";
+    let user_id = "223f9f106b4c11ea812952540025c377";
+    let params = format!("{{\"page\":{},\"per_page\":100}}", page);
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    let sign_str = format!("{}params{}ts{}user_id{}", token, params, ts, user_id);
+    let sign = format!("{:x}", md5::compute(sign_str.as_bytes()));
+
+    let body = serde_json::json!({
+        "user_id": user_id,
+        "params": params,
+        "ts": ts,
+        "sign": sign
+    });
+    let body_str = serde_json::to_string(&body).map_err(|e| format!("Failed to serialize body: {}", e))?;
+
+    let agent = ureq::AgentBuilder::new()
+        .timeout_connect(std::time::Duration::from_secs(10))
+        .timeout_read(std::time::Duration::from_secs(30))
+        .build();
+
+    let response = agent.post("https://afdian.com/api/open/query-sponsor")
+        .set("Content-Type", "application/json")
+        .send_string(&body_str)
+        .map_err(|e| format!("Network request failed: {}", e))?;
+
+    let response_text = response.into_string().map_err(|e| format!("Failed to read response body: {}", e))?;
+    Ok(response_text)
+}
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, Monitor, PhysicalPosition, PhysicalSize, Size, State};
 use tauri_plugin_deep_link::DeepLinkExt;
@@ -594,7 +629,8 @@ pub fn run() {
             get_cheat_states,
             get_mod_export_data,
             export_mod_data_to_file,
-            get_app_beta
+            get_app_beta,
+            fetch_afdian_sponsors
         ])
         .setup(|app| {
             let app_handle = app.handle();

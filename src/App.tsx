@@ -60,7 +60,7 @@ function BackgroundImageLayer({ filePath }: { filePath: string }) {
   )
 }
 
-export type Page = "dashboard" | "collections" | "crops" | "items" | "npcs" | "calendar" | "fishingMap" | "saveEditor" | "saveBackups" | "settings" | "mods" | "onlineMods" | "downloads" | "bundles" | "children" | "animals" | "cheats" | "modData"
+export type Page = "dashboard" | "collections" | "crops" | "items" | "npcs" | "calendar" | "fishingMap" | "saveEditor" | "saveBackups" | "settings" | "mods" | "onlineMods" | "downloads" | "bundles" | "children" | "animals" | "cheats" | "modData" | "sponsors"
 
 export interface SaveSummary {
   id: string
@@ -87,6 +87,11 @@ export interface SaveSummary {
 const NPCs = lazy(async () => {
   const mod = await import("@/pages/NPCs")
   return { default: mod.NPCs }
+})
+
+const Sponsors = lazy(async () => {
+  const mod = await import("@/pages/Sponsors")
+  return { default: mod.Sponsors }
 })
 
 
@@ -419,7 +424,7 @@ function App() {
 
   // Redirect to dashboard if the current page gets disabled
   useEffect(() => {
-    if (currentPage !== "dashboard" && currentPage !== "collections" && currentPage !== "settings" && !enabledFeatures.includes(currentPage)) {
+    if (currentPage !== "dashboard" && currentPage !== "collections" && currentPage !== "settings" && currentPage !== "sponsors" && !enabledFeatures.includes(currentPage)) {
       setCurrentPage("dashboard")
     }
   }, [currentPage, enabledFeatures])
@@ -582,6 +587,19 @@ function App() {
               onQueueDownload={queueNexusDownload}
             />
           </div>
+        )
+      case "sponsors":
+        return (
+          <Suspense fallback={
+            <div className="p-8">
+              <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 rounded-lg border bg-accent/10">
+                <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
+                <p className="text-sm text-muted-foreground">正在加载鸣谢页面...</p>
+              </div>
+            </div>
+          }>
+            <Sponsors />
+          </Suspense>
         )
       default:
         return <Dashboard selectedSaveId={selectedSaveId} />
