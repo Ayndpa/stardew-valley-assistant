@@ -15,6 +15,7 @@ import {
   Baby,
   Check,
   ChevronRight,
+  Notebook,
 } from "lucide-react"
 
 interface OnboardingFeaturesStepProps {
@@ -43,6 +44,7 @@ export function OnboardingFeaturesStep({
     { id: "calendar", icon: CalendarDays, gradient: "from-blue-500/10 to-sky-500/10" },
     { id: "fishingMap", icon: Fish, gradient: "from-cyan-500/10 to-blue-500/10" },
     { id: "children", icon: Baby, gradient: "from-rose-500/10 to-pink-500/10" },
+    { id: "todo", icon: Notebook, gradient: "from-teal-500/10 to-emerald-500/10" },
     { id: "saveEditor", icon: PencilRuler, gradient: "from-yellow-500/10 to-amber-500/10" },
   ]
 

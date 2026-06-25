@@ -17,6 +17,7 @@ import { Cheats } from "@/pages/Cheats"
 import { ModData } from "@/pages/ModData"
 import { Mods } from "@/pages/Mods"
 import { Downloads } from "@/pages/Downloads"
+import { Todo } from "@/pages/Todo"
 import { OnlineMods } from "@/components/mods/OnlineMods"
 import { Onboarding } from "@/components/Onboarding"
 import { TitleBar } from "@/components/TitleBar"
@@ -60,7 +61,7 @@ function BackgroundImageLayer({ filePath }: { filePath: string }) {
   )
 }
 
-export type Page = "dashboard" | "collections" | "crops" | "items" | "npcs" | "calendar" | "fishingMap" | "saveEditor" | "saveBackups" | "settings" | "mods" | "onlineMods" | "downloads" | "bundles" | "children" | "animals" | "cheats" | "modData" | "sponsors"
+export type Page = "dashboard" | "collections" | "crops" | "items" | "npcs" | "calendar" | "fishingMap" | "saveEditor" | "saveBackups" | "settings" | "mods" | "onlineMods" | "downloads" | "bundles" | "children" | "animals" | "cheats" | "modData" | "sponsors" | "todo"
 
 export interface SaveSummary {
   id: string
@@ -171,12 +172,16 @@ function App() {
         if (!parsed.includes("modData")) {
           parsed.push("modData")
         }
+        // 迁移：新增的 todo 功能需要补上
+        if (!parsed.includes("todo")) {
+          parsed.push("todo")
+        }
         return parsed
       } catch (e) {
         // ignore
       }
     }
-    return ["collections", "crops", "items", "npcs", "calendar", "bundles", "animals", "fishingMap", "children", "cheats", "modData", "saveEditor", "saveBackups", "mods", "onlineMods", "downloads"]
+    return ["collections", "crops", "items", "npcs", "calendar", "bundles", "animals", "fishingMap", "children", "cheats", "modData", "saveEditor", "saveBackups", "mods", "onlineMods", "downloads", "todo"]
   })
 
   const updateEnabledFeatures = useCallback((value: Page[]) => {
@@ -547,6 +552,12 @@ function App() {
         return (
           <ModData
             onShowToast={showGlobalToast}
+          />
+        )
+      case "todo":
+        return (
+          <Todo
+            selectedSaveId={selectedSaveId}
           />
         )
       case "mods":

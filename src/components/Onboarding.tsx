@@ -77,6 +77,9 @@ const mapCategoriesToPages = (categories: string[]): Page[] => {
   if (categories.includes("saveEditor")) {
     pages.push("saveEditor", "saveBackups")
   }
+  if (categories.includes("todo")) {
+    pages.push("todo")
+  }
   return pages
 }
 
@@ -114,6 +117,9 @@ const mapPagesToCategories = (pages: Page[]): string[] => {
   }
   if (pages.includes("saveEditor") || pages.includes("saveBackups")) {
     categories.push("saveEditor")
+  }
+  if (pages.includes("todo")) {
+    categories.push("todo")
   }
   return categories
 }

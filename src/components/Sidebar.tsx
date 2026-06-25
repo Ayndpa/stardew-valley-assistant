@@ -33,6 +33,7 @@ import {
   Zap,
   Database,
   Heart,
+  Notebook,
 } from "lucide-react"
 
 interface SidebarProps {
@@ -76,6 +77,7 @@ const navItems: { id: Page; label: string; icon: React.ReactNode }[] = [
   { id: "mods", label: "模组管理", icon: <Puzzle /> },
   { id: "onlineMods", label: "获取模组", icon: <Download className="h-4 w-4" /> },
   { id: "downloads", label: "下载管理", icon: <ListChecks className="h-4 w-4" /> },
+  { id: "todo", label: "便签任务", icon: <Notebook className="h-4 w-4" /> },
   { id: "sponsors", label: "特别鸣谢", icon: <Heart className="h-4 w-4 text-rose-500 animate-pulse" /> },
   { id: "settings", label: "设置", icon: <Settings /> },
 ]
