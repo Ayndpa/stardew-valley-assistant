@@ -24,7 +24,7 @@ import {
   Play,
   Plus,
   Languages,
-
+  Edit2
 } from "lucide-react"
 
 import { ModTranslateModal } from "./ModTranslateModal"
@@ -124,7 +124,7 @@ interface ModListProps {
   isLoading?: boolean
   onGoOnline?: () => void
   isGameRunning?: boolean
-  translationSyncingModIds?: Set<string>
+  onRenameMod: (id: string, newName: string) => void | Promise<void>
   confirm: (options: { title: string; message: string; confirmText?: string; cancelText?: string; variant?: "default" | "destructive" }) => Promise<boolean>
   // Profile props (inlined from ModProfiles)
   currentMods: { folderName: string; isEnabled: boolean; name: string }[]
@@ -216,7 +216,7 @@ export function ModList({
   isLoading = false,
   onGoOnline,
   isGameRunning = false,
-  translationSyncingModIds = new Set(),
+  onRenameMod,
   confirm,
   currentMods,
   onApplyProfile,
@@ -443,11 +443,29 @@ export function ModList({
     }
   }, [isGameRunning, showToast, t])
 
+  const [editingModId, setEditingModId] = useState<string | null>(null)
+  const [editName, setEditName] = useState("")
+
+  const handleStartRename = (e: React.MouseEvent, modId: string, currentName: string) => {
+    e.stopPropagation()
+    if (isGameRunning) return
+    setEditingModId(modId)
+    setEditName(currentName)
+  }
+
+  const handleFinishRename = async (modId: string) => {
+    if (!editName.trim()) {
+      setEditingModId(null)
+      return
+    }
+    await onRenameMod(modId, editName.trim())
+    setEditingModId(null)
+  }
+
   /** Render a single mod row (compact) */
   const renderModRow = useCallback((mod: Mod) => {
     const hasUpdate = !!mod.latestVersion && mod.version !== mod.latestVersion
     const isSelected = mod.id === selectedModId
-    const isSyncingTranslation = translationSyncingModIds.has(mod.id)
     return (
       <div
         key={mod.id}
@@ -484,18 +502,42 @@ export function ModList({
         </div>
 
         {/* Name */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5">
-            <span className="text-sm font-semibold truncate group-hover:text-primary transition-colors">
-              {mod.name}
-            </span>
-            {isSyncingTranslation && (
-              <Loader2 className="h-3 w-3 animate-spin text-sky-500 flex-shrink-0" />
-            )}
-            {hasUpdate && mod.isEnabled && (
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 flex-shrink-0" />
-            )}
-          </div>
+        <div className="flex-1 min-w-0" onClick={(e) => { if (editingModId === mod.id) e.stopPropagation(); }}>
+          {editingModId === mod.id ? (
+            <Input
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              className="text-xs h-6 bg-card border-border px-1.5 py-0.5 rounded font-semibold w-full focus-visible:ring-1"
+              autoFocus
+              onBlur={() => handleFinishRename(mod.id)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  void handleFinishRename(mod.id)
+                } else if (e.key === "Escape") {
+                  setEditingModId(null)
+                }
+              }}
+            />
+          ) : (
+            <div className="flex items-center gap-1.5 group/name">
+              <span className="text-sm font-semibold truncate group-hover:text-primary transition-colors">
+                {mod.name}
+              </span>
+              {!isGameRunning && (
+                <button
+                  type="button"
+                  onClick={(e) => handleStartRename(e, mod.id, mod.name)}
+                  className="opacity-0 group-hover/name:opacity-100 p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-all shrink-0"
+                  title="重命名"
+                >
+                  <Edit2 className="h-3 w-3" />
+                </button>
+              )}
+              {hasUpdate && mod.isEnabled && (
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 flex-shrink-0" />
+              )}
+            </div>
+          )}
         </div>
 
         {/* Version */}
@@ -540,7 +582,7 @@ export function ModList({
         </button>
       </div>
     )
-  }, [selectedModId, setSelectedModId, onToggleMod, onDeleteMod, categoryMap, isGameRunning, lockedTitle, t, translationSyncingModIds, confirm])
+  }, [selectedModId, setSelectedModId, onToggleMod, onDeleteMod, categoryMap, isGameRunning, lockedTitle, t, confirm, editingModId, editName, onRenameMod])
 
   /** Render a folder node and its children recursively */
   const renderFolderNode = useCallback((node: FolderNode, depth: number): React.ReactNode => {

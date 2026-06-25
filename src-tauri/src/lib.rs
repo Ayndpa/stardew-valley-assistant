@@ -35,7 +35,7 @@ use crate::mods::{
     fetch_nexus_api_key, fetch_nexus_download_metadata, fetch_smapi_compatibility_mods,
     import_profile, import_profile_from_file, install_bundled_assistant_mod, install_mod_from_zip,
     install_nexus_mod, list_installed_mods, list_profiles, load_cached_mod_updates, logout_nexus,
-    open_nexus_login_window, open_nexus_ranking_scraper, open_scraper_window, save_mod_config,
+    open_nexus_login_window, open_nexus_ranking_scraper, open_scraper_window, rename_local_mod, save_mod_config,
     save_profile, toggle_mod, write_mod_translation,
 };
 use crate::saves::{
@@ -605,6 +605,7 @@ pub fn run() {
             install_bundled_assistant_mod,
             auto_upgrade_bundled_mod,
             write_mod_translation,
+            rename_local_mod,
             get_npc_portraits,
             check_for_updates,
             write_log_entries,

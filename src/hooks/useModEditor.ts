@@ -219,6 +219,54 @@ export function useModEditor({
     }
   }, [ensureCanModify, mods, selectedModId, showToast, setMods, setSelectedModId, setIsScanning])
 
+  const handleRenameMod = useCallback(async (modId: string, newName: string) => {
+    if (!ensureCanModify()) return
+    if (!newName.trim()) {
+      showToast("模组名字不能为空", "warning")
+      return
+    }
+
+    const mod = mods.find((m) => m.id === modId)
+    if (!mod) return
+
+    const gameDir = localStorage.getItem("stardewGameDirectory") || ""
+    const invoke = await getTauriInvoke()
+
+    if (invoke && gameDir) {
+      try {
+        await invoke("rename_local_mod", {
+          gameDir,
+          folderName: mod.folderName,
+          newName: newName.trim(),
+        })
+        // Update local state
+        setMods((prevMods) =>
+          prevMods.map((m) => {
+            if (m.id === modId) {
+              return { ...m, name: newName.trim() }
+            }
+            return m
+          })
+        )
+        showToast("模组重命名成功", "success")
+      } catch (err: any) {
+        console.error("Rename mod error:", err)
+        showToast("重命名模组失败: " + err, "warning")
+      }
+    } else {
+      // Browser Mock
+      setMods((prevMods) =>
+        prevMods.map((m) => {
+          if (m.id === modId) {
+            return { ...m, name: newName.trim() }
+          }
+          return m
+        })
+      )
+      showToast("（Web 模式模拟）模组重命名成功", "success")
+    }
+  }, [ensureCanModify, mods, setMods, showToast])
+
   return {
     isAddModalOpen,
     setIsAddModalOpen,
@@ -238,6 +286,7 @@ export function useModEditor({
     handleSaveConfig,
     handleAddNewMod,
     handleDeleteMod,
+    handleRenameMod,
     handleInstallModFromZip,
     selectedMod,
   }

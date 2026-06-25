@@ -103,6 +103,49 @@ fn scan_mods_recursive(
     Ok(())
 }
 
+fn find_key_in_json_file(path: &Path, key: &str) -> Option<String> {
+    if !path.exists() {
+        return None;
+    }
+    let file = File::open(path).ok()?;
+    let json: serde_json::Value = serde_json::from_reader(BufReader::new(file)).ok()?;
+    if let Some(obj) = json.as_object() {
+        let key_lower = key.to_lowercase();
+        for (k, v) in obj {
+            if k.to_lowercase() == key_lower {
+                if let Some(s) = v.as_str() {
+                    return Some(s.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+fn resolve_i18n_string(value: &str, mod_dir: &Path) -> String {
+    let trimmed = value.trim();
+    if trimmed.starts_with("{{") && trimmed.ends_with("}}") {
+        let content = trimmed[2..trimmed.len() - 2].trim();
+        let content_lower = content.to_lowercase();
+        if content_lower.starts_with("i18n:") {
+            let key = content[5..].trim();
+            
+            // Try zh.json first
+            let zh_path = mod_dir.join("i18n").join("zh.json");
+            if let Some(val) = find_key_in_json_file(&zh_path, key) {
+                return val;
+            }
+            
+            // Try default.json fallback
+            let default_path = mod_dir.join("i18n").join("default.json");
+            if let Some(val) = find_key_in_json_file(&default_path, key) {
+                return val;
+            }
+        }
+    }
+    value.to_string()
+}
+
 /// Parse a single mod folder into a Mod struct.
 /// `mod_dir` must contain a manifest.json.
 fn parse_mod_folder(mod_dir: &Path, mods_root: &Path) -> Result<Mod, String> {
@@ -132,19 +175,22 @@ fn parse_mod_folder(mod_dir: &Path, mods_root: &Path) -> Result<Mod, String> {
         .unique_id
         .clone()
         .unwrap_or_else(|| display_folder_name.clone());
-    let name = manifest
+    let raw_name = manifest
         .name
         .clone()
         .unwrap_or_else(|| display_folder_name.clone());
+    let name = resolve_i18n_string(&raw_name, mod_dir);
     let english_name = display_folder_name.trim_start_matches('.').to_string();
     let version = manifest
         .version
         .clone()
         .unwrap_or_else(|| "1.0.0".to_string());
     let author = manifest.author.unwrap_or_else(|| "Unknown".to_string());
-    let description = manifest
+    let raw_description = manifest
         .description
+        .clone()
         .unwrap_or_else(|| "No description provided.".to_string());
+    let description = resolve_i18n_string(&raw_description, mod_dir);
 
     let mut nexus_id = None;
     if let Some(keys) = manifest.update_keys {
@@ -763,4 +809,103 @@ pub fn write_mod_translation(
 
     Ok(())
 }
+
+#[tauri::command]
+pub fn rename_local_mod(
+    game_dir: String,
+    folder_name: String,
+    new_name: String,
+) -> Result<(), String> {
+    let mods_dir = Path::new(&game_dir).join("Mods");
+    let mod_dir = mods_dir.join(&folder_name);
+    if !mod_dir.exists() {
+        return Err(format!("Mod folder {} does not exist", folder_name));
+    }
+
+    let manifest_path = mod_dir.join("manifest.json");
+    if !manifest_path.exists() {
+        return Err("manifest.json not found".to_string());
+    }
+
+    // 1. Read manifest.json
+    let manifest_content = fs::read_to_string(&manifest_path)
+        .map_err(|e| format!("Failed to read manifest.json: {}", e))?;
+    
+    let mut manifest_val: Value = serde_json::from_str(&manifest_content)
+        .map_err(|e| format!("Failed to parse manifest.json: {}", e))?;
+
+    let obj = manifest_val.as_object_mut()
+        .ok_or_else(|| "manifest.json must be a JSON object".to_string())?;
+
+    // Find Name field (case-insensitive)
+    let name_key = obj.keys().find(|k| k.eq_ignore_ascii_case("name")).map(|k| k.clone()).unwrap_or_else(|| "Name".to_string());
+
+    let mut is_i18n_placeholder = false;
+    let mut i18n_key = String::new();
+
+    if let Some(val) = obj.get(&name_key) {
+        if let Some(s) = val.as_str() {
+            let trimmed = s.trim();
+            if trimmed.starts_with("{{") && trimmed.ends_with("}}") {
+                let content = trimmed[2..trimmed.len() - 2].trim();
+                let content_lower = content.to_lowercase();
+                if content_lower.starts_with("i18n:") {
+                    is_i18n_placeholder = true;
+                    i18n_key = content[5..].trim().to_string();
+                }
+            }
+        }
+    }
+
+    if is_i18n_placeholder && !i18n_key.is_empty() {
+        // Update zh.json and default.json
+        let i18n_dir = mod_dir.join("i18n");
+        
+        // Update zh.json
+        let zh_path = i18n_dir.join("zh.json");
+        if zh_path.exists() {
+            let mut zh_val = serde_json::from_str::<Value>(&fs::read_to_string(&zh_path).unwrap_or_default())
+                .unwrap_or_else(|_| serde_json::json!({}));
+            if let Some(zh_obj) = zh_val.as_object_mut() {
+                let real_key = zh_obj.keys()
+                    .find(|k| k.eq_ignore_ascii_case(&i18n_key))
+                    .map(|k| k.clone())
+                    .unwrap_or_else(|| i18n_key.clone());
+                zh_obj.insert(real_key, Value::String(new_name.clone()));
+            }
+            let zh_content = serde_json::to_string_pretty(&zh_val)
+                .map_err(|e| format!("Failed to serialize zh.json: {}", e))?;
+            fs::write(&zh_path, zh_content)
+                .map_err(|e| format!("Failed to write zh.json: {}", e))?;
+        }
+
+        // Update default.json
+        let default_path = i18n_dir.join("default.json");
+        if default_path.exists() {
+            let mut default_val = serde_json::from_str::<Value>(&fs::read_to_string(&default_path).unwrap_or_default())
+                .unwrap_or_else(|_| serde_json::json!({}));
+            if let Some(def_obj) = default_val.as_object_mut() {
+                let real_key = def_obj.keys()
+                    .find(|k| k.eq_ignore_ascii_case(&i18n_key))
+                    .map(|k| k.clone())
+                    .unwrap_or_else(|| i18n_key.clone());
+                def_obj.insert(real_key, Value::String(new_name));
+            }
+            let default_content = serde_json::to_string_pretty(&default_val)
+                .map_err(|e| format!("Failed to serialize default.json: {}", e))?;
+            fs::write(&default_path, default_content)
+                .map_err(|e| format!("Failed to write default.json: {}", e))?;
+        }
+    } else {
+        // Rename directly inside manifest.json
+        obj.insert(name_key, Value::String(new_name));
+        let new_manifest_content = serde_json::to_string_pretty(&manifest_val)
+            .map_err(|e| format!("Failed to serialize manifest.json: {}", e))?;
+        fs::write(&manifest_path, new_manifest_content)
+            .map_err(|e| format!("Failed to write manifest.json: {}", e))?;
+    }
+
+    Ok(())
+}
+
 

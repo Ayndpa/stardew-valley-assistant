@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next"
 import { useSavesList } from "@/hooks/useSavesList"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
+
 import {
   Sun,
   Star,
@@ -48,7 +48,6 @@ interface TodoProps {
   selectedSaveId: string
 }
 
-type VirtualListId = "my-day" | "important" | "planned" | "tasks"
 
 export function Todo({ selectedSaveId }: TodoProps) {
   const { t } = useTranslation()

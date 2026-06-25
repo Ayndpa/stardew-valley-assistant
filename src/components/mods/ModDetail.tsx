@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 
 import { openUrl } from "@tauri-apps/plugin-opener"
@@ -19,7 +20,8 @@ import {
   Save,
   CheckCircle2,
   XCircle,
-  X
+  X,
+  Edit2
 } from "lucide-react"
 import { Mod } from "./ModList"
 
@@ -35,6 +37,7 @@ interface ModDetailProps {
   onSelectMod: (id: string) => void
   onClose?: () => void
   isGameRunning?: boolean
+  onRenameMod: (id: string, newName: string) => void
 }
 
 export function ModDetail({
@@ -49,8 +52,19 @@ export function ModDetail({
   onSelectMod,
   onClose,
   isGameRunning = false,
+  onRenameMod,
 }: ModDetailProps) {
   const { t } = useTranslation()
+  const [isRenaming, setIsRenaming] = useState(false)
+  const [tempName, setTempName] = useState("")
+
+  useEffect(() => {
+    if (selectedMod) {
+      setTempName(selectedMod.name)
+      setIsRenaming(false)
+    }
+  }, [selectedMod])
+
   if (!selectedMod) {
     return (
       <div className="h-full flex flex-col items-center justify-center text-center p-8">
@@ -68,11 +82,66 @@ export function ModDetail({
       {/* Card Banner / Title */}
       <div className="flex-shrink-0 p-5 pb-3 bg-gradient-to-b from-accent/30 dark:from-accent/15 to-transparent border-b border-border/50">
         <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <h3 className="text-lg font-bold flex items-center gap-2">
-              <Puzzle className="h-4.5 w-4.5 text-primary flex-shrink-0" />
-              <span className="truncate">{selectedMod.name}</span>
-            </h3>
+          <div className="min-w-0 flex-1">
+            {isRenaming ? (
+              <div className="flex items-center gap-2 mt-1">
+                <Input
+                  value={tempName}
+                  onChange={(e) => setTempName(e.target.value)}
+                  className="text-xs h-8 bg-card border-border px-2 rounded-md font-semibold"
+                  placeholder="输入新名字"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      onRenameMod(selectedMod.id, tempName)
+                      setIsRenaming(false)
+                    } else if (e.key === "Escape") {
+                      setTempName(selectedMod.name)
+                      setIsRenaming(false)
+                    }
+                  }}
+                />
+                <Button
+                  variant="default"
+                  size="sm"
+                  className="h-8 px-2.5 rounded-md text-xs font-medium"
+                  onClick={() => {
+                    onRenameMod(selectedMod.id, tempName)
+                    setIsRenaming(false)
+                  }}
+                >
+                  确定
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 px-2 rounded-md text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() => {
+                    setTempName(selectedMod.name)
+                    setIsRenaming(false)
+                  }}
+                >
+                  取消
+                </Button>
+              </div>
+            ) : (
+              <h3
+                className="text-lg font-bold flex items-center gap-2 group cursor-pointer"
+                title="点击修改名字"
+                onClick={() => {
+                  if (!isGameRunning) {
+                    setIsRenaming(true)
+                    setTempName(selectedMod.name)
+                  }
+                }}
+              >
+                <Puzzle className="h-4.5 w-4.5 text-primary flex-shrink-0" />
+                <span className="truncate">{selectedMod.name}</span>
+                {!isGameRunning && (
+                  <Edit2 className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity ml-1 shrink-0" />
+                )}
+              </h3>
+            )}
             <p className="text-[10px] text-muted-foreground font-mono mt-0.5 truncate">
               {selectedMod.englishName}
             </p>

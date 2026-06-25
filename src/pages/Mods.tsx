@@ -63,8 +63,6 @@ export function Mods({ onNavigate, refreshSignal, isGameRunning = false, onQueue
     smapiUpdateAvailable,
     isScanning,
     isCheckingUpdates,
-    isSyncingModTranslations,
-    translationSyncingModIds,
     toast,
     setToast,
 
@@ -86,6 +84,7 @@ export function Mods({ onNavigate, refreshSignal, isGameRunning = false, onQueue
     handleUninstallSmapi,
     handleUpdateSmapi,
     handleDeleteMod,
+    handleRenameMod,
     handleOpenOfficialSite,
     handleApplyProfile,
     handleInstallModFromZip,
@@ -358,17 +357,6 @@ export function Mods({ onNavigate, refreshSignal, isGameRunning = false, onQueue
                     </div>
                   </>
                 )}
-                {isZh && (
-                  <>
-                    <div className="w-px h-3 bg-border" />
-                    <div className="flex items-center gap-1">
-                      <span className={isSyncingModTranslations ? "text-sky-600 dark:text-sky-400" : "text-muted-foreground"}>{t("mods.translationLibrary")}</span>
-                      <span className={`font-bold ${isSyncingModTranslations ? "text-sky-500 animate-pulse" : "text-foreground"}`}>
-                        {translationSyncingModIds.size}
-                      </span>
-                    </div>
-                  </>
-                )}
               </div>
             </div>
           </div>
@@ -400,7 +388,7 @@ export function Mods({ onNavigate, refreshSignal, isGameRunning = false, onQueue
                   void handlePickZipFile()
                 }}
                 isGameRunning={isGameRunning}
-                translationSyncingModIds={translationSyncingModIds}
+                onRenameMod={handleRenameMod}
                 confirm={confirm}
                 currentMods={mods.map((m) => ({ folderName: m.folderName.replace(/(^|\/)\./g, "$1"), isEnabled: m.isEnabled, name: m.name }))}
                 onApplyProfile={handleApplyProfile}
@@ -424,6 +412,7 @@ export function Mods({ onNavigate, refreshSignal, isGameRunning = false, onQueue
                     onSelectMod={setSelectedModId}
                     onClose={() => setSelectedModId("")}
                     isGameRunning={isGameRunning}
+                    onRenameMod={handleRenameMod}
                   />
                 </div>
               </div>
