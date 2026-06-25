@@ -3,7 +3,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::fs::{self, File};
 use std::io::ErrorKind;
-use std::io::{BufReader, Write};
+use std::io::Write;
 use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -36,6 +36,76 @@ struct ManifestDependency {
     unique_id: Option<String>,
 }
 
+fn clean_json_content(content: &str) -> String {
+    // 1. Strip UTF-8 BOM if present
+    let content = content.strip_prefix("\u{feff}").unwrap_or(content);
+    
+    // 2. Remove comments (single-line and block)
+    let mut result = String::with_capacity(content.len());
+    let mut in_string = false;
+    let mut escaped = false;
+    let chars: Vec<char> = content.chars().collect();
+    let mut i = 0;
+    
+    while i < chars.len() {
+        let c = chars[i];
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if c == '\\' {
+                escaped = true;
+            } else if c == '"' {
+                in_string = false;
+            }
+            result.push(c);
+            i += 1;
+        } else {
+            if c == '"' {
+                in_string = true;
+                result.push(c);
+                i += 1;
+            } else if c == '/' && i + 1 < chars.len() && chars[i + 1] == '/' {
+                i += 2;
+                while i < chars.len() && chars[i] != '\n' {
+                    i += 1;
+                }
+            } else if c == '/' && i + 1 < chars.len() && chars[i + 1] == '*' {
+                i += 2;
+                while i + 1 < chars.len() && !(chars[i] == '*' && chars[i + 1] == '/') {
+                    i += 1;
+                }
+                i += 2;
+            } else {
+                result.push(c);
+                i += 1;
+            }
+        }
+    }
+    
+    // 3. Remove trailing commas in objects and arrays
+    let cleaned_chars: Vec<char> = result.chars().collect();
+    let mut final_result = String::with_capacity(cleaned_chars.len());
+    let mut j = 0;
+    while j < cleaned_chars.len() {
+        if cleaned_chars[j] == ',' {
+            let mut k = j + 1;
+            while k < cleaned_chars.len() && cleaned_chars[k].is_whitespace() {
+                k += 1;
+            }
+            if k < cleaned_chars.len() && (cleaned_chars[k] == '}' || cleaned_chars[k] == ']') {
+                j = k;
+                final_result.push(cleaned_chars[k]);
+                j += 1;
+                continue;
+            }
+        }
+        final_result.push(cleaned_chars[j]);
+        j += 1;
+    }
+    
+    final_result
+}
+
 /// Recursively scan a directory for mods (folders containing manifest.json).
 /// `relative_path` is the path relative to the Mods/ root (e.g. "美化类/xxx美化Mod").
 fn scan_mods_recursive(
@@ -43,14 +113,28 @@ fn scan_mods_recursive(
     mods_root: &Path,
     results: &mut Vec<Mod>,
 ) -> Result<(), String> {
-    let entries =
-        fs::read_dir(dir).map_err(|e| format!("Failed to read folder {:?}: {}", dir, e))?;
-
-    let mut has_manifest = false;
-    let manifest_path = dir.join("manifest.json");
-    if manifest_path.exists() {
-        has_manifest = true;
+    // If the directory itself has a manifest.json, parse it as a mod and stop recursing!
+    if dir != mods_root && dir.join("manifest.json").exists() {
+        match parse_mod_folder(dir, mods_root) {
+            Ok(mod_entry) => {
+                if !results.iter().any(|m| m.folder_name == mod_entry.folder_name) {
+                    results.push(mod_entry);
+                }
+            }
+            Err(e) => println!("Skipping mod folder {:?}: {}", dir, e),
+        }
+        return Ok(());
     }
+
+    // Otherwise, loop through subdirectories.
+    let entries = match fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(e) => {
+            // Log directory read errors instead of crashing the entire mod scan
+            println!("Failed to read folder {:?}: {}", dir, e);
+            return Ok(());
+        }
+    };
 
     for entry in entries {
         let entry = match entry {
@@ -63,41 +147,7 @@ fn scan_mods_recursive(
             continue;
         }
 
-        let _dir_name = entry.file_name().to_string_lossy().to_string();
-
-        // If this directory has a manifest.json, parse it as a mod
-        // and do NOT recurse further (it's a mod folder, not a category folder)
-        if path.join("manifest.json").exists() {
-            has_manifest = true;
-            match parse_mod_folder(&path, mods_root) {
-                Ok(mod_entry) => results.push(mod_entry),
-                Err(e) => println!("Skipping mod folder {:?}: {}", path, e),
-            }
-            continue;
-        }
-
-        // No manifest.json — treat as a category/group folder, recurse into it
         scan_mods_recursive(&path, mods_root, results)?;
-    }
-
-    // If the directory itself has a manifest.json but we already processed it above
-    // (shouldn't happen since we check before the loop), handle edge case
-    if has_manifest && results.last().map_or(true, |m| {
-        let rel = dir.strip_prefix(mods_root).unwrap_or(dir);
-        let expected = rel.to_string_lossy().replace('\\', "/");
-        m.folder_name != expected
-    }) {
-        // The dir itself is a mod folder but wasn't picked up in the loop
-        // (this handles the case where the dir has manifest.json AND subdirectories)
-        match parse_mod_folder(dir, mods_root) {
-            Ok(mod_entry) => {
-                // Avoid duplicate if already added
-                if !results.iter().any(|m| m.folder_name == mod_entry.folder_name) {
-                    results.push(mod_entry);
-                }
-            }
-            Err(e) => println!("Skipping mod folder {:?}: {}", dir, e),
-        }
     }
 
     Ok(())
@@ -107,8 +157,9 @@ fn find_key_in_json_file(path: &Path, key: &str) -> Option<String> {
     if !path.exists() {
         return None;
     }
-    let file = File::open(path).ok()?;
-    let json: serde_json::Value = serde_json::from_reader(BufReader::new(file)).ok()?;
+    let content = fs::read_to_string(path).ok()?;
+    let cleaned = clean_json_content(&content);
+    let json: serde_json::Value = serde_json::from_str(&cleaned).ok()?;
     if let Some(obj) = json.as_object() {
         let key_lower = key.to_lowercase();
         for (k, v) in obj {
@@ -160,10 +211,10 @@ fn parse_mod_folder(mod_dir: &Path, mods_root: &Path) -> Result<Mod, String> {
     let is_enabled = !folder_name.split('/').any(|seg| seg.starts_with('.'));
 
     let manifest_path = mod_dir.join("manifest.json");
-    let manifest_file = File::open(&manifest_path)
-        .map_err(|e| format!("Failed to open manifest.json: {}", e))?;
-
-    let manifest: Manifest = serde_json::from_reader(BufReader::new(manifest_file))
+    let manifest_content = fs::read_to_string(&manifest_path)
+        .map_err(|e| format!("Failed to read manifest.json: {}", e))?;
+    let cleaned_manifest = clean_json_content(&manifest_content);
+    let manifest: Manifest = serde_json::from_str(&cleaned_manifest)
         .map_err(|e| format!("Failed to parse manifest.json: {}", e))?;
 
     let display_folder_name = mod_dir
@@ -217,9 +268,10 @@ fn parse_mod_folder(mod_dir: &Path, mods_root: &Path) -> Result<Mod, String> {
     let mut config_fields = Vec::new();
     let config_path = mod_dir.join("config.json");
     if config_path.exists() {
-        if let Ok(config_file) = File::open(&config_path) {
+        if let Ok(config_content) = fs::read_to_string(&config_path) {
+            let cleaned_config = clean_json_content(&config_content);
             if let Ok(config_val) =
-                serde_json::from_reader::<_, serde_json::Value>(BufReader::new(config_file))
+                serde_json::from_str::<serde_json::Value>(&cleaned_config)
             {
                 if let Some(obj) = config_val.as_object() {
                     for (k, v) in obj {
@@ -641,9 +693,10 @@ pub async fn auto_upgrade_bundled_mod(game_dir: String) -> Result<Value, String>
         }
 
         // Read installed version
-        let file = File::open(&installed_manifest_path)
+        let installed_manifest_content = fs::read_to_string(&installed_manifest_path)
             .map_err(|e| format!("读取已安装清单失败: {}", e))?;
-        let installed_manifest: Manifest = serde_json::from_reader(BufReader::new(file))
+        let cleaned_installed_manifest = clean_json_content(&installed_manifest_content);
+        let installed_manifest: Manifest = serde_json::from_str(&cleaned_installed_manifest)
             .map_err(|e| format!("解析已安装清单失败: {}", e))?;
         let installed_version = installed_manifest
             .version
@@ -714,7 +767,8 @@ pub fn write_mod_translation(
     let manifest_content = fs::read_to_string(&manifest_path)
         .map_err(|e| format!("Failed to read manifest.json: {}", e))?;
     
-    let mut manifest_val: Value = serde_json::from_str(&manifest_content)
+    let cleaned_manifest = clean_json_content(&manifest_content);
+    let mut manifest_val: Value = serde_json::from_str(&cleaned_manifest)
         .map_err(|e| format!("Failed to parse manifest.json: {}", e))?;
 
     let obj = manifest_val.as_object_mut()
@@ -773,7 +827,8 @@ pub fn write_mod_translation(
     let default_path = i18n_dir.join("default.json");
     let mut default_val = if default_path.exists() {
         let content = fs::read_to_string(&default_path).unwrap_or_default();
-        serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({}))
+        let cleaned_default = clean_json_content(&content);
+        serde_json::from_str(&cleaned_default).unwrap_or_else(|_| serde_json::json!({}))
     } else {
         serde_json::json!({})
     };
@@ -794,7 +849,8 @@ pub fn write_mod_translation(
     let zh_path = i18n_dir.join("zh.json");
     let mut zh_val = if zh_path.exists() {
         let content = fs::read_to_string(&zh_path).unwrap_or_default();
-        serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({}))
+        let cleaned_zh = clean_json_content(&content);
+        serde_json::from_str(&cleaned_zh).unwrap_or_else(|_| serde_json::json!({}))
     } else {
         serde_json::json!({})
     };
@@ -831,7 +887,8 @@ pub fn rename_local_mod(
     let manifest_content = fs::read_to_string(&manifest_path)
         .map_err(|e| format!("Failed to read manifest.json: {}", e))?;
     
-    let mut manifest_val: Value = serde_json::from_str(&manifest_content)
+    let cleaned_manifest = clean_json_content(&manifest_content);
+    let mut manifest_val: Value = serde_json::from_str(&cleaned_manifest)
         .map_err(|e| format!("Failed to parse manifest.json: {}", e))?;
 
     let obj = manifest_val.as_object_mut()
@@ -864,7 +921,9 @@ pub fn rename_local_mod(
         // Update zh.json
         let zh_path = i18n_dir.join("zh.json");
         if zh_path.exists() {
-            let mut zh_val = serde_json::from_str::<Value>(&fs::read_to_string(&zh_path).unwrap_or_default())
+            let zh_content = fs::read_to_string(&zh_path).unwrap_or_default();
+            let cleaned_zh = clean_json_content(&zh_content);
+            let mut zh_val = serde_json::from_str::<Value>(&cleaned_zh)
                 .unwrap_or_else(|_| serde_json::json!({}));
             if let Some(zh_obj) = zh_val.as_object_mut() {
                 let real_key = zh_obj.keys()
@@ -882,7 +941,9 @@ pub fn rename_local_mod(
         // Update default.json
         let default_path = i18n_dir.join("default.json");
         if default_path.exists() {
-            let mut default_val = serde_json::from_str::<Value>(&fs::read_to_string(&default_path).unwrap_or_default())
+            let default_content = fs::read_to_string(&default_path).unwrap_or_default();
+            let cleaned_default = clean_json_content(&default_content);
+            let mut default_val = serde_json::from_str::<Value>(&cleaned_default)
                 .unwrap_or_else(|_| serde_json::json!({}));
             if let Some(def_obj) = default_val.as_object_mut() {
                 let real_key = def_obj.keys()
@@ -906,6 +967,68 @@ pub fn rename_local_mod(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_clean_json_content() {
+        // Test BOM removal
+        let with_bom = "\u{feff}{\"a\": 1}";
+        assert_eq!(clean_json_content(with_bom), "{\"a\": 1}");
+
+        // Test single line comments
+        let with_single_comments = r#"{
+            // this is a comment
+            "a": 1, // another comment
+            "b": "http://example.com"
+        }"#;
+        let cleaned = clean_json_content(with_single_comments);
+        let parsed: serde_json::Value = serde_json::from_str(&cleaned).unwrap();
+        assert_eq!(parsed["a"], 1);
+        assert_eq!(parsed["b"], "http://example.com");
+
+        // Test block comments
+        let with_block_comments = r#"{
+            /* block comment
+               spanning lines */
+            "a": /* inline block comment */ 2
+        }"#;
+        let cleaned = clean_json_content(with_block_comments);
+        let parsed: serde_json::Value = serde_json::from_str(&cleaned).unwrap();
+        assert_eq!(parsed["a"], 2);
+
+        // Test trailing commas in objects
+        let with_trailing_comma_obj = r#"{
+            "a": 1,
+            "b": 2,
+        }"#;
+        let cleaned = clean_json_content(with_trailing_comma_obj);
+        let parsed: serde_json::Value = serde_json::from_str(&cleaned).unwrap();
+        assert_eq!(parsed["a"], 1);
+        assert_eq!(parsed["b"], 2);
+
+        // Test trailing commas in arrays
+        let with_trailing_comma_arr = r#"[
+            1,
+            2,
+        ]"#;
+        let cleaned = clean_json_content(with_trailing_comma_arr);
+        let parsed: serde_json::Value = serde_json::from_str(&cleaned).unwrap();
+        assert_eq!(parsed.as_array().unwrap().len(), 2);
+
+        // Test commas and comments inside strings are preserved
+        let inside_string = r#"{
+            "a": "this has a // comment and a , trailing comma inside string",
+            "b": "another /* comment */ inside string"
+        }"#;
+        let cleaned = clean_json_content(inside_string);
+        let parsed: serde_json::Value = serde_json::from_str(&cleaned).unwrap();
+        assert_eq!(parsed["a"], "this has a // comment and a , trailing comma inside string");
+        assert_eq!(parsed["b"], "another /* comment */ inside string");
+    }
 }
 
 
