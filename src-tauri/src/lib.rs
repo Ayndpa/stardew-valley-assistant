@@ -665,8 +665,8 @@ pub fn run() {
             }
 
             if let Some(window) = app_handle.get_webview_window("main") {
-                // Always enable devtools for debugging
-                window.open_devtools();
+                // Devtools are enabled for debugging, but we do not open them automatically on startup.
+                // window.open_devtools();
 
                 let _ = window.set_min_size(Some(Size::Logical(tauri::LogicalSize::new(
                     MAIN_WINDOW_MIN_WIDTH,
