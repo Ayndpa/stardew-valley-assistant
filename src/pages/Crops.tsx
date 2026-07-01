@@ -2,9 +2,11 @@ import { useState, useEffect, useCallback } from "react"
 import { useTranslation } from "react-i18next"
 import { RefreshCw } from "lucide-react"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { Button } from "@/components/ui/button"
 import { CropEncyclopedia } from "./crops/CropEncyclopedia"
 import { CropProfitCalculator } from "./crops/CropProfitCalculator"
 import { PlantedCropsDashboard } from "./crops/PlantedCropsDashboard"
+import type { Page } from "@/App"
 import {
   Crop,
   CropLookup,
@@ -17,6 +19,7 @@ import {
 
 interface CropsProps {
   selectedSaveId: string
+  onNavigate?: (page: Page) => void
 }
 
 function applyCropGameData(
@@ -34,7 +37,7 @@ function applyCropGameData(
   setGeneratedAt(data.generatedAt || null)
 }
 
-export function Crops({ selectedSaveId }: CropsProps) {
+export function Crops({ selectedSaveId, onNavigate }: CropsProps) {
   const { t, i18n } = useTranslation()
   const [plantedCrops, setPlantedCrops] = useState<PlantedCrop[]>([])
   const [loadingCrops, setLoadingCrops] = useState(true)
@@ -186,29 +189,55 @@ export function Crops({ selectedSaveId }: CropsProps) {
         </TabsList>
 
         {/* 数据来源提示 */}
-        <div className="flex items-center gap-2 px-1 py-1 text-xs text-muted-foreground">
+        <div className="flex flex-col gap-2 py-1 w-full text-xs text-muted-foreground">
           {dataSource === "export" ? (
-            <span className="inline-flex items-center gap-1 rounded bg-blue-500/10 px-1.5 py-0.5 text-blue-500">
-              ✓ {t("dataSource.export", { defaultValue: "从游戏导出数据加载" })}
-              {generatedAt && (
-                <span className="text-muted-foreground ml-1">
-                  · {new Date(generatedAt).toLocaleString()}
-                </span>
-              )}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1 rounded bg-blue-500/10 px-1.5 py-0.5 text-blue-500">
+                ✓ {t("dataSource.export", { defaultValue: "从游戏导出数据加载" })}
+                {generatedAt && (
+                  <span className="text-muted-foreground ml-1">
+                    · {new Date(generatedAt).toLocaleString()}
+                  </span>
+                )}
+              </span>
+              <button
+                onClick={handleRefresh}
+                disabled={loadingGameData}
+                className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-50"
+                title={t("dataSource.refresh", { defaultValue: "刷新数据" })}
+              >
+                <RefreshCw className={`h-3 w-3 ${loadingGameData ? "animate-spin" : ""}`} />
+              </button>
+            </div>
           ) : (
-            <span className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-amber-500">
-              ⚙ {t("dataSource.xnb", { defaultValue: "从游戏数据解析" })}
-            </span>
+            <div className="flex flex-col gap-2 p-3 rounded-lg border border-amber-200/50 bg-amber-500/5 text-amber-800 dark:border-amber-800/30 dark:text-amber-300 w-full">
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div className="flex items-center gap-2 text-xs flex-wrap">
+                  <span className="font-semibold">⚙ {t("dataSource.xnbWarningTitle", { defaultValue: "当前正从游戏原始文件解析数据" })}</span>
+                  <button
+                    onClick={handleRefresh}
+                    disabled={loadingGameData}
+                    className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-amber-500/20 hover:text-amber-900 dark:hover:text-amber-100 transition-colors disabled:opacity-50"
+                    title={t("dataSource.refresh", { defaultValue: "刷新数据" })}
+                  >
+                    <RefreshCw className={`h-3 w-3 ${loadingGameData ? "animate-spin" : ""}`} />
+                  </button>
+                  <span className="text-muted-foreground hidden sm:inline">·</span>
+                  <span className="text-muted-foreground">{t("dataSource.xnbWarningDesc", { defaultValue: "由于未检测到助手伴侣模组的运行数据，展示的价格和周期可能无法适配您的模组修改（如微调售价和周期）。建议前往模组管理页面安装伴侣模组以同步实时数据。" })}</span>
+                </div>
+                {onNavigate && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs border-amber-300 hover:bg-amber-100 hover:text-amber-900 dark:border-amber-700 dark:hover:bg-amber-950/40 text-amber-800 dark:text-amber-300 flex-shrink-0"
+                    onClick={() => onNavigate("mods")}
+                  >
+                    {t("dataSource.goInstallMod", { defaultValue: "前往模组管理安装" })}
+                  </Button>
+                )}
+              </div>
+            </div>
           )}
-          <button
-            onClick={handleRefresh}
-            disabled={loadingGameData}
-            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-50"
-            title={t("dataSource.refresh", { defaultValue: "刷新数据" })}
-          >
-            <RefreshCw className={`h-3 w-3 ${loadingGameData ? "animate-spin" : ""}`} />
-          </button>
         </div>
 
         <TabsContent value="my-farm" className="space-y-6">

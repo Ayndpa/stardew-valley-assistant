@@ -2015,5 +2015,10 @@
     "selectSeason": "Select Season",
     "selectDay": "Select Day",
     "saveRequired": "No active save file detected, tasks are saved in the global space."
+  },
+  "dataSource": {
+    "xnbWarningTitle": "Currently parsing data from original game files",
+    "xnbWarningDesc": "Since no runtime data from the companion mod is detected, the prices and cycles shown may not reflect your mod modifications (such as custom sell prices or regrow cycles). We recommend visiting the Mod Management page to install the companion mod to sync live data.",
+    "goInstallMod": "Go to Mod Management"
   }
 }

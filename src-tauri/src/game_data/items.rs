@@ -125,12 +125,18 @@ pub fn get_item_game_data(
         .map(|entry| build_item_entry(&snapshot.content_dir, entry, &mut texture_cache))
         .collect::<Vec<_>>();
 
+    let (data_source, generated_at) = if let Some(export) = super::item_prices::read_game_data_export() {
+        ("export".to_string(), export.generated_at)
+    } else {
+        ("xnb".to_string(), None)
+    };
+
     Ok(ItemGameData {
         encyclopedia,
         categories: snapshot.categories.clone(),
         item_types: snapshot.item_types.clone(),
-        data_source: "xnb".to_string(),
-        generated_at: None,
+        data_source,
+        generated_at,
     })
 }
 
@@ -140,12 +146,19 @@ pub fn get_item_game_data_overview(
     lang: Option<String>,
 ) -> Result<ItemGameDataOverview, String> {
     let snapshot = load_item_snapshot(game_dir, lang)?;
+    
+    let (data_source, generated_at) = if let Some(export) = super::item_prices::read_game_data_export() {
+        ("export".to_string(), export.generated_at)
+    } else {
+        ("xnb".to_string(), None)
+    };
+
     Ok(ItemGameDataOverview {
         categories: snapshot.categories.clone(),
         item_types: snapshot.item_types.clone(),
         total_count: snapshot.encyclopedia.len(),
-        data_source: "xnb".to_string(),
-        generated_at: None,
+        data_source,
+        generated_at,
     })
 }
 

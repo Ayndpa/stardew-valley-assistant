@@ -451,12 +451,13 @@ function App() {
           />
         )
       case "crops":
-        return <Crops selectedSaveId={selectedSaveId} />
+        return <Crops selectedSaveId={selectedSaveId} onNavigate={setCurrentPage} />
       case "items":
         return (
           <Items
             navigationTarget={itemNavigationTarget}
             onNavigationHandled={() => setItemNavigationTarget(null)}
+            onNavigate={setCurrentPage}
           />
         )
       case "npcs":
@@ -527,7 +528,7 @@ function App() {
           />
         )
       case "animals":
-        return <Animals selectedSaveId={selectedSaveId} />
+        return <Animals selectedSaveId={selectedSaveId} onNavigate={setCurrentPage} />
       case "saveEditor":
         return (
           <SaveEditor
