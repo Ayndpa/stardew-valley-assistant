@@ -92,20 +92,20 @@ pub struct FishingMapDetail {
     pub cached: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FishingMapCacheFingerprint {
     pub file_count: u64,
     pub total_size: u64,
     pub latest_modified_ms: u128,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CachedFishingMaps {
     pub fingerprint: FishingMapCacheFingerprint,
     pub maps: Vec<FishingMapDetail>,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CachedFishingMapPreview {
     pub data_url: Option<String>,
     pub error: Option<String>,
@@ -122,37 +122,127 @@ static FISHING_MAP_CACHE: OnceLock<Mutex<HashMap<String, Arc<CachedFishingMaps>>
 static FISHING_MAP_PREVIEW_CACHE: OnceLock<Mutex<HashMap<String, CachedFishingMapPreviews>>> =
     OnceLock::new();
 
+fn get_fishing_cache_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    use tauri::Manager;
+    let app_data = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to resolve app data: {}", e))?;
+    let cache_dir = app_data.join("cache");
+    fs::create_dir_all(&cache_dir)
+        .map_err(|e| format!("Failed to create cache dir: {}", e))?;
+    Ok(cache_dir.join("fishing_maps.json"))
+}
+
+fn get_preview_cache_path(
+    app: &tauri::AppHandle,
+    cache_key: &str,
+    map_id: &str,
+    fingerprint: &FishingMapCacheFingerprint,
+) -> Result<PathBuf, String> {
+    use tauri::Manager;
+    let app_data = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to resolve app data: {}", e))?;
+    let previews_dir = app_data.join("cache").join("previews");
+    fs::create_dir_all(&previews_dir)
+        .map_err(|e| format!("Failed to create previews cache dir: {}", e))?;
+
+    let hash_input = format!(
+        "{}:{}:{}:{}:{}",
+        cache_key,
+        map_id,
+        fingerprint.file_count,
+        fingerprint.total_size,
+        fingerprint.latest_modified_ms
+    );
+    let hash = format!("{:x}", md5::compute(hash_input.as_bytes()));
+    Ok(previews_dir.join(format!("{}.json", hash)))
+}
+
+fn load_maps_cache_from_disk(app: &tauri::AppHandle) -> Option<CachedFishingMaps> {
+    let path = get_fishing_cache_path(app).ok()?;
+    if !path.exists() {
+        return None;
+    }
+    let data = fs::read_to_string(&path).ok()?;
+    serde_json::from_str(&data).ok()
+}
+
+fn save_maps_cache_to_disk(app: &tauri::AppHandle, cache: &CachedFishingMaps) {
+    if let Ok(path) = get_fishing_cache_path(app) {
+        if let Ok(data) = serde_json::to_string(cache) {
+            let _ = fs::write(path, data);
+        }
+    }
+}
+
+fn load_preview_cache_from_disk(
+    app: &tauri::AppHandle,
+    cache_key: &str,
+    map_id: &str,
+    fingerprint: &FishingMapCacheFingerprint,
+) -> Option<CachedFishingMapPreview> {
+    let path = get_preview_cache_path(app, cache_key, map_id, fingerprint).ok()?;
+    if !path.exists() {
+        return None;
+    }
+    let data = fs::read_to_string(&path).ok()?;
+    serde_json::from_str(&data).ok()
+}
+
+fn save_preview_cache_to_disk(
+    app: &tauri::AppHandle,
+    cache_key: &str,
+    map_id: &str,
+    fingerprint: &FishingMapCacheFingerprint,
+    preview: &CachedFishingMapPreview,
+) {
+    if let Ok(path) = get_preview_cache_path(app, cache_key, map_id, fingerprint) {
+        if let Ok(data) = serde_json::to_string(preview) {
+            let _ = fs::write(path, data);
+        }
+    }
+}
+
+
 #[tauri::command]
 pub async fn get_fishing_map_data(
+    app: tauri::AppHandle,
     game_dir: Option<String>,
     force_refresh: Option<bool>,
     lang: Option<String>,
 ) -> Result<FishingMapData, String> {
-    task::spawn_blocking(move || get_fishing_map_data_sync(game_dir, force_refresh, lang))
+    let app_clone = app.clone();
+    task::spawn_blocking(move || get_fishing_map_data_sync(&app_clone, game_dir, force_refresh, lang))
         .await
         .map_err(|err| format!("钓鱼地图解析任务失败: {}", err))?
 }
 
 #[tauri::command]
 pub async fn get_fishing_map_detail(
+    app: tauri::AppHandle,
     game_dir: Option<String>,
     map_id: String,
     force_refresh: Option<bool>,
     lang: Option<String>,
 ) -> Result<FishingMapDetail, String> {
-    task::spawn_blocking(move || get_fishing_map_detail_sync(game_dir, map_id, force_refresh, lang))
+    let app_clone = app.clone();
+    task::spawn_blocking(move || get_fishing_map_detail_sync(&app_clone, game_dir, map_id, force_refresh, lang))
         .await
         .map_err(|err| format!("钓鱼地图详情任务失败: {}", err))?
 }
 
 fn get_fishing_map_data_sync(
+    app: &tauri::AppHandle,
     game_dir: Option<String>,
     force_refresh: Option<bool>,
     _lang: Option<String>,
 ) -> Result<FishingMapData, String> {
     let content_dir = super::locate_content_dir(game_dir.as_deref())?;
     let (cache, cached) =
-        get_or_build_fishing_map_cache(&content_dir, force_refresh.unwrap_or(false))?;
+        get_or_build_fishing_map_cache(app, &content_dir, force_refresh.unwrap_or(false))?;
     let maps = cache
         .maps
         .iter()
@@ -163,6 +253,7 @@ fn get_fishing_map_data_sync(
 }
 
 fn get_fishing_map_detail_sync(
+    app: &tauri::AppHandle,
     game_dir: Option<String>,
     map_id: String,
     force_refresh: Option<bool>,
@@ -171,7 +262,7 @@ fn get_fishing_map_detail_sync(
     let content_dir = super::locate_content_dir(game_dir.as_deref())?;
     let cache_key = content_cache_key(&content_dir);
     let (cache, cached) =
-        get_or_build_fishing_map_cache(&content_dir, force_refresh.unwrap_or(false))?;
+        get_or_build_fishing_map_cache(app, &content_dir, force_refresh.unwrap_or(false))?;
     let mut detail = cache
         .maps
         .iter()
@@ -180,6 +271,7 @@ fn get_fishing_map_detail_sync(
         .ok_or_else(|| format!("未找到地图 {}", map_id))?;
     detail.fishing_areas = load_fishing_areas_for_map(&content_dir, &detail.id, lang.as_deref())?;
     let preview = get_or_render_fishing_map_preview(
+        app,
         &content_dir,
         &cache_key,
         &cache.fingerprint,
@@ -208,6 +300,7 @@ impl FishingMapDetail {
 }
 
 pub fn get_or_build_fishing_map_cache(
+    app: &tauri::AppHandle,
     content_dir: &Path,
     force_refresh: bool,
 ) -> Result<(Arc<CachedFishingMaps>, bool), String> {
@@ -217,12 +310,31 @@ pub fn get_or_build_fishing_map_cache(
     let cache_key = content_cache_key(content_dir);
     let cache = FISHING_MAP_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
 
-    if !force_refresh {
+    if force_refresh {
+        // Clear previews directory if force refresh is requested to avoid stale data
+        use tauri::Manager;
+        if let Ok(app_data) = app.path().app_data_dir() {
+            let previews_dir = app_data.join("cache").join("previews");
+            let _ = fs::remove_dir_all(&previews_dir);
+        }
+    } else {
+        // Try memory cache first
         if let Ok(guard) = cache.lock() {
             if let Some(existing) = guard.get(&cache_key) {
                 if existing.fingerprint == fingerprint {
                     return Ok((Arc::clone(existing), true));
                 }
+            }
+        }
+
+        // Try disk cache next
+        if let Some(disk_cache) = load_maps_cache_from_disk(app) {
+            if disk_cache.fingerprint == fingerprint {
+                let built = Arc::new(disk_cache);
+                if let Ok(mut guard) = cache.lock() {
+                    guard.insert(cache_key.clone(), Arc::clone(&built));
+                }
+                return Ok((built, true));
             }
         }
     }
@@ -244,6 +356,10 @@ pub fn get_or_build_fishing_map_cache(
     });
 
     let built = Arc::new(CachedFishingMaps { fingerprint, maps });
+    
+    // Save to disk cache
+    save_maps_cache_to_disk(app, &built);
+
     let mut guard = cache
         .lock()
         .map_err(|_| "钓鱼地图缓存被占用，请稍后重试。".to_string())?;
@@ -260,6 +376,7 @@ pub fn content_cache_key(content_dir: &Path) -> String {
 }
 
 pub fn get_or_render_fishing_map_preview(
+    app: &tauri::AppHandle,
     content_dir: &Path,
     cache_key: &str,
     fingerprint: &FishingMapCacheFingerprint,
@@ -268,6 +385,7 @@ pub fn get_or_render_fishing_map_preview(
 ) -> CachedFishingMapPreview {
     let preview_cache = FISHING_MAP_PREVIEW_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
 
+    // 1. Try memory cache first
     if let Ok(guard) = preview_cache.lock() {
         if let Some(entry) = guard.get(cache_key) {
             if entry.fingerprint == *fingerprint {
@@ -278,6 +396,25 @@ pub fn get_or_render_fishing_map_preview(
         }
     }
 
+    // 2. Try disk cache second
+    if let Some(disk_preview) = load_preview_cache_from_disk(app, cache_key, map_id, fingerprint) {
+        if let Ok(mut guard) = preview_cache.lock() {
+            let entry = guard
+                .entry(cache_key.to_string())
+                .or_insert_with(|| CachedFishingMapPreviews {
+                    fingerprint: *fingerprint,
+                    previews: HashMap::new(),
+                });
+            if entry.fingerprint != *fingerprint {
+                entry.fingerprint = *fingerprint;
+                entry.previews.clear();
+            }
+            entry.previews.insert(map_id.to_string(), disk_preview.clone());
+        }
+        return disk_preview;
+    }
+
+    // 3. Render and save to disk
     let map_path = content_dir.join(Path::new(relative_path));
     let preview = match render_tbin_map_preview(content_dir, &map_path) {
         Ok(data_url) => CachedFishingMapPreview {
@@ -289,6 +426,8 @@ pub fn get_or_render_fishing_map_preview(
             error: Some(err),
         },
     };
+
+    save_preview_cache_to_disk(app, cache_key, map_id, fingerprint, &preview);
 
     if let Ok(mut guard) = preview_cache.lock() {
         let entry =

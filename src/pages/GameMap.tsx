@@ -187,7 +187,8 @@ export function GameMap({ selectedSaveId }: GameMapProps) {
   }, [])
 
   useEffect(() => {
-    if (!selectedId) { setSelectedMap(null); return }
+    setSelectedMap(null)
+    if (!selectedId) { return }
     let canceled = false
     async function loadDetail() {
       setLoadingDetail(true)
@@ -754,7 +755,7 @@ export function GameMap({ selectedSaveId }: GameMapProps) {
           )}
 
           {/* Empty state */}
-          {!loading && !selectedMap && (
+          {!loading && !loadingDetail && !selectedMap && (
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="rounded-md border border-border/70 bg-popover/92 px-4 py-3 text-sm text-muted-foreground">{t("fishingMap.noMapToDisplay")}</div>
             </div>
