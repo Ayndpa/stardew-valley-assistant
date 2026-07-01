@@ -148,18 +148,6 @@
       "loginButton": "登录 NexusMods",
       "waitingLogin": "等待登录..."
     },
-    "notifications": {
-      "title": "提醒设置",
-      "description": "配置节日和生日提醒",
-      "festival": "节日提前提醒",
-      "festivalDesc": "在节日前一天提醒你",
-      "birthday": "生日提醒",
-      "birthdayDesc": "在村民生日当天提醒送礼",
-      "crops": "作物成熟提醒",
-      "cropsDesc": "当作物成熟时提醒你收获",
-      "enable": "开启",
-      "disable": "关闭"
-    },
     "appearance": {
       "title": "外观设置",
       "description": "自定义应用的主题模式与星露谷季节配色",

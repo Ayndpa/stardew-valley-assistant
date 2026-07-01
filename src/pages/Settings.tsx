@@ -7,7 +7,6 @@ import { useNexus } from "@/lib/nexus-provider"
 import { BackdropType } from "@/lib/backdrop-provider"
 import { useTranslation } from "react-i18next"
 import {
-  Bell,
   Database,
 } from "lucide-react"
 
@@ -268,39 +267,6 @@ export function Settings({
           onCopyApiKey={onCopyApiKey}
           onRefreshApiKey={onRefreshApiKey}
         />
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Bell className="h-5 w-5" />
-              {t("settings.notifications.title")}
-            </CardTitle>
-            <CardDescription>{t("settings.notifications.description")}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between p-3 rounded-lg bg-accent/50">
-              <div>
-                <p className="text-sm font-medium">{t("settings.notifications.festival")}</p>
-                <p className="text-xs text-muted-foreground">{t("settings.notifications.festivalDesc")}</p>
-              </div>
-              <Button variant="outline" size="sm">{t("settings.notifications.enable")}</Button>
-            </div>
-            <div className="flex items-center justify-between p-3 rounded-lg bg-accent/50">
-              <div>
-                <p className="text-sm font-medium">{t("settings.notifications.birthday")}</p>
-                <p className="text-xs text-muted-foreground">{t("settings.notifications.birthdayDesc")}</p>
-              </div>
-              <Button variant="outline" size="sm">{t("settings.notifications.enable")}</Button>
-            </div>
-            <div className="flex items-center justify-between p-3 rounded-lg bg-accent/50">
-              <div>
-                <p className="text-sm font-medium">{t("settings.notifications.crops")}</p>
-                <p className="text-xs text-muted-foreground">{t("settings.notifications.cropsDesc")}</p>
-              </div>
-              <Button variant="outline" size="sm">{t("settings.notifications.enable")}</Button>
-            </div>
-          </CardContent>
-        </Card>
 
         <AppearanceCard
           themeMode={themeMode}

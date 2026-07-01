@@ -148,18 +148,6 @@
       "loginButton": "Log in to NexusMods",
       "waitingLogin": "Waiting for login..."
     },
-    "notifications": {
-      "title": "Notification Settings",
-      "description": "Configure festival and birthday notifications",
-      "festival": "Festival Advance Alert",
-      "festivalDesc": "Remind you one day before festivals",
-      "birthday": "Birthday Alert",
-      "birthdayDesc": "Remind you to send gifts on villager birthdays",
-      "crops": "Crop Maturity Alert",
-      "cropsDesc": "Remind you to harvest when crops are mature",
-      "enable": "Enable",
-      "disable": "Disable"
-    },
     "appearance": {
       "title": "Appearance Settings",
       "description": "Customize application theme mode and Stardew season palette",
