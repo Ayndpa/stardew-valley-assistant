@@ -357,3 +357,57 @@ pub fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> std::io::Re
     }
     Ok(())
 }
+
+pub fn migrate_old_app_data(app: &tauri::App) {
+    use tauri::Manager;
+    let path_resolver = app.path();
+    
+    let new_dir = match path_resolver.app_data_dir() {
+        Ok(dir) => dir,
+        Err(e) => {
+            error!("[Migration] Failed to resolve new app data directory: {}", e);
+            return;
+        }
+    };
+
+    let Some(parent_dir) = new_dir.parent() else {
+        error!("[Migration] New app data directory has no parent directory");
+        return;
+    };
+
+    let old_dir = parent_dir.join("com.administrator.stardew-valley-assistant");
+
+    if !old_dir.exists() || !old_dir.is_dir() {
+        info!("[Migration] Old app data directory not found or is not a directory. Skipping migration.");
+        return;
+    }
+
+    info!("[Migration] Found old app data directory: {}. Starting migration to: {}", old_dir.display(), new_dir.display());
+
+    // Try renaming the directory first
+    if !new_dir.exists() {
+        match fs::rename(&old_dir, &new_dir) {
+            Ok(_) => {
+                info!("[Migration] Successfully migrated app data by renaming directory.");
+                return;
+            }
+            Err(e) => {
+                warn!("[Migration] Failed to rename old app data directory: {}. Falling back to copy.", e);
+            }
+        }
+    }
+
+    // Fallback: Copy all contents recursively
+    if let Err(e) = copy_dir_all(&old_dir, &new_dir) {
+        error!("[Migration] Failed to copy old app data to new directory: {}", e);
+        return;
+    }
+
+    // Clean up old directory
+    if let Err(e) = fs::remove_dir_all(&old_dir) {
+        error!("[Migration] Failed to remove old app data directory after copying: {}", e);
+    } else {
+        info!("[Migration] Successfully migrated and cleaned up old app data directory.");
+    }
+}
+

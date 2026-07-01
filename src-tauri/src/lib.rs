@@ -634,6 +634,9 @@ pub fn run() {
             fetch_afdian_sponsors
         ])
         .setup(|app| {
+            // Migrate old app data if exists
+            crate::utils::migrate_old_app_data(app);
+
             let app_handle = app.handle();
 
             // Start the named pipe server for bidirectional communication with the mod

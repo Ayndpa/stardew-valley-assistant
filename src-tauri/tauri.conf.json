@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "stardew-valley-assistant",
-  "version": "0.1.4",
-  "identifier": "com.administrator.stardew-valley-assistant",
+  "version": "0.1.5",
+  "identifier": "io.github.ayndpa.stardew-valley-assistant",
   "build": {
     "beforeDevCommand": "bun run dev",
     "devUrl": "http://localhost:1420",
