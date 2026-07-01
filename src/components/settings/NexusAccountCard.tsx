@@ -1,9 +1,10 @@
-import { useState, useEffect } from "react"
-import { Globe, User, LogOut, Loader2, KeyRound, Copy, Check } from "lucide-react"
+import { useState } from "react"
+import { User, LogOut, Loader2, KeyRound, Copy, Check, Eye, EyeOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { useTranslation } from "react-i18next"
+import nexusLogo from "@/assets/Nexus_Mods_Logo.svg"
 
 interface NexusAccountCardProps {
   nexusChecking: boolean
@@ -32,34 +33,15 @@ export function NexusAccountCard({
   onCopyApiKey,
   onRefreshApiKey,
 }: NexusAccountCardProps) {
-  const [iconSrc, setIconSrc] = useState<string>()
   const { t } = useTranslation()
-
-  useEffect(() => {
-    async function loadIcon() {
-      if (typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__) {
-        try {
-          const { convertFileSrc } = await import("@tauri-apps/api/core")
-          const src = convertFileSrc("C:\\Users\\Administrator\\Downloads\\ODF.png")
-          setIconSrc(src)
-        } catch (err) {
-          console.error("Failed to load Nexus account icon:", err)
-        }
-      }
-    }
-    loadIcon()
-  }, [])
+  const [showApiKey, setShowApiKey] = useState(false)
 
   return (
     <Card className="overflow-hidden border border-border/80">
       <CardHeader className="bg-gradient-to-r from-orange-500/10 via-transparent to-transparent pb-4">
         <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-full overflow-hidden flex items-center justify-center border border-orange-500/20 shrink-0 bg-orange-500/5">
-            {iconSrc ? (
-              <img src={iconSrc} alt="NexusMods" className="h-full w-full object-cover" />
-            ) : (
-              <Globe className="h-5 w-5 text-orange-500" />
-            )}
+          <div className="h-9 px-2.5 rounded-md bg-black/40 flex items-center justify-center shrink-0 border border-white/5">
+            <img src={nexusLogo} alt="NexusMods" className="h-5 w-auto object-contain" />
           </div>
           <div>
             <CardTitle className="text-lg font-bold">{t("settings.nexus.title")}</CardTitle>
@@ -153,10 +135,18 @@ export function NexusAccountCard({
               ) : nexusApiKey ? (
                 <div className="relative">
                   <Input
+                    type={showApiKey ? "text" : "password"}
                     readOnly
                     value={nexusApiKey}
-                    className="font-mono text-xs pr-2 bg-translucent-dark-400 opacity-70 truncate"
+                    className="font-mono text-xs pr-8 bg-translucent-dark-400 opacity-70 truncate"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowApiKey(!showApiKey)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    {showApiKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                  </button>
                 </div>
               ) : (
                 <p className="text-xs text-muted-foreground">{t("settings.nexus.noApiKey")}</p>
@@ -166,12 +156,8 @@ export function NexusAccountCard({
         ) : (
           <div className="flex items-center justify-between p-3 rounded-lg bg-accent/30 border border-border/60">
             <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-full overflow-hidden flex items-center justify-center bg-muted">
-                {iconSrc ? (
-                  <img src={iconSrc} alt="NexusMods" className="h-full w-full object-cover" />
-                ) : (
-                  <Globe className="h-4 w-4 text-muted-foreground" />
-                )}
+              <div className="h-8 px-2 rounded-md bg-black/40 flex items-center justify-center shrink-0 border border-white/5">
+                <img src={nexusLogo} alt="NexusMods" className="h-4 w-auto object-contain" />
               </div>
               <div>
                 <p className="text-sm font-medium">{t("settings.nexus.notLoggedIn")}</p>
@@ -189,10 +175,8 @@ export function NexusAccountCard({
             >
               {nexusLoggingIn ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
-              ) : iconSrc ? (
-                <img src={iconSrc} alt="" className="h-4 w-4 object-cover rounded-full" />
               ) : (
-                <Globe className="h-4 w-4" />
+                <img src={nexusLogo} alt="" className="h-4 w-auto object-contain" />
               )}
               {nexusLoggingIn ? t("settings.nexus.waitingLogin") : t("settings.nexus.loginButton")}
             </Button>
