@@ -1362,6 +1362,7 @@
       "deleteProfile": "删除档案",
       "viewDetails": "查看详情",
       "modStatusList": "模组状态列表：",
+      "notInstalled": "未安装",
       "cannotImportRunning": "游戏运行中，不能导入档案",
       "cannotSaveRunning": "游戏运行中，不能保存档案",
       "cannotApplyRunning": "游戏运行中，不能应用档案",

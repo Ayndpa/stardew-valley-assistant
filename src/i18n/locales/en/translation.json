@@ -1492,6 +1492,7 @@
       "deleteProfile": "Delete Profile",
       "viewDetails": "View Details",
       "modStatusList": "Mod Status List:",
+      "notInstalled": "Not Installed",
       "cannotImportRunning": "Cannot import profiles while game is running",
       "cannotSaveRunning": "Cannot save profiles while game is running",
       "cannotApplyRunning": "Cannot apply profiles while game is running",

@@ -24,7 +24,8 @@ import {
   Play,
   Plus,
   Languages,
-  Edit2
+  Edit2,
+  FileJson
 } from "lucide-react"
 
 import { ModTranslateModal } from "./ModTranslateModal"
@@ -279,6 +280,7 @@ export function ModList({
   const [newProfileName, setNewProfileName] = useState("")
   const [isSaving, setIsSaving] = useState(false)
   const [isApplyingId, setIsApplyingId] = useState<string | null>(null)
+  const [expandedProfileId, setExpandedProfileId] = useState<string | null>(null)
   const profileRef = useRef<HTMLDivElement>(null)
 
   // Close profile dropdown on outside click
@@ -288,6 +290,7 @@ export function ModList({
       if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
         setProfileOpen(false)
         setShowSaveForm(false)
+        setExpandedProfileId(null)
       }
     }
     document.addEventListener("mousedown", handler)
@@ -316,6 +319,7 @@ export function ModList({
   const handleProfileToggle = useCallback(() => {
     const next = !profileOpen
     setProfileOpen(next)
+    if (!next) setExpandedProfileId(null)
     if (next && profiles.length === 0) loadProfiles()
   }, [profileOpen, profiles.length, loadProfiles])
 
@@ -796,47 +800,85 @@ export function ModList({
                     profiles.map((profile) => {
                       const isApplying = isApplyingId === profile.id
                       const enabled = profile.modStates.filter((m) => m.isEnabled).length
+                      const isExpanded = expandedProfileId === profile.id
                       return (
-                        <div
-                          key={profile.id}
-                          className="flex items-center gap-2 px-3 py-2 border-b border-border/30 last:border-0 hover:bg-accent/30 transition-colors group"
-                        >
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-xs font-semibold truncate">{profile.name}</span>
-                              <Badge variant="secondary" className="text-[9px] px-1 py-0 h-3.5 shrink-0">
-                                {enabled}/{profile.modStates.length}
-                              </Badge>
+                        <div key={profile.id} className="border-b border-border/30 last:border-0">
+                          {/* Profile Row */}
+                          <div className="flex items-center gap-2 px-3 py-2 hover:bg-accent/30 transition-colors group">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs font-semibold truncate">{profile.name}</span>
+                                <Badge variant="secondary" className="text-[9px] px-1 py-0 h-3.5 shrink-0">
+                                  {enabled}/{profile.modStates.length}
+                                </Badge>
+                              </div>
+                              <p className="text-[9px] text-muted-foreground truncate">
+                                {formatTimestamp(profile.updatedAt)}
+                              </p>
                             </div>
-                            <p className="text-[9px] text-muted-foreground truncate">
-                              {formatTimestamp(profile.updatedAt)}
-                            </p>
+                            <div className="flex items-center gap-0.5 shrink-0">
+                              <button
+                                onClick={() => handleApplyProfile(profile)}
+                                disabled={isApplying || isGameRunning}
+                                className="p-1 hover:bg-primary/10 text-primary rounded transition-colors"
+                                title={t("mods.profiles.apply")}
+                              >
+                                {isApplying ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+                              </button>
+                              <button
+                                onClick={() => handleExportProfile(profile)}
+                                className="p-1 hover:bg-accent text-muted-foreground hover:text-foreground rounded transition-colors opacity-0 group-hover:opacity-100"
+                                title={t("mods.profiles.exportProfile")}
+                              >
+                                <Download className="h-3 w-3" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteProfile(profile)}
+                                disabled={isGameRunning}
+                                className="p-1 hover:bg-destructive/10 text-muted-foreground hover:text-destructive rounded transition-colors opacity-0 group-hover:opacity-100"
+                                title={t("mods.profiles.deleteProfile")}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                              <button
+                                onClick={() => setExpandedProfileId(isExpanded ? null : profile.id)}
+                                className="p-1 hover:bg-accent text-muted-foreground hover:text-foreground rounded transition-colors"
+                                title={t("mods.profiles.viewDetails")}
+                              >
+                                <FileJson className="h-3 w-3" />
+                              </button>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-0.5 shrink-0">
-                            <button
-                              onClick={() => handleApplyProfile(profile)}
-                              disabled={isApplying || isGameRunning}
-                              className="p-1 hover:bg-primary/10 text-primary rounded transition-colors"
-                              title={t("mods.profiles.apply")}
-                            >
-                              {isApplying ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
-                            </button>
-                            <button
-                              onClick={() => handleExportProfile(profile)}
-                              className="p-1 hover:bg-accent text-muted-foreground hover:text-foreground rounded transition-colors opacity-0 group-hover:opacity-100"
-                              title={t("mods.profiles.exportProfile")}
-                            >
-                              <Download className="h-3 w-3" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteProfile(profile)}
-                              disabled={isGameRunning}
-                              className="p-1 hover:bg-destructive/10 text-muted-foreground hover:text-destructive rounded transition-colors opacity-0 group-hover:opacity-100"
-                              title={t("mods.profiles.deleteProfile")}
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </button>
-                          </div>
+
+                          {/* Expanded Detail */}
+                          {isExpanded && (
+                            <div className="px-3 pb-2.5 pt-1.5 bg-accent/15 dark:bg-accent/5 max-h-[150px] overflow-y-auto border-t border-border/20">
+                              <p className="text-[9px] text-muted-foreground font-semibold mb-1.5">{t("mods.profiles.modStatusList")}</p>
+                              <div className="flex flex-col gap-1">
+                                {profile.modStates.map((entry) => {
+                                  const cleanFolderName = entry.folderName.replace(/(^|\/)\./g, "$1")
+                                  const exists = currentMods.some((m) => m.folderName === cleanFolderName)
+                                  return (
+                                    <div
+                                      key={entry.folderName}
+                                      className="flex items-center gap-1.5 text-[9px] py-0.5"
+                                    >
+                                      <div className={`w-1 h-1 rounded-full shrink-0 ${!exists ? "bg-destructive/60" : entry.isEnabled ? "bg-green-500" : "bg-zinc-400"}`} />
+                                      <span className={`truncate ${
+                                        !exists
+                                          ? "text-destructive/70 dark:text-destructive/60"
+                                          : entry.isEnabled
+                                          ? "text-foreground"
+                                          : "text-muted-foreground line-through"
+                                      }`}>
+                                        {entry.folderName} {!exists && `(${t("mods.profiles.notInstalled")})`}
+                                      </span>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )
                     })

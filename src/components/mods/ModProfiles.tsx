@@ -478,17 +478,27 @@ export function ModProfiles({ currentMods, onApplyProfile, showToast, isGameRunn
                   <div className="border-t border-border/60 px-3.5 py-3 bg-accent/10 dark:bg-accent/5 max-h-[200px] overflow-y-auto">
                     <p className="text-[10px] text-muted-foreground font-semibold mb-2">{t("mods.profiles.modStatusList")}</p>
                     <div className="grid grid-cols-2 gap-1">
-                      {profile.modStates.map((entry) => (
-                        <div
-                          key={entry.folderName}
-                          className="flex items-center gap-1.5 text-[10px] py-0.5"
-                        >
-                          <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${entry.isEnabled ? "bg-green-500" : "bg-zinc-400"}`} />
-                          <span className={`truncate ${entry.isEnabled ? "text-foreground" : "text-muted-foreground line-through"}`}>
-                            {entry.folderName}
-                          </span>
-                        </div>
-                      ))}
+                      {profile.modStates.map((entry) => {
+                        const cleanFolderName = entry.folderName.replace(/(^|\/)\./g, "$1")
+                        const exists = currentMods.some((m) => m.folderName === cleanFolderName)
+                        return (
+                          <div
+                            key={entry.folderName}
+                            className="flex items-center gap-1.5 text-[10px] py-0.5"
+                          >
+                            <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${!exists ? "bg-destructive/60" : entry.isEnabled ? "bg-green-500" : "bg-zinc-400"}`} />
+                            <span className={`truncate ${
+                              !exists
+                                ? "text-destructive/70 dark:text-destructive/60"
+                                : entry.isEnabled
+                                ? "text-foreground"
+                                : "text-muted-foreground line-through"
+                            }`}>
+                              {entry.folderName} {!exists && `(${t("mods.profiles.notInstalled")})`}
+                            </span>
+                          </div>
+                        )
+                      })}
                     </div>
                   </div>
                 )}
