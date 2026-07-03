@@ -32,6 +32,7 @@ export function Dashboard({ selectedSaveId }: DashboardProps) {
     removeWidget,
     resetLayout,
     toggleEditMode,
+    updateWidgetConfig,
   } = useDashboardLayout()
 
   // Fetch save detail
@@ -134,6 +135,7 @@ export function Dashboard({ selectedSaveId }: DashboardProps) {
         itemEntries={itemEntries}
         onLayoutChange={updateWidgetLayouts}
         onRemoveWidget={removeWidget}
+        onConfigChange={updateWidgetConfig}
       />
 
       {showPicker && (

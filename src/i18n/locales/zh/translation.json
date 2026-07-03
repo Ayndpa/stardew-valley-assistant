@@ -441,7 +441,8 @@
         "progress": "收集进度",
         "info": "信息概览",
         "social": "社交",
-        "time": "时间"
+        "time": "时间",
+        "media": "图片与媒体"
       },
       "weatherForecast": {
         "name": "天气预报",
@@ -486,6 +487,34 @@
       "realTimeClock": {
         "name": "实时时钟",
         "description": "当前现实时间和日期"
+      },
+      "customImage": {
+        "name": "自定义图片",
+        "description": "展示你喜欢的图片，支持URL或本地上传",
+        "empty": {
+          "title": "尚未设置图片",
+          "hint": "进入编辑模式后点击设置按钮上传图片"
+        },
+        "config": {
+          "title": "图片组件设置",
+          "subtitle": "自定义显示内容与样式",
+          "sourceLabel": "图片来源",
+          "urlPlaceholder": "输入图片 URL...",
+          "uploadButton": "从本地上传图片",
+          "localFileNote": "已加载本地图片（以 Base64 存储）",
+          "captionLabel": "图片标题",
+          "captionPlaceholder": "输入标题（可选）",
+          "showCaption": "显示标题覆盖层",
+          "fitLabel": "填充方式",
+          "fitCover": "裁剪填充",
+          "fitContain": "等比适应",
+          "fitFill": "拉伸填充",
+          "radiusLabel": "圆角",
+          "radiusNone": "直角",
+          "radiusSm": "小",
+          "radiusMd": "中",
+          "radiusLg": "大"
+        }
       }
     },
     "editMode": {

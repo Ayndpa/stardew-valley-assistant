@@ -88,8 +88,10 @@ export interface WidgetDefinition {
   icon: LucideIcon
   defaultSize: WidgetSize
   removable?: boolean
-  category: "stats" | "weather" | "progress" | "info" | "social" | "time"
+  category: "stats" | "weather" | "progress" | "info" | "social" | "time" | "media"
   render: (props: WidgetRenderProps) => ReactNode
+  /** Optional: render a settings/config panel (shown in a modal when the gear icon is clicked in edit mode) */
+  renderConfig?: (props: WidgetRenderProps) => ReactNode
 }
 
 /** Context passed to every widget's render function */
@@ -100,6 +102,8 @@ export interface WidgetRenderProps {
   itemEntries: import("../items/types").ItemEntry[] | null
   config: Record<string, unknown>
   isEditMode: boolean
+  /** Call this to persist config changes for this widget instance */
+  onConfigChange: (patch: Record<string, unknown>) => void
 }
 
 /**

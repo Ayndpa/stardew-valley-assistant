@@ -112,6 +112,20 @@ export function useDashboardLayout() {
     setLayout(getDefaultLayout())
   }, [])
 
+  const updateWidgetConfig = useCallback(
+    (instanceId: string, patch: Record<string, unknown>) => {
+      setLayout((prev) => ({
+        ...prev,
+        widgets: prev.widgets.map((w) =>
+          w.instanceId === instanceId
+            ? { ...w, config: { ...(w.config ?? {}), ...patch } }
+            : w
+        ),
+      }))
+    },
+    [],
+  )
+
   const toggleEditMode = useCallback(() => {
     setIsEditMode((prev) => !prev)
   }, [])
@@ -124,5 +138,6 @@ export function useDashboardLayout() {
     removeWidget,
     resetLayout,
     toggleEditMode,
+    updateWidgetConfig,
   }
 }

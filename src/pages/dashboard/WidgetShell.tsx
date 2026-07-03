@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import { GripVertical, X } from "lucide-react"
+import { GripVertical, X, Settings2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useTranslation } from "react-i18next"
 
@@ -8,9 +8,11 @@ interface WidgetShellProps {
   isEditMode: boolean
   canRemove: boolean
   onRemove: () => void
+  /** Optional: show a gear button in edit mode to open widget settings */
+  onSettings?: () => void
 }
 
-export function WidgetShell({ children, isEditMode, canRemove, onRemove }: WidgetShellProps) {
+export function WidgetShell({ children, isEditMode, canRemove, onRemove, onSettings }: WidgetShellProps) {
   const { t } = useTranslation()
 
   return (
@@ -31,6 +33,21 @@ export function WidgetShell({ children, isEditMode, canRemove, onRemove }: Widge
               {t("dashboard.editMode.dragHint", "拖拽移动")}
             </span>
           </div>
+
+          {/* Settings button */}
+          {onSettings && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute top-1 right-8 z-10 h-6 w-6 rounded-full hover:bg-primary/10 hover:text-primary"
+              onClick={(e) => {
+                e.stopPropagation()
+                onSettings()
+              }}
+            >
+              <Settings2 className="h-3.5 w-3.5" />
+            </Button>
+          )}
 
           {/* Remove button */}
           {canRemove && (

@@ -7,7 +7,7 @@ import { useTranslation } from "react-i18next"
 import { getAllWidgets } from "./widget-registry"
 import type { WidgetInstance, WidgetDefinition } from "./types"
 
-const CATEGORY_ORDER: WidgetDefinition["category"][] = ["stats", "weather", "progress", "info", "social", "time"]
+const CATEGORY_ORDER: WidgetDefinition["category"][] = ["stats", "weather", "progress", "info", "social", "time", "media"]
 
 interface WidgetPickerProps {
   currentWidgets: WidgetInstance[]

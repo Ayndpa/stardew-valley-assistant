@@ -441,7 +441,8 @@
         "progress": "Collection",
         "info": "Overview",
         "social": "Social",
-        "time": "Time"
+        "time": "Time",
+        "media": "Images & Media"
       },
       "weatherForecast": {
         "name": "Weather Forecast",
@@ -486,6 +487,34 @@
       "realTimeClock": {
         "name": "Real Time Clock",
         "description": "Current real-world time and date"
+      },
+      "customImage": {
+        "name": "Custom Image",
+        "description": "Display any image you like — paste a URL or upload a local file",
+        "empty": {
+          "title": "No image set",
+          "hint": "Enter edit mode and click the settings button to add an image"
+        },
+        "config": {
+          "title": "Image Widget Settings",
+          "subtitle": "Customize image source and display style",
+          "sourceLabel": "Image Source",
+          "urlPlaceholder": "Paste an image URL...",
+          "uploadButton": "Upload from device",
+          "localFileNote": "Local image loaded (stored as Base64)",
+          "captionLabel": "Caption",
+          "captionPlaceholder": "Enter a caption (optional)",
+          "showCaption": "Show caption overlay",
+          "fitLabel": "Fit Mode",
+          "fitCover": "Cover",
+          "fitContain": "Contain",
+          "fitFill": "Fill",
+          "radiusLabel": "Corner Radius",
+          "radiusNone": "None",
+          "radiusSm": "Small",
+          "radiusMd": "Medium",
+          "radiusLg": "Large"
+        }
       }
     },
     "editMode": {
