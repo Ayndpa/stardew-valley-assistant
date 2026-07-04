@@ -2,6 +2,18 @@
 
 一个基于 Tauri + React + TypeScript 构建的现代星露谷物语工具助手。旨在为农场主们提供最便捷的模组管理、存档编辑及游戏数据查询体验。
 
+<p align="center">
+  <a href="https://ayndpa.github.io/stardew-valley-assistant-pages/">
+    <img src="https://img.shields.io/badge/🌐_宣传网站-在线预览-22c55e?style=for-the-badge&logo=github&logoColor=white" alt="宣传网站">
+  </a>
+  &nbsp;
+  <a href="https://github.com/Ayndpa/stardew-valley-assistant-pages">
+    <img src="https://img.shields.io/badge/📄_页面源码-Pages_仓库-18181b?style=for-the-badge&logo=github&logoColor=white" alt="Pages 仓库">
+  </a>
+</p>
+
+> 🌐 在线宣传页：[ayndpa.github.io/stardew-valley-assistant-pages](https://ayndpa.github.io/stardew-valley-assistant-pages/) — 与本应用同源的季节主题、交互式配色预览，点击季节卡片即可切换全站配色。
+
 ## ✨ 主要功能
 
 - 📦 **模组管理**：一键安装 SMAPI 及各类模组，轻松管理你的模组配置。
@@ -21,6 +33,7 @@
 </p>
 
 - **QQ 交流群**：[903067633](https://qm.qq.com/q/baMrNVj6Za)
+- **🌐 宣传网站**：[ayndpa.github.io/stardew-valley-assistant-pages](https://ayndpa.github.io/stardew-valley-assistant-pages/)（[源码仓库](https://github.com/Ayndpa/stardew-valley-assistant-pages)）
 - **反馈建议**：请在 GitHub Issues 中提出
 
 ## 🛠️ 技术栈

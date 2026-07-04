@@ -2,6 +2,7 @@
   "name": "stardew-valley-assistant",
   "private": true,
   "version": "0.1.5",
+  "description": "基于 Tauri + React + TypeScript 构建的星露谷物语助手。在线宣传页：https://ayndpa.github.io/stardew-valley-assistant-pages/",
   "type": "module",
   "scripts": {
     "dev": "vite",
