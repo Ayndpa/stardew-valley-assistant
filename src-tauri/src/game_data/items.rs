@@ -118,7 +118,7 @@ fn text_or(value: String, fallback: &str) -> String {
     }
 }
 
-/// 价格数据来源：优先伴侣模组导出文件，否则为 XNB 解包。
+/// 价格数据来源：优先游戏内运行时的导出文件，否则为 XNB 解包。
 fn resolve_data_source() -> (String, Option<String>) {
     match super::item_prices::read_game_data_export() {
         Some(export) => ("export".to_string(), export.generated_at),
@@ -246,7 +246,7 @@ fn load_item_snapshot(
 ) -> Result<Arc<ItemSnapshot>, String> {
     let content_dir = super::locate_content_dir(game_dir.as_deref())?;
     let lang_str = lang.as_deref().unwrap_or("zh").to_lowercase();
-    // 快照里含有来自伴侣模组导出文件的价格，导出文件更新后必须重建。
+    // 快照里含有来自运行时导出文件的价格，导出文件更新后必须重建。
     let cache_key = format!(
         "{}:{}:{}",
         content_dir.to_string_lossy(),

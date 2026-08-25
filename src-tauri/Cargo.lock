@@ -3925,6 +3925,7 @@ dependencies = [
  "tokio",
  "ureq",
  "window-vibrancy",
+ "windows-sys 0.59.0",
  "zip",
 ]
 

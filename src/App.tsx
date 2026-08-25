@@ -325,27 +325,25 @@ function App() {
     checkBetaOnStart()
   }, [])
 
-  // Auto-upgrade bundled assistant mod on startup
+  // 清理从旧版本升级残留的伴侣模组：它会与新的游戏内运行时争抢同一条命名管道，
+  // 两者只有一个能连上。从助手启动游戏时也会清一次，这里覆盖直接从 Steam 启动的用户。
   useEffect(() => {
-    const autoUpgradeMod = async () => {
+    const cleanupLegacyMod = async () => {
       if (typeof window === "undefined" || !(window as any).__TAURI_INTERNALS__) return
       const gameDir = localStorage.getItem("stardewGameDirectory")
       if (!gameDir) return
       try {
         const { invoke } = await import("@tauri-apps/api/core")
-        const result = await invoke<{ upgraded: boolean; message: string }>(
-          "auto_upgrade_bundled_mod",
-          { gameDir }
-        )
-        if (result.upgraded) {
+        const removed = await invoke<boolean>("cleanup_legacy_mod", { gameDir })
+        if (removed) {
           setModListRefreshSignal((value) => value + 1)
-          showGlobalToast("助手模组已自动升级到最新版本。", "info")
+          showGlobalToast("已移除旧版助手伴侣模组，实时数据现在无需安装模组即可使用。", "info")
         }
       } catch {
-        // Silently ignore auto-upgrade failures
+        // 清理失败不影响使用，忽略
       }
     }
-    autoUpgradeMod()
+    cleanupLegacyMod()
   }, [])
 
   const handleDownloadUpdate = async (url: string) => {
@@ -361,31 +359,28 @@ function App() {
   // Custom hooks for launcher, deep link and drag and drop
   const { isGameRunning, handleLaunchGame, handleForceKillGame } = useGameLauncher({ ensureGameDirectoryReady, showGlobalToast })
 
-  const handleInstallNpcLocationsMod = useCallback(async () => {
-    if (isGameRunning) {
-      showGlobalToast("游戏运行中不能安装模组，请退出游戏后再试。", "warning")
+  // 把助手运行时挂到已经在跑的游戏上。从助手启动的游戏会自动挂载，
+  // 这里针对的是玩家直接从 Steam / 桌面快捷方式启动的情况。
+  const handleAttachRuntime = useCallback(async () => {
+    if (typeof window === "undefined" || !(window as any).__TAURI_INTERNALS__) {
+      showGlobalToast("当前运行环境不支持该操作，请在桌面应用中运行。", "warning")
       return
     }
 
-    const gameDir = await ensureGameDirectoryReady()
-    if (!gameDir) return
-
-    if (typeof window === "undefined" || !(window as any).__TAURI_INTERNALS__) {
-      showGlobalToast("当前运行环境不支持安装内置模组，请在桌面应用中运行。", "warning")
+    if (!isGameRunning) {
+      showGlobalToast("未检测到运行中的游戏。用助手的「一键启动」打开游戏可自动连接。", "warning")
       return
     }
 
     try {
       const { invoke } = await import("@tauri-apps/api/core")
-      await invoke("install_bundled_assistant_mod", { gameDir })
-      setModListRefreshSignal((value) => value + 1)
-      setCurrentPage("mods")
-      showGlobalToast("已安装 NPC 实时位置模组。请通过 SMAPI 启动游戏后再回到村民关系查看实时位置。", "success")
+      await invoke("attach_runtime")
+      showGlobalToast("已连接到运行中的游戏，加载存档后即可看到实时数据。", "success")
     } catch (err) {
-      console.error("Failed to install bundled NPC locations mod:", err)
-      showGlobalToast("安装 NPC 实时位置模组失败: " + String(err), "warning")
+      console.error("attach_runtime failed:", err)
+      showGlobalToast("连接游戏失败: " + String(err), "warning")
     }
-  }, [ensureGameDirectoryReady, isGameRunning, showGlobalToast])
+  }, [isGameRunning, showGlobalToast])
 
   const {
     tasks: downloadTasks,
@@ -457,13 +452,12 @@ function App() {
           />
         )
       case "crops":
-        return <Crops selectedSaveId={selectedSaveId} onNavigate={setCurrentPage} />
+        return <Crops selectedSaveId={selectedSaveId} />
       case "items":
         return (
           <Items
             navigationTarget={itemNavigationTarget}
             onNavigationHandled={() => setItemNavigationTarget(null)}
-            onNavigate={setCurrentPage}
           />
         )
       case "npcs":
@@ -474,7 +468,7 @@ function App() {
               setItemNavigationTarget(itemName)
               setCurrentPage("items")
             }}
-            onInstallNpcLocationsMod={handleInstallNpcLocationsMod}
+            onAttachRuntime={handleAttachRuntime}
           />
         )
       case "calendar":
@@ -523,7 +517,7 @@ function App() {
           />
         )
       case "animals":
-        return <Animals selectedSaveId={selectedSaveId} onNavigate={setCurrentPage} />
+        return <Animals selectedSaveId={selectedSaveId} />
       case "saveEditor":
         return (
           <SaveEditor
@@ -563,7 +557,6 @@ function App() {
             refreshSignal={modListRefreshSignal}
             isGameRunning={isGameRunning}
             onQueueSmapiDownload={queueSmapiDownload}
-            onInstallNpcLocationsMod={handleInstallNpcLocationsMod}
           />
         )
       case "downloads":

@@ -7,11 +7,6 @@ use std::io::Write;
 use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-const ASSISTANT_MOD_DLL: &[u8] =
-    include_bytes!("../../bundled-mods/StardewValleyAssistant/bin/Release/StardewValleyAssistant.dll");
-const ASSISTANT_MOD_MANIFEST: &[u8] =
-    include_bytes!("../../bundled-mods/StardewValleyAssistant/manifest.json");
-
 #[derive(Deserialize, Debug)]
 struct Manifest {
     #[serde(alias = "Name", alias = "name")]
@@ -553,117 +548,6 @@ pub async fn install_mod_from_zip(game_dir: String, zip_path: String) -> Result<
     tokio::task::spawn_blocking(move || install_mod_from_zip_sync(game_dir, zip_path))
         .await
         .map_err(|err| format!("安装任务执行失败: {}", err))?
-}
-
-/// Write the bundled assistant mod files (DLL + manifest) directly into Mods/StardewValleyAssistant/.
-fn write_bundled_mod_files(game_dir: &str) -> Result<(), String> {
-    let mod_dir = Path::new(game_dir)
-        .join("Mods")
-        .join("StardewValleyAssistant");
-    fs::create_dir_all(&mod_dir).map_err(|e| format!("创建模组目录失败: {}", e))?;
-
-    fs::write(mod_dir.join("manifest.json"), ASSISTANT_MOD_MANIFEST)
-        .map_err(|e| format!("写入 manifest.json 失败: {}", e))?;
-    fs::write(mod_dir.join("StardewValleyAssistant.dll"), ASSISTANT_MOD_DLL)
-        .map_err(|e| format!("写入 StardewValleyAssistant.dll 失败: {}", e))?;
-
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn install_bundled_assistant_mod(game_dir: String) -> Result<Value, String> {
-    tokio::task::spawn_blocking(move || {
-        write_bundled_mod_files(&game_dir)?;
-        Ok(serde_json::json!({
-            "success": true,
-            "message": "mod installed"
-        }))
-    })
-    .await
-    .map_err(|err| format!("安装任务执行失败: {}", err))?
-}
-
-/// Parse a semver string like "1.0.0" into a comparable tuple.
-fn parse_semver(version: &str) -> Option<(u32, u32, u32)> {
-    let parts: Vec<&str> = version.trim().split('.').collect();
-    if parts.len() < 3 {
-        return None;
-    }
-    Some((
-        parts[0].parse().ok()?,
-        parts[1].parse().ok()?,
-        parts[2].parse().ok()?,
-    ))
-}
-
-/// Auto-upgrade the bundled assistant mod if an older version is already installed.
-/// Does nothing if the mod is not installed or is already up to date.
-#[tauri::command]
-pub async fn auto_upgrade_bundled_mod(game_dir: String) -> Result<Value, String> {
-    tokio::task::spawn_blocking(move || {
-        // Parse bundled version from the embedded manifest
-        let bundled_manifest: Manifest = serde_json::from_slice(ASSISTANT_MOD_MANIFEST)
-            .map_err(|e| format!("解析内置清单失败: {}", e))?;
-        let bundled_version = bundled_manifest
-            .version
-            .unwrap_or_else(|| "0.0.0".to_string());
-
-        // Check if the mod is already installed
-        let installed_manifest_path = Path::new(&game_dir)
-            .join("Mods")
-            .join("StardewValleyAssistant")
-            .join("manifest.json");
-
-        if !installed_manifest_path.exists() {
-            return Ok(serde_json::json!({
-                "upgraded": false,
-                "reason": "not_installed",
-                "bundled_version": bundled_version,
-                "message": "Mod is not installed, skipping auto-upgrade"
-            }));
-        }
-
-        // Read installed version
-        let installed_manifest_content = fs::read_to_string(&installed_manifest_path)
-            .map_err(|e| format!("读取已安装清单失败: {}", e))?;
-        let installed_manifest: Manifest =
-            serde_json::from_str(&clean_json_content(&installed_manifest_content))
-                .map_err(|e| format!("解析已安装清单失败: {}", e))?;
-        let installed_version = installed_manifest
-            .version
-            .unwrap_or_else(|| "0.0.0".to_string());
-
-        // Compare versions
-        let skip_reason = match (parse_semver(&bundled_version), parse_semver(&installed_version)) {
-            (Some(bundled), Some(installed)) if installed >= bundled => {
-                Some(("up_to_date", "Mod is already up to date"))
-            }
-            (Some(_), Some(_)) => None,
-            _ => Some(("version_parse_error", "Could not parse version strings")),
-        };
-
-        if let Some((reason, message)) = skip_reason {
-            return Ok(serde_json::json!({
-                "upgraded": false,
-                "reason": reason,
-                "installed_version": installed_version,
-                "bundled_version": bundled_version,
-                "message": message
-            }));
-        }
-
-        // Perform the upgrade — overwrite the two files directly
-        write_bundled_mod_files(&game_dir)?;
-
-        Ok(serde_json::json!({
-            "upgraded": true,
-            "from_version": installed_version,
-            "to_version": bundled_version,
-            "message": format!("Mod upgraded from {} to {}", installed_version, bundled_version)
-        }))
-    })
-    .await
-    .map_err(|err| format!("自动升级任务执行失败: {}", err))?
 }
 
 /// 读取 manifest.json 并返回可修改的 JSON 对象。

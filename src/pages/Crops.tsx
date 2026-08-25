@@ -2,11 +2,9 @@ import { useState, useEffect, useCallback } from "react"
 import { useTranslation } from "react-i18next"
 import { RefreshCw } from "lucide-react"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
-import { Button } from "@/components/ui/button"
 import { CropEncyclopedia } from "./crops/CropEncyclopedia"
 import { CropProfitCalculator } from "./crops/CropProfitCalculator"
 import { PlantedCropsDashboard } from "./crops/PlantedCropsDashboard"
-import type { Page } from "@/App"
 import {
   Crop,
   CropLookup,
@@ -19,7 +17,6 @@ import {
 
 interface CropsProps {
   selectedSaveId: string
-  onNavigate?: (page: Page) => void
 }
 
 function applyCropGameData(
@@ -37,7 +34,7 @@ function applyCropGameData(
   setGeneratedAt(data.generatedAt || null)
 }
 
-export function Crops({ selectedSaveId, onNavigate }: CropsProps) {
+export function Crops({ selectedSaveId }: CropsProps) {
   const { t, i18n } = useTranslation()
   const [plantedCrops, setPlantedCrops] = useState<PlantedCrop[]>([])
   const [loadingCrops, setLoadingCrops] = useState(true)
@@ -223,18 +220,8 @@ export function Crops({ selectedSaveId, onNavigate }: CropsProps) {
                     <RefreshCw className={`h-3 w-3 ${loadingGameData ? "animate-spin" : ""}`} />
                   </button>
                   <span className="text-muted-foreground hidden sm:inline">·</span>
-                  <span className="text-muted-foreground">{t("dataSource.xnbWarningDesc", { defaultValue: "由于未检测到助手伴侣模组的运行数据，展示的价格和周期可能无法适配您的模组修改（如微调售价和周期）。建议前往模组管理页面安装伴侣模组以同步实时数据。" })}</span>
+                  <span className="text-muted-foreground">{t("dataSource.xnbWarningDesc", { defaultValue: "由于未检测到游戏运行时的数据，展示的价格和周期可能无法适配您的模组修改（如微调售价和周期）。用助手启动游戏并加载一次存档即可自动同步。" })}</span>
                 </div>
-                {onNavigate && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 text-xs border-amber-300 hover:bg-amber-100 hover:text-amber-900 dark:border-amber-700 dark:hover:bg-amber-950/40 text-amber-800 dark:text-amber-300 flex-shrink-0"
-                    onClick={() => onNavigate("mods")}
-                  >
-                    {t("dataSource.goInstallMod", { defaultValue: "前往模组管理安装" })}
-                  </Button>
-                )}
               </div>
             </div>
           )}

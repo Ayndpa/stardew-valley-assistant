@@ -4,6 +4,7 @@ mod game;
 mod game_data;
 mod log_persist;
 mod mods;
+mod runtime;
 mod saves;
 mod smapi;
 mod updater;
@@ -30,14 +31,15 @@ use crate::game_data::{
     pipe_server::{self, PipeWriterHandle}, query_item_game_data,
 };
 use crate::mods::{
-    apply_profile, auto_upgrade_bundled_mod, check_mod_updates, check_nexus_login_status,
+    apply_profile, check_mod_updates, check_nexus_login_status,
     close_scraper_window, delete_mod, delete_profile, export_profile, export_profile_to_file,
     fetch_nexus_api_key, fetch_nexus_download_metadata, fetch_smapi_compatibility_mods,
-    import_profile, import_profile_from_file, install_bundled_assistant_mod, install_mod_from_zip,
+    import_profile, import_profile_from_file, install_mod_from_zip,
     install_nexus_mod, list_installed_mods, list_profiles, load_cached_mod_updates, logout_nexus,
     open_nexus_login_window, open_nexus_ranking_scraper, open_scraper_window, rename_local_mod, save_mod_config,
     save_profile, toggle_mod, write_mod_translation,
 };
+use crate::runtime::{attach_runtime, cleanup_legacy_mod, runtime_available};
 use crate::saves::{
     create_save_backup, delete_save_backup, get_children_data, get_npc_locations, get_npc_schedule,
     check_game_running, check_pipe_status, get_planted_crops, get_save_animals, get_save_detail,
@@ -602,8 +604,9 @@ pub fn run() {
             pause_download_task,
             resume_download_task,
             install_mod_from_zip,
-            install_bundled_assistant_mod,
-            auto_upgrade_bundled_mod,
+            attach_runtime,
+            runtime_available,
+            cleanup_legacy_mod,
             write_mod_translation,
             rename_local_mod,
             get_npc_portraits,

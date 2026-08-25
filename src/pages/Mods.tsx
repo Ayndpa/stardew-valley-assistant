@@ -3,7 +3,7 @@ import { Badge } from "@/components/ui/badge"
 import { useModManagement } from "@/hooks/useModManagement"
 import { useConfirm } from "@/hooks/useConfirm"
 import { Button } from "@/components/ui/button"
-import { CheckCircle2, AlertTriangle, Info, X, PackagePlus, ArrowUpCircle, Trash2, Loader2 } from "lucide-react"
+import { CheckCircle2, AlertTriangle, Info, X, ArrowUpCircle, Trash2, Loader2 } from "lucide-react"
 import type { Page } from "@/App"
 
 // Import subcomponents
@@ -33,10 +33,9 @@ type ModsProps = {
   refreshSignal?: number
   isGameRunning?: boolean
   onQueueSmapiDownload?: (request: QueueSmapiDownloadRequest) => { ok: boolean; message: string }
-  onInstallNpcLocationsMod?: () => void | Promise<void>
 }
 
-export function Mods({ onNavigate, refreshSignal, isGameRunning = false, onQueueSmapiDownload, onInstallNpcLocationsMod }: ModsProps) {
+export function Mods({ onNavigate, refreshSignal, isGameRunning = false, onQueueSmapiDownload }: ModsProps) {
   const { t, i18n } = useTranslation()
   const isZh = (i18n.resolvedLanguage || i18n.language || "zh").startsWith("zh")
   const CATEGORY_MAP = isZh ? CATEGORY_MAP_ZH : CATEGORY_MAP_EN
@@ -320,21 +319,6 @@ export function Mods({ onNavigate, refreshSignal, isGameRunning = false, onQueue
                 <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20 text-[9px] px-1.5 py-0.5 rounded-full font-semibold">
                   {t("mods.gameRunningLocked")}
                 </Badge>
-              )}
-
-              {/* NPC Locations Mod Button */}
-              {onInstallNpcLocationsMod && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 px-2 text-[10px] gap-0.5 hover:bg-accent"
-                  onClick={() => void onInstallNpcLocationsMod()}
-                  disabled={isGameRunning}
-                  title={isGameRunning ? t("mods.gameRunningModDisabled") : t("mods.installRealtimeModTooltip")}
-                >
-                  <PackagePlus className="h-3 w-3 text-emerald-600" />
-                  {t("mods.installRealtimeMod")}
-                </Button>
               )}
 
               {/* Inline Stats */}

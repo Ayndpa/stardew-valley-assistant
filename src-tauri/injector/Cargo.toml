@@ -1,0 +1,30 @@
+# 独立于 src-tauri 包之外单独构建（由 src-tauri/build.rs 触发），
+# 这里显式声明为自己的工作区根，避免 cargo 向上把 src-tauri 误认作工作区。
+[workspace]
+
+[package]
+name = "assistant-inject"
+version = "0.1.0"
+edition = "2021"
+description = "Native shim injected into the Stardew Valley process to load the assistant runtime via hostfxr"
+
+[lib]
+name = "assistant_inject"
+crate-type = ["cdylib"]
+
+[dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Threading",
+    "Win32_System_SystemServices",
+] }
+
+# 这个 DLL 会被注入到游戏进程里，越小越好，也不要因为 panic 把游戏带崩。
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

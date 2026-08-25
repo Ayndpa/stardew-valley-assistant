@@ -144,7 +144,7 @@ function HeartBar({ hearts, maxHearts }: { hearts: number; maxHearts: number }) 
 interface NPCsProps {
   selectedSaveId: string
   onNavigateToItem: (itemName: string) => void
-  onInstallNpcLocationsMod: () => void | Promise<void>
+  onAttachRuntime: () => void | Promise<void>
 }
 
 function NPCPortrait({
@@ -181,7 +181,7 @@ function NPCPortrait({
   )
 }
 
-export function NPCs({ selectedSaveId, onNavigateToItem, onInstallNpcLocationsMod }: NPCsProps) {
+export function NPCs({ selectedSaveId, onNavigateToItem, onAttachRuntime }: NPCsProps) {
   const { t, i18n } = useTranslation()
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedNpcId, setSelectedNpcId] = useState<string | null>(null)
@@ -661,16 +661,16 @@ export function NPCs({ selectedSaveId, onNavigateToItem, onInstallNpcLocationsMo
 
       {locationSource === "mod" && !pipeConnected ? (
         <div className="flex flex-col gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-3 text-sm text-amber-700 dark:text-amber-300 md:flex-row md:items-center md:justify-between">
-          <span>{t("fishingMap.pipeNotConnected", { defaultValue: "助手应用未运行，实时位置不可用。" })}</span>
+          <span>{t("npcs.runtimeNotAttached", { defaultValue: "尚未连接到游戏。用助手的「一键启动」打开游戏会自动连接；若游戏已在运行，点右侧按钮连接。" })}</span>
           <Button
             type="button"
             variant="outline"
             size="sm"
             className="h-8 shrink-0 gap-2 border-amber-500/40 bg-background/80 text-amber-700 hover:bg-amber-500/10 dark:text-amber-300"
-            onClick={() => void onInstallNpcLocationsMod()}
+            onClick={() => void onAttachRuntime()}
           >
             <PackagePlus className="h-4 w-4" />
-            {t("npcs.installLocationsModButton")}
+            {t("npcs.attachRuntimeButton", { defaultValue: "连接到运行中的游戏" })}
           </Button>
         </div>
       ) : locationSource === "mod" && pipeConnected && !gameRunning ? (

@@ -54,8 +54,8 @@ pub struct Mod {
 
 // Re-export commands for lib.rs
 pub use local::{
-    auto_upgrade_bundled_mod, delete_mod, install_bundled_assistant_mod, install_mod_from_zip,
-    list_installed_mods, rename_local_mod, save_mod_config, toggle_mod, write_mod_translation,
+    delete_mod, install_mod_from_zip, list_installed_mods, rename_local_mod, save_mod_config,
+    toggle_mod, write_mod_translation,
 };
 pub use nexus::{
     check_mod_updates, check_nexus_login_status, close_scraper_window, fetch_nexus_api_key,

@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>Assistant.Bootstrap</AssemblyName>
+    <RootNamespace>StardewValleyAssistant.Bootstrap</RootNamespace>
+    <!-- [UnmanagedCallersOnly] 需要非托管调用约定支持。 -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!--
+      注入器调用 hostfxr_initialize_for_runtime_config 时需要一个 runtimeconfig.json
+      路径；虽然目标进程的运行时早已初始化（返回 HostAlreadyInitialized），
+      该文件仍必须存在且可解析。
+    -->
+    <GenerateRuntimeConfigurationFiles>true</GenerateRuntimeConfigurationFiles>
+  </PropertyGroup>
+
+  <!--
+    刻意不引用 Assistant.Runtime：本程序集被 hostfxr 载入的是一个独立的次级 ALC，
+    若在此直接引用，Assistant.Runtime 会被一并载入该次级 ALC，导致它看到的
+    Stardew Valley 类型与游戏自己的那份类型标识不一致。因此这里只用反射，
+    并显式把 Assistant.Runtime 载入 Default ALC。
+  -->
+
+</Project>

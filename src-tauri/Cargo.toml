@@ -45,6 +45,17 @@ sysinfo = "0.34"
 [target."cfg(any(target_os = \"macos\", windows, target_os = \"linux\"))".dependencies]
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 
+# 运行时注入兜底路径需要直接调用 Win32：远程线程 + LoadLibraryW。
+[target."cfg(windows)".dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Memory",
+    "Win32_System_Threading",
+] }
+
 # XNB 解包、LZX 解压和 PNG 编码都是热循环，跨 crate 内联能明显受益。
 # 不设 panic = "abort"：解析游戏文件时的 panic 需要能被 spawn_blocking 捕获成错误，
 # 而不是直接终止整个应用。

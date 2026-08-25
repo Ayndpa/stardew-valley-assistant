@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>Assistant.Runtime</AssemblyName>
+    <RootNamespace>StardewValleyAssistant.Runtime</RootNamespace>
+    <!-- 通过 DOTNET_STARTUP_HOOKS 加载时运行时会查找全局命名空间下的 StartupHook 类型。 -->
+    <GenerateRuntimeConfigurationFiles>false</GenerateRuntimeConfigurationFiles>
+    <!--
+      库项目默认不把 NuGet 依赖复制到输出目录，但 0Harmony.dll 必须随本程序集
+      一同分发到助手安装目录（AssemblyResolver 从同目录按名加载它）。
+    -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      与 SMAPI 4.x 内置的 0Harmony 保持同一版本 (2.2.2)。若 SMAPI 已把 0Harmony
+      加载进 Default ALC，我们复用它那一份而不再加载自己的副本，版本一致可确保
+      两条路径的行为完全相同。
+    -->
+    <PackageReference Include="Lib.Harmony" Version="2.2.2" />
+  </ItemGroup>
+
+  <!--
+    仅编译期引用游戏程序集：Private="False" 表示不复制到输出目录。运行时我们的
+    程序集位于游戏进程的 Default ALC 中，这些引用会解析到游戏自己已加载的那一份，
+    因此类型标识一致（这正是能直接操作 Game1 的前提）。
+  -->
+  <ItemGroup>
+    <Reference Include="Stardew Valley" HintPath="$(SdvGamePath)\Stardew Valley.dll" Private="False" />
+    <Reference Include="StardewValley.GameData" HintPath="$(SdvGamePath)\StardewValley.GameData.dll" Private="False" />
+    <Reference Include="MonoGame.Framework" HintPath="$(SdvGamePath)\MonoGame.Framework.dll" Private="False" />
+    <Reference Include="xTile" HintPath="$(SdvGamePath)\xTile.dll" Private="False" />
+  </ItemGroup>
+
+  <Target Name="VerifyGamePath" BeforeTargets="BeforeBuild" Condition="'$(SdvGamePath)' == ''">
+    <Error Text="未能定位《星露谷物语》安装目录。请使用 -p:GamePath=&quot;X:\path\to\Stardew Valley&quot; 指定，或在 runtime-src/Directory.Build.props 中补充候选路径。" />
+  </Target>
+
+</Project>

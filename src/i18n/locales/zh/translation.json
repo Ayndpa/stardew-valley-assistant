@@ -711,6 +711,8 @@
     "noItems": "未找到匹配的物品"
   },
   "npcs": {
+    "runtimeNotAttached": "尚未连接到游戏。用助手的「一键启动」打开游戏会自动连接；若游戏已在运行，点右侧按钮连接。",
+    "attachRuntimeButton": "连接到运行中的游戏",
     "title": "村民关系",
     "description": "从游戏内容与存档自动解析村民资料、生日、当前好感度和位置",
     "locationSource": "NPC 位置来源",
@@ -723,7 +725,6 @@
     "estimateDayLabel": "估算日期",
     "estimateTimeLabel": "估算时间",
     "saveCurrentTimeOption": "存档当前时间",
-    "installLocationsModButton": "一键安装实时位置 Mod",
     "searchPlaceholder": "搜索村民姓名或内部 ID...",
     "loadingProfiles": "正在从游戏内容解析村民资料...",
     "noProfilesFound": "未找到村民资料",
@@ -1301,8 +1302,6 @@
     "smapiDetecting": "正在检测 SMAPI...",
     "smapiNotInstalled": "SMAPI: 未安装",
     "gameRunningLocked": "游戏运行中：已锁定修改",
-    "installRealtimeMod": "安装助手联动 Mod",
-    "installRealtimeModTooltip": "安装与助手联动的 Mod",
     "gameRunningModDisabled": "游戏运行中，不能安装模组",
     "categories": {
       "all": "全部",
@@ -1928,7 +1927,6 @@
   },
   "dataSource": {
     "xnbWarningTitle": "当前正从游戏原始文件解析数据",
-    "xnbWarningDesc": "由于未检测到助手伴侣模组的运行数据，展示的价格和周期可能无法适配您的模组修改（如微调售价和周期）。建议前往模组管理页面安装伴侣模组以同步实时数据。",
-    "goInstallMod": "前往模组管理安装"
+    "xnbWarningDesc": "由于未检测到游戏运行时的数据，展示的价格和周期可能无法适配您的模组修改（如微调售价和周期）。用助手启动游戏并加载一次存档即可自动同步。"
   }
 }

@@ -62,7 +62,7 @@ where
     Ok(value)
 }
 
-/// 构造快照缓存键：内容目录 + 语言 + 伴侣模组导出文件的指纹。
+/// 构造快照缓存键：内容目录 + 语言 + 运行时导出文件的指纹。
 pub(crate) fn snapshot_cache_key(content_dir: &Path, lang: &str) -> String {
     format!(
         "{}|{}|{}",

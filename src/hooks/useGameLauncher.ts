@@ -11,6 +11,8 @@ export function useGameLauncher({ ensureGameDirectoryReady, showGlobalToast }: U
   const [isGameRunning, setIsGameRunning] = useState(false)
   // Track whether we launched the game ourselves (fast-path exit detection)
   const launchedByUsRef = useRef(false)
+  // 对外部启动的游戏只尝试注入一次，游戏退出后复位
+  const attachAttemptedRef = useRef(false)
 
   const handleLaunchGame = useCallback(async (launchMode?: "default" | "vanilla") => {
     if (isGameRunning) {
@@ -104,6 +106,22 @@ export function useGameLauncher({ ensureGameDirectoryReady, showGlobalToast }: U
         const invokeModule = await import("@tauri-apps/api/core")
         const running = await invokeModule.invoke<boolean>("check_game_process_running")
         setIsGameRunning(running)
+
+        // 助手启动的游戏会通过 DOTNET_STARTUP_HOOKS 自动挂载运行时；这里处理的是
+        // 玩家自己从 Steam / 快捷方式启动的情况——检测到新进程后注入一次。
+        // 注入本身幂等，但仍按进程只尝试一次，避免被安全软件拦截时反复重试。
+        if (running && !attachAttemptedRef.current) {
+          attachAttemptedRef.current = true
+          try {
+            await invokeModule.invoke("attach_runtime")
+          } catch (err) {
+            // 注入失败不打扰用户：玩家仍可改用「一键启动」，
+            // 或在需要实时数据的页面上手动点连接按钮拿到具体错误。
+            console.debug("attach_runtime skipped:", err)
+          }
+        } else if (!running) {
+          attachAttemptedRef.current = false
+        }
       } catch {
         // silently ignore polling errors
       }

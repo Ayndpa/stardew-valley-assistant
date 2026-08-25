@@ -244,8 +244,29 @@ pub fn launch_game(
         let _ = f.write_all(b"413150\n");
     }
 
-    let mut child = Command::new(&exe_path)
-        .current_dir(game_path)
+    // 旧版伴侣模组会和新运行时抢同一条命名管道，启动前先清掉残留。
+    match crate::runtime::remove_legacy_mod(&game_dir) {
+        Ok(true) => println!("[启动] 已移除残留的旧版伴侣模组"),
+        Ok(false) => {}
+        Err(message) => eprintln!("[启动] 清理旧版伴侣模组失败: {}", message),
+    }
+
+    let mut command = Command::new(&exe_path);
+    command.current_dir(game_path);
+
+    // 通过 .NET 官方的启动钩子机制把助手运行时载入游戏进程：运行时会在游戏
+    // Main 之前加载该程序集。组件位于助手安装目录，游戏目录不落任何文件。
+    // 组件缺失时不阻断启动——游戏照常能玩，只是没有实时数据与作弊功能。
+    match crate::runtime::startup_hook_path(&app) {
+        Ok(hook) => {
+            command.env("DOTNET_STARTUP_HOOKS", &hook);
+        }
+        Err(message) => {
+            eprintln!("[启动] 未挂载助手运行时: {}", message);
+        }
+    }
+
+    let mut child = command
         .spawn()
         .map_err(|e| format!("启动游戏失败: {}", e))?;
 
@@ -295,6 +316,26 @@ pub fn check_game_process_running() -> bool {
             .map(is_game_process)
             .unwrap_or(false)
     })
+}
+
+/// PIDs of all running Stardew Valley / SMAPI processes.
+///
+/// 供运行时注入使用：SMAPI 启动时游戏本体就跑在 StardewModdingAPI.exe 这个进程里，
+/// 因此两种进程名都是合法的注入目标。
+pub fn find_game_pids() -> Vec<u32> {
+    let mut sys = System::new();
+    sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+
+    sys.processes()
+        .iter()
+        .filter(|(_, proc)| {
+            proc.name()
+                .to_str()
+                .map(is_game_process)
+                .unwrap_or(false)
+        })
+        .map(|(pid, _)| pid.as_u32())
+        .collect()
 }
 
 /// Force-kill all running Stardew Valley / SMAPI processes.

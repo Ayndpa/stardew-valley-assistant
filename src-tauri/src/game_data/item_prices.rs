@@ -103,7 +103,7 @@ pub fn read_game_data_export() -> Option<GameDataExport> {
 
 /// 导出文件的指纹，用作各类快照缓存的键的一部分。
 ///
-/// 伴侣模组会在游戏运行时重写 game-data.json，凡是读取了导出数据的缓存
+/// 游戏内运行时会在加载存档时重写 game-data.json，凡是读取了导出数据的缓存
 /// 都必须把这个指纹算进键里，否则模组更新价格后会一直命中陈旧快照。
 pub fn export_fingerprint() -> String {
     let Some(path) = game_data_export_path() else {

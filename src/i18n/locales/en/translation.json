@@ -711,6 +711,8 @@
     "noItems": "No matching items found"
   },
   "npcs": {
+    "runtimeNotAttached": "Not connected to the game yet. Launching the game from the assistant connects automatically; if the game is already running, use the button on the right.",
+    "attachRuntimeButton": "Connect to running game",
     "title": "NPC Relationships",
     "description": "Automatically parse villager details, birthdays, friendship levels, and locations from game content and saves",
     "locationSource": "NPC Location Source",
@@ -723,7 +725,6 @@
     "estimateDayLabel": "Estimated Day",
     "estimateTimeLabel": "Estimated Time",
     "saveCurrentTimeOption": "Save file current time",
-    "installLocationsModButton": "Install Real-time Locations Mod",
     "searchPlaceholder": "Search villager name or internal ID...",
     "loadingProfiles": "Parsing villager profiles from game content...",
     "noProfilesFound": "No NPC profiles found",
@@ -1431,8 +1432,6 @@
     "smapiDetecting": "Detecting SMAPI...",
     "smapiNotInstalled": "SMAPI: Not Installed",
     "gameRunningLocked": "Game Running: Modifications Locked",
-    "installRealtimeMod": "Install Assistant Link Mod",
-    "installRealtimeModTooltip": "Install the mod that links with the assistant",
     "gameRunningModDisabled": "Cannot install mods while game is running",
     "categories": {
       "all": "All",
@@ -2058,7 +2057,6 @@
   },
   "dataSource": {
     "xnbWarningTitle": "Currently parsing data from original game files",
-    "xnbWarningDesc": "Since no runtime data from the companion mod is detected, the prices and cycles shown may not reflect your mod modifications (such as custom sell prices or regrow cycles). We recommend visiting the Mod Management page to install the companion mod to sync live data.",
-    "goInstallMod": "Go to Mod Management"
+    "xnbWarningDesc": "No live game data detected, so the prices and cycles shown may not reflect your mod modifications (such as custom sell prices or regrow cycles). Launch the game from the assistant and load a save once to sync automatically."
   }
 }

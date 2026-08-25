@@ -1,0 +1,35 @@
+<Project>
+
+  <!--
+    共享构建配置。
+
+    这些程序集在运行时被加载进《星露谷物语》游戏进程，因此必须与游戏使用的
+    运行时一致：SDV 1.6.15 是自包含的 net6.0（Microsoft.NETCore.App 6.0.32）。
+    目标框架高于 net6.0 会导致在游戏进程内加载失败。
+  -->
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <!-- net6.0 已停止支持，SDK 会就此报警；这里是刻意为之。 -->
+    <CheckEolTargetFramework>false</CheckEolTargetFramework>
+    <!-- 所有产物统一落到 runtime-src/build/<项目名>/，供 Rust 端打包为 Tauri 资源。 -->
+    <OutputPath>$(MSBuildThisFileDirectory)build\$(MSBuildProjectName)\</OutputPath>
+  </PropertyGroup>
+
+  <!--
+    定位游戏目录以引用 Stardew Valley.dll 等程序集。按顺序取第一个命中的候选路径；
+    可通过 `dotnet build -p:GamePath=...` 覆盖。这些引用全部 Private="False"，
+    不会被复制到输出目录，运行时由游戏进程自身的 Default ALC 解析。
+  -->
+  <PropertyGroup>
+    <SdvGamePath Condition="'$(SdvGamePath)' == '' And Exists('$(GamePath)\Stardew Valley.dll')">$(GamePath)</SdvGamePath>
+    <SdvGamePath Condition="'$(SdvGamePath)' == '' And Exists('D:\Games\SteamLibrary\steamapps\common\Stardew Valley\Stardew Valley.dll')">D:\Games\SteamLibrary\steamapps\common\Stardew Valley</SdvGamePath>
+    <SdvGamePath Condition="'$(SdvGamePath)' == '' And Exists('C:\Program Files (x86)\Steam\steamapps\common\Stardew Valley\Stardew Valley.dll')">C:\Program Files (x86)\Steam\steamapps\common\Stardew Valley</SdvGamePath>
+    <SdvGamePath Condition="'$(SdvGamePath)' == '' And Exists('C:\Program Files\Steam\steamapps\common\Stardew Valley\Stardew Valley.dll')">C:\Program Files\Steam\steamapps\common\Stardew Valley</SdvGamePath>
+    <SdvGamePath Condition="'$(SdvGamePath)' == '' And Exists('C:\GOG Games\Stardew Valley\Stardew Valley.dll')">C:\GOG Games\Stardew Valley</SdvGamePath>
+  </PropertyGroup>
+
+</Project>

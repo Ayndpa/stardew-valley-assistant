@@ -32,6 +32,11 @@ dist-ssr
 # Rust / Tauri build outputs
 src-tauri/target/
 src-tauri/gen/schemas/
+src-tauri/injector/target/
+
+# 游戏内运行时组件的构建产物（由 src-tauri/build.rs 生成）
+src-tauri/runtime-src/build/
+src-tauri/runtime-dist/
 
 # C# build artifacts
 **/obj/
