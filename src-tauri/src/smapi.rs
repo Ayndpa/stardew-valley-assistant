@@ -13,7 +13,7 @@ pub struct SmapiStatus {
     pub path: Option<String>,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn check_smapi_status(game_dir: String) -> SmapiStatus {
     let game_path = Path::new(&game_dir);
     if !game_path.exists() {

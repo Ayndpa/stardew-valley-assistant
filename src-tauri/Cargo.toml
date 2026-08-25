@@ -44,3 +44,11 @@ sysinfo = "0.34"
 
 [target."cfg(any(target_os = \"macos\", windows, target_os = \"linux\"))".dependencies]
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
+
+# XNB 解包、LZX 解压和 PNG 编码都是热循环，跨 crate 内联能明显受益。
+# 不设 panic = "abort"：解析游戏文件时的 panic 需要能被 spawn_blocking 捕获成错误，
+# 而不是直接终止整个应用。
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

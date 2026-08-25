@@ -341,7 +341,7 @@ fn parse_mod_folder(mod_dir: &Path, mods_root: &Path) -> Result<Mod, String> {
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_installed_mods(game_dir: String) -> Result<Vec<Mod>, String> {
     let mods_dir = Path::new(&game_dir).join("Mods");
     if !mods_dir.exists() {

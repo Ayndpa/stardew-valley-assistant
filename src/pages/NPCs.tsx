@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
+import { loadNpcPortraits } from "@/lib/npc-portraits"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -83,7 +84,6 @@ interface LocalCacheEntry<T> {
 }
 
 const NPC_PROFILES_CACHE_KEY = "stardew_npc_profiles_cache_v2"
-const NPC_PORTRAITS_CACHE_KEY = "stardew_npc_portraits_cache"
 const NPC_FRIENDSHIPS_CACHE_KEY = "stardew_npc_friendships_cache"
 const NPC_LOCATION_SOURCE_KEY = "stardew_npc_location_source"
 
@@ -120,10 +120,6 @@ function writeCache<T>(key: string, data: T) {
 
 function getProfilesCacheKey(gameDir: string, lang: string) {
   return `${NPC_PROFILES_CACHE_KEY}:${normalizeGameDir(gameDir) || "default"}:${lang}`
-}
-
-function getPortraitsCacheKey(gameDir: string, npcIds: string[]) {
-  return `${NPC_PORTRAITS_CACHE_KEY}:${normalizeGameDir(gameDir) || "default"}:${npcIds.join(",")}`
 }
 
 function getFriendshipsCacheKey(saveId: string) {
@@ -340,28 +336,14 @@ export function NPCs({ selectedSaveId, onNavigateToItem, onInstallNpcLocationsMo
     let canceled = false
 
     async function loadPortraits() {
-      const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__
-      if (!isTauri || npcProfiles.length === 0) return
+      if (npcProfiles.length === 0) return
 
       const gameDir = localStorage.getItem("stardewGameDirectory") || ""
-      const cacheKey = getPortraitsCacheKey(gameDir, npcProfiles.map((npc) => npc.id))
-      const cached = readCache<Record<string, string>>(cacheKey)
-
-      if (cached && !canceled) {
-        setNpcPortraits(cached.data)
-        return
-      }
-
       try {
-        const { invoke } = await import("@tauri-apps/api/core")
-        const portraits = await invoke<Record<string, string>>("get_npc_portraits", {
-          npcIds: npcProfiles.map((npc) => npc.id),
-          gameDir: gameDir.trim() || undefined,
-        })
+        const portraits = await loadNpcPortraits(npcProfiles.map((npc) => npc.id), gameDir)
         if (!canceled) {
           setNpcPortraits(portraits)
         }
-        writeCache(cacheKey, portraits)
       } catch (err) {
         console.error("Error loading NPC portraits:", err)
         if (!canceled) {

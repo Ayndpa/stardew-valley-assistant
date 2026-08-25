@@ -2,6 +2,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::{LazyLock, Mutex};
 use sysinfo::System;
 use tauri::{AppHandle, Emitter};
 
@@ -114,7 +115,7 @@ pub(crate) fn find_stardew_valley() -> Option<String> {
     None
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn auto_detect_game_dir() -> Option<String> {
     find_stardew_valley()
 }
@@ -158,7 +159,7 @@ pub fn get_stardew_valley_version(game_dir: &str) -> Option<String> {
     None
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_game_version(game_dir: String) -> Result<String, String> {
     get_stardew_valley_version(&game_dir)
         .ok_or_else(|| "无法检测游戏版本，请确认游戏安装目录是否正确。".to_string())
@@ -270,11 +271,24 @@ fn is_game_process(name: &str) -> bool {
     GAME_PROCESS_NAMES.iter().any(|&target| lower == target)
 }
 
+/// 常驻的进程表，供 5 秒一次的运行状态轮询复用。
+///
+/// 每次都 `System::new()` 再全量刷新进程的完整信息要 50ms 以上；这里只需要
+/// 进程名，因此复用同一个实例并用 `ProcessRefreshKind::nothing()` 跳过
+/// 命令行、环境变量、磁盘/CPU 统计等昂贵字段。
+static PROCESS_WATCH: LazyLock<Mutex<System>> = LazyLock::new(|| Mutex::new(System::new()));
+
 /// Check whether any Stardew Valley / SMAPI process is currently running.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn check_game_process_running() -> bool {
-    let mut sys = System::new();
-    sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+    let Ok(mut sys) = PROCESS_WATCH.lock() else {
+        return false;
+    };
+    sys.refresh_processes_specifics(
+        sysinfo::ProcessesToUpdate::All,
+        true,
+        sysinfo::ProcessRefreshKind::nothing(),
+    );
     sys.processes().iter().any(|(_, proc)| {
         proc.name()
             .to_str()
@@ -285,7 +299,7 @@ pub fn check_game_process_running() -> bool {
 
 /// Force-kill all running Stardew Valley / SMAPI processes.
 /// Returns a message summarising how many processes were killed.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn force_kill_game() -> Result<String, String> {
     let mut sys = System::new();
     sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);

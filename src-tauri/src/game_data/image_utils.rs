@@ -134,6 +134,17 @@ impl Canvas {
 
         encode_png_data_url(&raw, self.width, self.height)
     }
+
+    /// 直接产出 PNG 字节。用于需要落盘、交给 asset 协议加载的大图，
+    /// 避免 base64 带来的 33% 体积膨胀和一次巨大的 IPC 传输。
+    pub fn to_png_bytes(&self) -> Result<Vec<u8>, String> {
+        let mut raw = Vec::with_capacity(self.width * self.height * 4);
+        for pixel in &self.pixels {
+            raw.extend_from_slice(&[pixel.r, pixel.g, pixel.b, pixel.a]);
+        }
+
+        encode_png_bytes(&raw, self.width, self.height)
+    }
 }
 
 pub fn blend_pixel(dst: Pixel, src: Pixel) -> Pixel {
@@ -297,12 +308,17 @@ pub fn item_icon_rect(texture: &Texture, sprite_index: i32) -> Result<Rect, Stri
     })
 }
 
-pub fn encode_png_data_url(raw: &[u8], width: usize, height: usize) -> Result<String, String> {
+pub fn encode_png_bytes(raw: &[u8], width: usize, height: usize) -> Result<Vec<u8>, String> {
     let mut png = Vec::new();
     let encoder = PngEncoder::new(&mut png);
     encoder
         .write_image(raw, width as u32, height as u32, ColorType::Rgba8.into())
         .map_err(|e| format!("Failed to encode PNG: {}", e))?;
+    Ok(png)
+}
+
+pub fn encode_png_data_url(raw: &[u8], width: usize, height: usize) -> Result<String, String> {
+    let png = encode_png_bytes(raw, width, height)?;
 
     Ok(format!(
         "data:image/png;base64,{}",

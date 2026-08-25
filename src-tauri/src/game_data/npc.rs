@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::{Arc, LazyLock, Mutex};
 
 use super::calendar::resolve_localized_text;
 use super::xnb::{
@@ -26,16 +27,27 @@ pub struct NpcGameData {
     pub npcs: Vec<NpcProfile>,
 }
 
-#[tauri::command]
+static NPC_GAME_DATA_CACHE: LazyLock<Mutex<HashMap<String, Arc<NpcGameData>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+#[tauri::command(async)]
 pub fn get_npc_game_data(
     game_dir: Option<String>,
     lang: Option<String>,
 ) -> Result<NpcGameData, String> {
     let content_dir = super::locate_content_dir(game_dir.as_deref())?;
-    let lang_str = lang.as_deref().unwrap_or("zh");
+    let lang_str = lang.as_deref().unwrap_or("zh").to_string();
+    let key = super::snapshot_cache_key(&content_dir, &lang_str);
+    let snapshot = super::cached_snapshot(&NPC_GAME_DATA_CACHE, key, || {
+        build_npc_game_data(&content_dir, &lang_str)
+    })?;
+    Ok((*snapshot).clone())
+}
+
+fn build_npc_game_data(content_dir: &Path, lang_str: &str) -> Result<NpcGameData, String> {
     let is_zh = lang_str.to_lowercase().starts_with("zh");
     let localized_tables = load_localized_string_tables_with_lang(
-        &content_dir,
+        content_dir,
         &[
             "Characters",
             "NPCNames",
@@ -46,7 +58,7 @@ pub fn get_npc_game_data(
         ],
         Some(lang_str),
     );
-    let mut npcs = load_npc_profiles(&content_dir, &localized_tables, is_zh)?;
+    let mut npcs = load_npc_profiles(content_dir, &localized_tables, is_zh)?;
 
     npcs.sort_by(|a, b| a.name.cmp(&b.name).then(a.id.cmp(&b.id)));
 

@@ -101,6 +101,23 @@ pub fn read_game_data_export() -> Option<GameDataExport> {
     Some(data)
 }
 
+/// 导出文件的指纹，用作各类快照缓存的键的一部分。
+///
+/// 伴侣模组会在游戏运行时重写 game-data.json，凡是读取了导出数据的缓存
+/// 都必须把这个指纹算进键里，否则模组更新价格后会一直命中陈旧快照。
+pub fn export_fingerprint() -> String {
+    let Some(path) = game_data_export_path() else {
+        return "noexport".to_string();
+    };
+    match fs::metadata(&path).and_then(|m| m.modified()) {
+        Ok(modified) => match modified.duration_since(SystemTime::UNIX_EPOCH) {
+            Ok(age) => format!("{}", age.as_nanos()),
+            Err(_) => "unknown".to_string(),
+        },
+        Err(_) => "noexport".to_string(),
+    }
+}
+
 /// 从导出文件构建物品价格映射表。
 pub fn read_item_prices_from_export() -> Option<HashMap<String, i32>> {
     let export = read_game_data_export()?;

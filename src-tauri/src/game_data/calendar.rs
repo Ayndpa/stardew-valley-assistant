@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::{Arc, LazyLock, Mutex};
 
 use super::xnb::{
     get_lang_suffix, load_localized_string_tables_with_lang, load_string_dictionary_best_effort,
@@ -33,24 +34,39 @@ pub struct CalendarGameData {
     pub birthdays: Vec<CalendarBirthday>,
 }
 
-#[tauri::command]
+static CALENDAR_GAME_DATA_CACHE: LazyLock<Mutex<HashMap<String, Arc<CalendarGameData>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+#[tauri::command(async)]
 pub fn get_calendar_game_data(
     game_dir: Option<String>,
     lang: Option<String>,
 ) -> Result<CalendarGameData, String> {
     let content_dir = super::locate_content_dir(game_dir.as_deref())?;
+    let lang_str = lang.as_deref().unwrap_or("zh").to_string();
+    let key = super::snapshot_cache_key(&content_dir, &lang_str);
+
+    let snapshot = super::cached_snapshot(&CALENDAR_GAME_DATA_CACHE, key, || {
+        build_calendar_game_data(&content_dir, &lang_str)
+    })?;
+    Ok((*snapshot).clone())
+}
+
+fn build_calendar_game_data(
+    content_dir: &Path,
+    lang_str: &str,
+) -> Result<CalendarGameData, String> {
     let localized_tables = load_localized_string_tables_with_lang(
-        &content_dir,
+        content_dir,
         &["Characters", "NPCNames", "UI", "1_6_Strings"],
-        lang.as_deref(),
+        Some(lang_str),
     );
 
-    let lang_str = lang.as_deref().unwrap_or("zh");
     let is_zh = lang_str.to_lowercase().starts_with("zh");
     let lang_suffix = get_lang_suffix(Some(lang_str));
 
     let mut festivals =
-        load_calendar_festivals(&content_dir, &localized_tables, is_zh, lang_suffix)?;
+        load_calendar_festivals(content_dir, &localized_tables, is_zh, lang_suffix)?;
     festivals.sort_by(|a, b| {
         season_order(&a.season)
             .cmp(&season_order(&b.season))
@@ -58,7 +74,7 @@ pub fn get_calendar_game_data(
             .then(a.name.cmp(&b.name))
     });
 
-    let mut birthdays = load_calendar_birthdays(&content_dir, &localized_tables, is_zh)?;
+    let mut birthdays = load_calendar_birthdays(content_dir, &localized_tables, is_zh)?;
     birthdays.sort_by(|a, b| {
         season_order(&a.season)
             .cmp(&season_order(&b.season))

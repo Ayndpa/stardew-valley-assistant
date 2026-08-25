@@ -15,7 +15,7 @@ fn get_profiles_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String
     Ok(profiles_dir)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_profiles(app: tauri::AppHandle) -> Result<Vec<ModProfile>, String> {
     let profiles_dir = get_profiles_dir(&app)?;
     let mut profiles = Vec::new();

@@ -86,7 +86,7 @@ fn mod_data_path() -> Option<PathBuf> {
 }
 
 /// 获取模组导出数据
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_mod_export_data() -> Result<Option<ModExportSnapshot>, String> {
     let path = mod_data_path().ok_or_else(|| "无法定位 APPDATA 目录".to_string())?;
     if !path.exists() {

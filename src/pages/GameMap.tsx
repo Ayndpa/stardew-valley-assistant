@@ -31,6 +31,7 @@ import type {
   SelectedFishingInfo,
   TileRun,
 } from "./game-map/GameMap.types"
+import { loadNpcPortraits } from "@/lib/npc-portraits"
 import { formatCount, tileColor, formatGameTime, resolveFishingArea as resolveFishingAreaUtil } from "./game-map/game-map-utils"
 import { FishingInfoPanel } from "./game-map/FishingInfoPanel"
 import { NpcOverlayPanel } from "./game-map/NpcOverlayPanel"
@@ -215,6 +216,27 @@ export function GameMap({ selectedSaveId }: GameMapProps) {
     loadDetail()
     return () => { canceled = true }
   }, [selectedId, activeLang])
+
+  // 底图以文件形式缓存在磁盘上，转成 asset 协议 URL 后由 WebView 直接加载，
+  // 既避开了一次数 MB 的 IPC 传输，也让浏览器得以缓存图片本身。
+  const [mapImageSrc, setMapImageSrc] = useState("")
+  useEffect(() => {
+    const path = selectedMap?.mapImagePath
+    if (!path) {
+      setMapImageSrc("")
+      return
+    }
+    let canceled = false
+    import("@tauri-apps/api/core")
+      .then(({ convertFileSrc }) => {
+        if (!canceled) setMapImageSrc(convertFileSrc(path))
+      })
+      .catch((err) => {
+        console.error("Failed to convert map image path:", err)
+        if (!canceled) setMapImageSrc("")
+      })
+    return () => { canceled = true }
+  }, [selectedMap?.mapImagePath])
 
   const filteredMaps = useMemo(() => {
     const term = searchTerm.trim().toLowerCase()
@@ -413,7 +435,8 @@ export function GameMap({ selectedSaveId }: GameMapProps) {
         const data: any = await invoke("get_npc_game_data", { gameDir: gameDir.trim() || undefined, lang: activeLang })
         if (!canceled && data?.npcs) {
           setNpcList(data.npcs)
-          const portraits = await invoke<Record<string, string>>("get_npc_portraits", { npcIds: data.npcs.map((n: any) => n.id), gameDir: gameDir.trim() || undefined })
+          // 与村民关系页共用同一份缓存，避免每次进入地图页重新渲染 48 张头像
+          const portraits = await loadNpcPortraits(data.npcs.map((n: any) => n.id), gameDir)
           if (!canceled) setNpcPortraits(portraits)
         }
       } catch (err) { console.error("Failed to load NPC game data in GameMap:", err) }
@@ -607,8 +630,8 @@ export function GameMap({ selectedSaveId }: GameMapProps) {
                 style={{ width: `${sceneSize.width}px`, height: `${sceneSize.height}px`, transform: `translate(calc(-50% + ${offset.x}px), calc(-50% + ${offset.y}px)) scale(${zoom})`, transformOrigin: "center center" }}
               >
                 {/* Map image */}
-                {selectedMap.mapImageDataUrl ? (
-                  <img src={selectedMap.mapImageDataUrl} alt="" className="absolute inset-0 h-full w-full object-fill [image-rendering:pixelated]" draggable={false} onDragStart={(e) => e.preventDefault()} />
+                {mapImageSrc ? (
+                  <img src={mapImageSrc} alt="" className="absolute inset-0 h-full w-full object-fill [image-rendering:pixelated]" draggable={false} onDragStart={(e) => e.preventDefault()} />
                 ) : (
                   <svg className="absolute inset-0 h-full w-full" viewBox={`0 0 ${selectedMap.width} ${selectedMap.height}`} preserveAspectRatio="none" aria-hidden="true">
                     <defs><pattern id="fishing-map-grid" width="8" height="8" patternUnits="userSpaceOnUse"><path d="M 8 0 L 0 0 0 8" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="0.4" /></pattern></defs>

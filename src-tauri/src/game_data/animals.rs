@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::{Arc, LazyLock, Mutex};
 
 use super::image_utils::{resolve_object_texture_path, object_texture_key, Texture};
 use super::xnb::{load_farm_animals_xnb, load_objects_xnb, load_string_dictionary_best_effort};
@@ -152,22 +153,31 @@ fn render_animal_icon(
     texture.crop_to_png_data_url(rect)
 }
 
-#[tauri::command]
+static ANIMAL_GAME_DATA_CACHE: LazyLock<Mutex<HashMap<String, Arc<AnimalGameData>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+#[tauri::command(async)]
 pub fn get_animal_game_data(
     game_dir: Option<String>,
     lang: Option<String>,
 ) -> Result<AnimalGameData, String> {
-    let lang_str = lang.as_deref().unwrap_or("zh");
-    let is_zh = lang_str.to_lowercase().starts_with("zh");
+    let lang_str = lang.as_deref().unwrap_or("zh").to_string();
     let content_dir = super::locate_content_dir(game_dir.as_deref())?;
+    let key = super::snapshot_cache_key(&content_dir, &lang_str);
 
-    // 优先使用导出文件（图标缺失时回退 XNB）
-    if let Some(export) = super::item_prices::read_game_data_export() {
-        return Ok(build_animal_data_from_export(&export, &content_dir, is_zh));
-    }
+    let snapshot = super::cached_snapshot(&ANIMAL_GAME_DATA_CACHE, key, || {
+        let is_zh = lang_str.to_lowercase().starts_with("zh");
 
-    // 回退到 XNB 解析
-    build_animal_data_from_xnb(&content_dir, lang_str, is_zh)
+        // 优先使用导出文件（图标缺失时回退 XNB）
+        if let Some(export) = super::item_prices::read_game_data_export() {
+            return Ok(build_animal_data_from_export(&export, &content_dir, is_zh));
+        }
+
+        // 回退到 XNB 解析
+        build_animal_data_from_xnb(&content_dir, &lang_str, is_zh)
+    })?;
+
+    Ok((*snapshot).clone())
 }
 
 /// 从 game-data.json 导出文件构建动物数据（无图标）

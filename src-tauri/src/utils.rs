@@ -23,7 +23,7 @@ pub fn run_without_window(command: &mut std::process::Command) -> &mut std::proc
     command
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn path_exists(path: String) -> bool {
     Path::new(&path).exists()
 }

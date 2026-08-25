@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::{LazyLock, Mutex};
 
 use serde::{Deserialize, Serialize};
 
@@ -174,10 +175,16 @@ pub fn render_farmer_avatar(
     canvas.to_png_data_url()
 }
 
-pub fn render_npc_portrait(npc_id: &str, game_dir: Option<&str>) -> Result<String, String> {
-    let portraits = locate_portrait_asset_dir(game_dir)?;
+/// 已渲染的 NPC 头像缓存，键为 `<肖像资源目录>|<NPC id>`。
+///
+/// 单张头像需要把整张肖像图集从 XNB 里 LZX 解压出来再重新编码 PNG（约 24ms），
+/// 而肖像资源在应用运行期间不会变化，因此结果可以长期复用。
+static NPC_PORTRAIT_CACHE: LazyLock<Mutex<HashMap<String, String>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+fn render_npc_portrait_from_dir(portraits_dir: &Path, npc_id: &str) -> Result<String, String> {
     let file_stem = npc_portrait_file_stem(npc_id);
-    let texture = load_xnb_texture(&portraits.join(format!("{}.xnb", file_stem)))?;
+    let texture = load_xnb_texture(&portraits_dir.join(format!("{}.xnb", file_stem)))?;
     texture.crop_to_png_data_url(Rect {
         x: 0,
         y: 0,
@@ -186,111 +193,149 @@ pub fn render_npc_portrait(npc_id: &str, game_dir: Option<&str>) -> Result<Strin
     })
 }
 
-#[tauri::command]
+#[cfg(test)]
+fn render_npc_portrait(npc_id: &str, game_dir: Option<&str>) -> Result<String, String> {
+    let portraits = locate_portrait_asset_dir(game_dir)?;
+    render_npc_portrait_from_dir(&portraits, npc_id)
+}
+
+/// 标记为 `async` 让 Tauri 把它调度到线程池：同步命令会在主线程执行，
+/// 首次渲染 48 张头像需要一秒以上，期间所有其它 IPC 与原生窗口操作都会排队。
+#[tauri::command(async)]
 pub fn get_npc_portraits(
     npc_ids: Vec<String>,
     game_dir: Option<String>,
 ) -> Result<HashMap<String, String>, String> {
+    // 目录探测会遍历 Steam 库与当前目录的所有祖先，每张头像重跑一次纯属浪费。
+    let portraits_dir = locate_portrait_asset_dir(game_dir.as_deref())?;
+    let dir_key = portraits_dir.to_string_lossy();
+
     let mut portraits = HashMap::new();
+    let mut missing = Vec::new();
 
-    for npc_id in npc_ids {
-        if !is_safe_asset_name(&npc_id) {
-            continue;
-        }
-
-        if let Ok(data_url) = render_npc_portrait(&npc_id, game_dir.as_deref()) {
-            portraits.insert(npc_id, data_url);
+    {
+        let cache = NPC_PORTRAIT_CACHE
+            .lock()
+            .map_err(|_| "NPC 头像缓存锁定失败".to_string())?;
+        for npc_id in npc_ids {
+            if !is_safe_asset_name(&npc_id) || portraits.contains_key(&npc_id) {
+                continue;
+            }
+            match cache.get(&format!("{}|{}", dir_key, npc_id)) {
+                Some(data_url) => {
+                    portraits.insert(npc_id, data_url.clone());
+                }
+                None => missing.push(npc_id),
+            }
         }
     }
+
+    if missing.is_empty() {
+        return Ok(portraits);
+    }
+
+    let rendered = missing
+        .into_iter()
+        .filter_map(|npc_id| {
+            render_npc_portrait_from_dir(&portraits_dir, &npc_id)
+                .ok()
+                .map(|data_url| (npc_id, data_url))
+        })
+        .collect::<Vec<_>>();
+
+    if let Ok(mut cache) = NPC_PORTRAIT_CACHE.lock() {
+        for (npc_id, data_url) in &rendered {
+            cache.insert(format!("{}|{}", dir_key, npc_id), data_url.clone());
+        }
+    }
+    portraits.extend(rendered);
 
     Ok(portraits)
 }
 
-fn locate_farmer_asset_dir(game_dir: Option<&str>) -> Result<PathBuf, String> {
-    let mut candidates = Vec::new();
+/// 资源目录的定位结果缓存，键为 `<用途>|<传入的 game_dir>`。
+static ASSET_DIR_CACHE: LazyLock<Mutex<HashMap<String, PathBuf>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
-    if let Some(game_dir) = game_dir.map(str::trim).filter(|value| !value.is_empty()) {
-        push_asset_candidates(Path::new(game_dir), &mut candidates);
-    }
+/// 按「显式目录 → 自动探测 → 源码树」的顺序逐个求值并缓存结果。
+///
+/// 关键是惰性：调用方给了有效目录时就不会去读注册表、解析 Steam 库配置，
+/// 也不会遍历当前目录的所有祖先——那套探测每次要几十次文件系统调用。
+fn locate_asset_dir<F>(kind: &str, game_dir: Option<&str>, matches: F) -> Result<PathBuf, String>
+where
+    F: Fn(&Path) -> bool,
+{
+    let explicit = game_dir.map(str::trim).filter(|value| !value.is_empty());
+    let cache_key = format!("{}|{}", kind, explicit.unwrap_or(""));
 
-    if let Some(game_dir) = find_stardew_valley() {
-        push_asset_candidates(Path::new(&game_dir), &mut candidates);
-    }
-
-    if let Ok(current_dir) = std::env::current_dir() {
-        for ancestor in current_dir.ancestors() {
-            push_asset_candidates(ancestor, &mut candidates);
-            if let Some(parent) = ancestor.parent() {
-                push_asset_candidates(
-                    &parent
-                        .join("stardew-valley-source")
-                        .join("StardewValleyGame"),
-                    &mut candidates,
-                );
+    if let Ok(cache) = ASSET_DIR_CACHE.lock() {
+        if let Some(hit) = cache.get(&cache_key) {
+            if matches(hit) {
+                return Ok(hit.clone());
             }
         }
     }
 
-    candidates
-        .into_iter()
-        .find(|path| path.join("farmer_base.xnb").exists() && path.join("hairstyles.xnb").exists())
-        .ok_or_else(|| {
-            "Could not locate Stardew Valley Content/Characters/Farmer assets. Set the game directory first.".to_string()
+    let push = |root: &Path| -> Vec<PathBuf> {
+        match kind {
+            "portraits" => vec![
+                root.join("Content").join("Portraits"),
+                root.join("StardewValleyGame")
+                    .join("Content")
+                    .join("Portraits"),
+                root.join("Portraits"),
+            ],
+            _ => vec![
+                root.join("Content").join("Characters").join("Farmer"),
+                root.join("StardewValleyGame")
+                    .join("Content")
+                    .join("Characters")
+                    .join("Farmer"),
+                root.join("Characters").join("Farmer"),
+            ],
+        }
+    };
+    let first_hit = |root: &Path| push(root).into_iter().find(|path| matches(path));
+
+    let resolved = explicit
+        .and_then(|dir| first_hit(Path::new(dir)))
+        .or_else(|| find_stardew_valley().and_then(|dir| first_hit(Path::new(&dir))))
+        .or_else(|| {
+            let current_dir = std::env::current_dir().ok()?;
+            current_dir.ancestors().find_map(|ancestor| {
+                first_hit(ancestor).or_else(|| {
+                    let parent = ancestor.parent()?;
+                    first_hit(
+                        &parent
+                            .join("stardew-valley-source")
+                            .join("StardewValleyGame"),
+                    )
+                })
+            })
         })
+        .ok_or_else(|| {
+            format!(
+                "Could not locate Stardew Valley {} assets. Set the game directory first.",
+                kind
+            )
+        })?;
+
+    if let Ok(mut cache) = ASSET_DIR_CACHE.lock() {
+        cache.insert(cache_key, resolved.clone());
+    }
+    Ok(resolved)
+}
+
+fn locate_farmer_asset_dir(game_dir: Option<&str>) -> Result<PathBuf, String> {
+    locate_asset_dir("farmer", game_dir, |path| {
+        path.join("farmer_base.xnb").exists() && path.join("hairstyles.xnb").exists()
+    })
 }
 
 fn locate_portrait_asset_dir(game_dir: Option<&str>) -> Result<PathBuf, String> {
-    let mut candidates = Vec::new();
-
-    if let Some(game_dir) = game_dir.map(str::trim).filter(|value| !value.is_empty()) {
-        push_portrait_asset_candidates(Path::new(game_dir), &mut candidates);
-    }
-
-    if let Some(game_dir) = find_stardew_valley() {
-        push_portrait_asset_candidates(Path::new(&game_dir), &mut candidates);
-    }
-
-    if let Ok(current_dir) = std::env::current_dir() {
-        for ancestor in current_dir.ancestors() {
-            push_portrait_asset_candidates(ancestor, &mut candidates);
-            if let Some(parent) = ancestor.parent() {
-                push_portrait_asset_candidates(
-                    &parent
-                        .join("stardew-valley-source")
-                        .join("StardewValleyGame"),
-                    &mut candidates,
-                );
-            }
-        }
-    }
-
-    candidates
-        .into_iter()
-        .find(|path| path.join("Abigail.xnb").exists() && path.join("Wizard.xnb").exists())
-        .ok_or_else(|| {
-            "Could not locate Stardew Valley Content/Portraits assets. Set the game directory first.".to_string()
-        })
-}
-
-fn push_asset_candidates(root: &Path, candidates: &mut Vec<PathBuf>) {
-    candidates.push(root.join("Content").join("Characters").join("Farmer"));
-    candidates.push(
-        root.join("StardewValleyGame")
-            .join("Content")
-            .join("Characters")
-            .join("Farmer"),
-    );
-    candidates.push(root.join("Characters").join("Farmer"));
-}
-
-fn push_portrait_asset_candidates(root: &Path, candidates: &mut Vec<PathBuf>) {
-    candidates.push(root.join("Content").join("Portraits"));
-    candidates.push(
-        root.join("StardewValleyGame")
-            .join("Content")
-            .join("Portraits"),
-    );
-    candidates.push(root.join("Portraits"));
+    locate_asset_dir("portraits", game_dir, |path| {
+        path.join("Abigail.xnb").exists() && path.join("Wizard.xnb").exists()
+    })
 }
 
 fn npc_portrait_file_stem(npc_id: &str) -> &str {

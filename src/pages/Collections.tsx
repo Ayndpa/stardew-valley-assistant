@@ -99,6 +99,44 @@ const SHIPPING_EXCLUDE_CATS = new Set([
   "seed", "fertilizer", "bait", "tackle", "furniture", "big_craftable", "clothing", "hat",
 ])
 
+/** 每个分组首屏渲染的条目数。托运分类有上千条，一次性铺开会造成明显的长任务。 */
+const INITIAL_VISIBLE = 60
+
+function ItemGrid({
+  items,
+  children,
+}: {
+  items: ItemEntry[]
+  children: (item: ItemEntry) => React.ReactNode
+}) {
+  const { t } = useTranslation()
+  const [limit, setLimit] = useState(INITIAL_VISIBLE)
+
+  // 切换分类时回到首屏数量
+  useEffect(() => {
+    setLimit(INITIAL_VISIBLE)
+  }, [items])
+
+  const remaining = items.length - limit
+
+  return (
+    <>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
+        {items.slice(0, limit).map(children)}
+      </div>
+      {remaining > 0 && (
+        <button
+          type="button"
+          onClick={() => setLimit((current) => current + 240)}
+          className="mt-3 w-full rounded-lg border border-border/70 bg-accent/20 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent/40 hover:text-foreground"
+        >
+          {t("collections.showMore", { count: remaining, defaultValue: `显示更多（还有 ${remaining} 项）` })}
+        </button>
+      )}
+    </>
+  )
+}
+
 export function Collections({ selectedSaveId, onNavigateToItem }: CollectionsProps) {
   const { t, i18n } = useTranslation()
   const [detail, setDetail] = useState<SaveDetail | null>(null)
@@ -404,8 +442,8 @@ export function Collections({ selectedSaveId, onNavigateToItem }: CollectionsPro
                       {t(`dashboard.collection.${cat.key}.empty`)}
                     </p>
                   ) : (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
-                      {cat.collected.map((item) => (
+                    <ItemGrid items={cat.collected}>
+                      {(item) => (
                         <div
                           key={item.id}
                           className={`flex items-start gap-2 p-2 rounded-lg bg-green-500/5 border border-green-500/20 text-sm hover:bg-green-500/10 transition-colors ${onNavigateToItem && cat.key !== "notes" ? "cursor-pointer" : ""}`}
@@ -417,6 +455,8 @@ export function Collections({ selectedSaveId, onNavigateToItem }: CollectionsPro
                               <img
                                 src={item.icon}
                                 alt=""
+                                loading="lazy"
+                                decoding="async"
                                 className="h-5 w-5 object-contain"
                                 style={{ imageRendering: "pixelated" }}
                               />
@@ -438,8 +478,8 @@ export function Collections({ selectedSaveId, onNavigateToItem }: CollectionsPro
                             )}
                           </div>
                         </div>
-                      ))}
-                    </div>
+                      )}
+                    </ItemGrid>
                   )}
                 </div>
 
@@ -454,8 +494,8 @@ export function Collections({ selectedSaveId, onNavigateToItem }: CollectionsPro
                       {t("collections.allComplete")}
                     </p>
                   ) : (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
-                      {cat.missing.map((item) => (
+                    <ItemGrid items={cat.missing}>
+                      {(item) => (
                         <div
                           key={item.id}
                           className={`flex items-start gap-2 p-2 rounded-lg bg-accent/20 text-sm text-muted-foreground hover:bg-accent/30 transition-colors ${onNavigateToItem && cat.key !== "notes" ? "cursor-pointer" : ""}`}
@@ -467,6 +507,8 @@ export function Collections({ selectedSaveId, onNavigateToItem }: CollectionsPro
                               <img
                                 src={item.icon}
                                 alt=""
+                                loading="lazy"
+                                decoding="async"
                                 className="h-5 w-5 object-contain opacity-50"
                                 style={{ imageRendering: "pixelated" }}
                               />
@@ -488,8 +530,8 @@ export function Collections({ selectedSaveId, onNavigateToItem }: CollectionsPro
                             )}
                           </div>
                         </div>
-                      ))}
-                    </div>
+                      )}
+                    </ItemGrid>
                   )}
                 </div>
               </TabsContent>

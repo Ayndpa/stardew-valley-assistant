@@ -340,7 +340,12 @@ pub fn load_tbin_map_from_xnb(path: &Path) -> Result<Option<TbinMap>, String> {
     TbinMapReader::new(map_payload).read_map().map(Some)
 }
 
-pub fn render_tbin_map_preview(content_dir: &Path, path: &Path) -> Result<String, String> {
+/// 渲染地图底图并直接产出 PNG 字节，供落盘后交给 asset 协议加载。
+pub fn render_tbin_map_preview_png(content_dir: &Path, path: &Path) -> Result<Vec<u8>, String> {
+    render_tbin_map_canvas(content_dir, path)?.to_png_bytes()
+}
+
+fn render_tbin_map_canvas(content_dir: &Path, path: &Path) -> Result<Canvas, String> {
     let Some(map) = load_tbin_map_from_xnb(path)? else {
         return Err("所选文件不是可渲染的 tBIN 地图。".to_string());
     };
@@ -406,7 +411,7 @@ pub fn render_tbin_map_preview(content_dir: &Path, path: &Path) -> Result<String
         return Err("地图没有可绘制的瓦片。".to_string());
     }
 
-    canvas.to_png_data_url()
+    Ok(canvas)
 }
 
 pub fn draw_tbin_tile(

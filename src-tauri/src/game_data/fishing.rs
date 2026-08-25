@@ -2,14 +2,14 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, OnceLock};
-use std::time::UNIX_EPOCH;
+use std::sync::{Arc, LazyLock, Mutex, OnceLock};
+use std::time::{Duration, Instant, UNIX_EPOCH};
 use tokio::task;
 
 use super::calendar::resolve_localized_text;
 use super::image_utils::render_object_icon;
 use super::map_names::map_display_name;
-use super::tbin::{load_tbin_map_from_xnb, render_tbin_map_preview};
+use super::tbin::{load_tbin_map_from_xnb, render_tbin_map_preview_png};
 use super::xnb::{
     load_localized_string_tables_with_lang, load_location_fishing_xnb, load_objects_xnb,
     load_string_dictionary_xnb, RawLocationFishingData,
@@ -87,7 +87,7 @@ pub struct FishingMapDetail {
     pub max_depth: i32,
     pub tiles: Vec<FishingTile>,
     pub fishing_areas: Vec<FishingArea>,
-    pub map_image_data_url: Option<String>,
+    pub map_image_path: Option<String>,
     pub map_image_error: Option<String>,
     pub cached: bool,
 }
@@ -105,9 +105,11 @@ pub struct CachedFishingMaps {
     pub maps: Vec<FishingMapDetail>,
 }
 
+/// 地图底图预览。图片以 PNG 落盘，只把绝对路径回传给前端，
+/// 由前端通过 asset 协议加载——底图可达数 MB，走 data URL 会让单次 IPC 传输膨胀到 8 MB 以上。
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CachedFishingMapPreview {
-    pub data_url: Option<String>,
+    pub image_path: Option<String>,
     pub error: Option<String>,
 }
 
@@ -158,7 +160,7 @@ fn get_preview_cache_path(
         fingerprint.latest_modified_ms
     );
     let hash = format!("{:x}", md5::compute(hash_input.as_bytes()));
-    Ok(previews_dir.join(format!("{}.json", hash)))
+    Ok(previews_dir.join(format!("{}.png", hash)))
 }
 
 fn load_maps_cache_from_disk(app: &tauri::AppHandle) -> Option<CachedFishingMaps> {
@@ -185,25 +187,26 @@ fn load_preview_cache_from_disk(
     fingerprint: &FishingMapCacheFingerprint,
 ) -> Option<CachedFishingMapPreview> {
     let path = get_preview_cache_path(app, cache_key, map_id, fingerprint).ok()?;
+    // 指纹已经编进文件名，文件存在即代表内容有效，无需读入即可复用。
     if !path.exists() {
         return None;
     }
-    let data = fs::read_to_string(&path).ok()?;
-    serde_json::from_str(&data).ok()
+    Some(CachedFishingMapPreview {
+        image_path: Some(path.to_string_lossy().to_string()),
+        error: None,
+    })
 }
 
-fn save_preview_cache_to_disk(
+fn save_preview_png_to_disk(
     app: &tauri::AppHandle,
     cache_key: &str,
     map_id: &str,
     fingerprint: &FishingMapCacheFingerprint,
-    preview: &CachedFishingMapPreview,
-) {
-    if let Ok(path) = get_preview_cache_path(app, cache_key, map_id, fingerprint) {
-        if let Ok(data) = serde_json::to_string(preview) {
-            let _ = fs::write(path, data);
-        }
-    }
+    png: &[u8],
+) -> Result<String, String> {
+    let path = get_preview_cache_path(app, cache_key, map_id, fingerprint)?;
+    fs::write(&path, png).map_err(|e| format!("写入地图底图缓存失败: {}", e))?;
+    Ok(path.to_string_lossy().to_string())
 }
 
 
@@ -278,7 +281,7 @@ fn get_fishing_map_detail_sync(
         &detail.id,
         &detail.relative_path,
     );
-    detail.map_image_data_url = preview.data_url;
+    detail.map_image_path = preview.image_path;
     detail.map_image_error = preview.error;
     detail.cached = cached;
     Ok(detail)
@@ -299,15 +302,61 @@ impl FishingMapDetail {
     }
 }
 
+/// Maps 目录的指纹缓存。
+///
+/// 算指纹要遍历整个 Maps 目录并对每个 .xnb 逐个 `metadata()`，上百次文件系统调用。
+/// 即便地图数据本身已命中缓存，这一步也会稳定花掉 100ms 以上。地图文件在应用
+/// 运行期间几乎不会变（装模组要重启游戏），因此在短窗口内复用上次的结果，
+/// 「刷新」按钮走 force_refresh 仍会强制重新扫描。
+const MAP_FINGERPRINT_TTL: Duration = Duration::from_secs(30);
+
+struct MapFingerprintEntry {
+    paths: Vec<PathBuf>,
+    fingerprint: FishingMapCacheFingerprint,
+    checked_at: Instant,
+}
+
+static MAP_FINGERPRINT_CACHE: LazyLock<Mutex<HashMap<String, MapFingerprintEntry>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+fn fingerprint_maps_dir(
+    content_dir: &Path,
+    cache_key: &str,
+    force_refresh: bool,
+) -> Result<(Vec<PathBuf>, FishingMapCacheFingerprint), String> {
+    if !force_refresh {
+        if let Ok(guard) = MAP_FINGERPRINT_CACHE.lock() {
+            if let Some(entry) = guard.get(cache_key) {
+                if entry.checked_at.elapsed() < MAP_FINGERPRINT_TTL {
+                    return Ok((entry.paths.clone(), entry.fingerprint));
+                }
+            }
+        }
+    }
+
+    let paths = super::collect_xnb_files(&content_dir.join("Maps"))?;
+    let fingerprint = fingerprint_fishing_map_files(&paths)?;
+
+    if let Ok(mut guard) = MAP_FINGERPRINT_CACHE.lock() {
+        guard.insert(
+            cache_key.to_string(),
+            MapFingerprintEntry {
+                paths: paths.clone(),
+                fingerprint,
+                checked_at: Instant::now(),
+            },
+        );
+    }
+    Ok((paths, fingerprint))
+}
+
 pub fn get_or_build_fishing_map_cache(
     app: &tauri::AppHandle,
     content_dir: &Path,
     force_refresh: bool,
 ) -> Result<(Arc<CachedFishingMaps>, bool), String> {
-    let maps_dir = content_dir.join("Maps");
-    let paths = super::collect_xnb_files(&maps_dir)?;
-    let fingerprint = fingerprint_fishing_map_files(&paths)?;
     let cache_key = content_cache_key(content_dir);
+    let (paths, fingerprint) = fingerprint_maps_dir(content_dir, &cache_key, force_refresh)?;
     let cache = FISHING_MAP_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
 
     if force_refresh {
@@ -416,18 +465,22 @@ pub fn get_or_render_fishing_map_preview(
 
     // 3. Render and save to disk
     let map_path = content_dir.join(Path::new(relative_path));
-    let preview = match render_tbin_map_preview(content_dir, &map_path) {
-        Ok(data_url) => CachedFishingMapPreview {
-            data_url: Some(data_url),
-            error: None,
+    let preview = match render_tbin_map_preview_png(content_dir, &map_path) {
+        Ok(png) => match save_preview_png_to_disk(app, cache_key, map_id, fingerprint, &png) {
+            Ok(image_path) => CachedFishingMapPreview {
+                image_path: Some(image_path),
+                error: None,
+            },
+            Err(err) => CachedFishingMapPreview {
+                image_path: None,
+                error: Some(err),
+            },
         },
         Err(err) => CachedFishingMapPreview {
-            data_url: None,
+            image_path: None,
             error: Some(err),
         },
     };
-
-    save_preview_cache_to_disk(app, cache_key, map_id, fingerprint, &preview);
 
     if let Ok(mut guard) = preview_cache.lock() {
         let entry =
@@ -575,7 +628,7 @@ pub fn parse_fishing_map(
         max_depth,
         tiles,
         fishing_areas: Vec::new(),
-        map_image_data_url: None,
+        map_image_path: None,
         map_image_error: None,
         cached: false,
     }))

@@ -79,9 +79,12 @@ export function Dashboard({ selectedSaveId }: DashboardProps) {
       const gameDir = localStorage.getItem("stardewGameDirectory") || ""
       try {
         const { invoke } = await import("@tauri-apps/api/core")
+        // 仪表盘上的挂件只做计数与筛选，从不显示物品图标；
+        // 带上图标会让这次 IPC 的响应体从几十 KB 涨到 500 KB 以上。
         const data = await invoke<{ encyclopedia: ItemEntry[] }>("get_item_game_data", {
           gameDir: gameDir.trim() || undefined,
           lang: activeLang,
+          includeIcons: false,
         })
         if (!canceled) setItemEntries(data.encyclopedia)
       } catch (err) {

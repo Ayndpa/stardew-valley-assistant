@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::{Arc, LazyLock, Mutex};
 
 use super::calendar::resolve_display_name;
 use super::image_utils::render_object_icon;
@@ -48,22 +49,31 @@ pub struct CropGameData {
     pub generated_at: Option<String>,
 }
 
-#[tauri::command]
+static CROP_GAME_DATA_CACHE: LazyLock<Mutex<HashMap<String, Arc<CropGameData>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+#[tauri::command(async)]
 pub fn get_crop_game_data(
     game_dir: Option<String>,
     lang: Option<String>,
 ) -> Result<CropGameData, String> {
-    let lang_str = lang.as_deref().unwrap_or("zh");
-    let is_zh = lang_str.to_lowercase().starts_with("zh");
+    let lang_str = lang.as_deref().unwrap_or("zh").to_string();
     let content_dir = super::locate_content_dir(game_dir.as_deref())?;
+    let key = super::snapshot_cache_key(&content_dir, &lang_str);
 
-    // 优先使用导出文件（图标缺失时回退 XNB）
-    if let Some(export) = super::item_prices::read_game_data_export() {
-        return Ok(build_crop_data_from_export(&export, &content_dir, is_zh));
-    }
+    let snapshot = super::cached_snapshot(&CROP_GAME_DATA_CACHE, key, || {
+        let is_zh = lang_str.to_lowercase().starts_with("zh");
 
-    // 回退到 XNB 解析
-    build_crop_data_from_xnb(&content_dir, lang_str, is_zh)
+        // 优先使用导出文件（图标缺失时回退 XNB）
+        if let Some(export) = super::item_prices::read_game_data_export() {
+            return Ok(build_crop_data_from_export(&export, &content_dir, is_zh));
+        }
+
+        // 回退到 XNB 解析
+        build_crop_data_from_xnb(&content_dir, &lang_str, is_zh)
+    })?;
+
+    Ok((*snapshot).clone())
 }
 
 /// 从 game-data.json 导出文件构建作物数据（图标缺失时回退 XNB）

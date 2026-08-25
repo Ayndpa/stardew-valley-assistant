@@ -19,7 +19,8 @@ export interface FishingMapSummary {
 export interface FishingMapDetail extends FishingMapSummary {
   tiles: FishingTile[]
   fishingAreas: FishingArea[]
-  mapImageDataUrl?: string | null
+  /** 底图 PNG 的磁盘路径，需经 convertFileSrc 转成 asset 协议 URL 后才能加载 */
+  mapImagePath?: string | null
   mapImageError?: string | null
   cached: boolean
 }

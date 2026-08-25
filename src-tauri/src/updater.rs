@@ -33,7 +33,7 @@ fn parse_version(version: &str) -> Option<(u32, u32, u32)> {
 }
 
 /// Check for updates from GitHub releases
-#[tauri::command]
+#[tauri::command(async)]
 pub fn check_for_updates(current_version: String) -> Result<UpdateInfo, String> {
     let url = "https://api.github.com/repos/Ayndpa/stardew-valley-assistant/releases/latest";
 

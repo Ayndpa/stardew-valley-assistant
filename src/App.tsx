@@ -2,23 +2,6 @@ import { lazy, Suspense, useState, useEffect, useRef, useCallback } from "react"
 import { useTranslation } from "react-i18next"
 import { Sidebar } from "@/components/Sidebar"
 import { Dashboard } from "@/pages/Dashboard"
-import { Collections } from "@/pages/Collections"
-import { Crops } from "@/pages/Crops"
-import { Items } from "@/pages/Items"
-import { Bundles } from "@/pages/Bundles"
-import { Calendar } from "@/pages/Calendar"
-import { GameMap } from "@/pages/GameMap"
-import { SaveEditor } from "@/pages/SaveEditor"
-import { SaveBackups } from "@/pages/SaveBackups"
-import { Children } from "@/pages/Children"
-import { Animals } from "@/pages/Animals"
-import { Settings } from "@/pages/Settings"
-import { Cheats } from "@/pages/Cheats"
-import { ModData } from "@/pages/ModData"
-import { Mods } from "@/pages/Mods"
-import { Downloads } from "@/pages/Downloads"
-import { Todo } from "@/pages/Todo"
-import { OnlineMods } from "@/components/mods/OnlineMods"
 import { Onboarding } from "@/components/Onboarding"
 import { TitleBar } from "@/components/TitleBar"
 import { UpdateDialog, DISMISSED_UPDATE_VERSION_KEY } from "@/components/UpdateDialog"
@@ -85,15 +68,38 @@ export interface SaveSummary {
 }
 
 
-const NPCs = lazy(async () => {
-  const mod = await import("@/pages/NPCs")
-  return { default: mod.NPCs }
-})
+// 仪表盘是启动后的首屏，保持静态导入；其余页面按需加载，
+// 避免把 18 个页面的代码全部塞进启动时就要解析的主 chunk。
+const Collections = lazy(async () => ({ default: (await import("@/pages/Collections")).Collections }))
+const Crops = lazy(async () => ({ default: (await import("@/pages/Crops")).Crops }))
+const Items = lazy(async () => ({ default: (await import("@/pages/Items")).Items }))
+const Bundles = lazy(async () => ({ default: (await import("@/pages/Bundles")).Bundles }))
+const Calendar = lazy(async () => ({ default: (await import("@/pages/Calendar")).Calendar }))
+const GameMap = lazy(async () => ({ default: (await import("@/pages/GameMap")).GameMap }))
+const SaveEditor = lazy(async () => ({ default: (await import("@/pages/SaveEditor")).SaveEditor }))
+const SaveBackups = lazy(async () => ({ default: (await import("@/pages/SaveBackups")).SaveBackups }))
+const Children = lazy(async () => ({ default: (await import("@/pages/Children")).Children }))
+const Animals = lazy(async () => ({ default: (await import("@/pages/Animals")).Animals }))
+const Settings = lazy(async () => ({ default: (await import("@/pages/Settings")).Settings }))
+const Cheats = lazy(async () => ({ default: (await import("@/pages/Cheats")).Cheats }))
+const ModData = lazy(async () => ({ default: (await import("@/pages/ModData")).ModData }))
+const Mods = lazy(async () => ({ default: (await import("@/pages/Mods")).Mods }))
+const Downloads = lazy(async () => ({ default: (await import("@/pages/Downloads")).Downloads }))
+const Todo = lazy(async () => ({ default: (await import("@/pages/Todo")).Todo }))
+const OnlineMods = lazy(async () => ({ default: (await import("@/components/mods/OnlineMods")).OnlineMods }))
+const NPCs = lazy(async () => ({ default: (await import("@/pages/NPCs")).NPCs }))
+const Sponsors = lazy(async () => ({ default: (await import("@/pages/Sponsors")).Sponsors }))
 
-const Sponsors = lazy(async () => {
-  const mod = await import("@/pages/Sponsors")
-  return { default: mod.Sponsors }
-})
+function PageFallback({ label }: { label: string }) {
+  return (
+    <div className="p-8">
+      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 rounded-lg border bg-accent/10">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <p className="text-sm text-muted-foreground">{label}</p>
+      </div>
+    </div>
+  )
+}
 
 
 function App() {
@@ -462,25 +468,14 @@ function App() {
         )
       case "npcs":
         return (
-          <Suspense
-            fallback={
-              <div className="p-8">
-                <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 rounded-lg border bg-accent/10">
-                  <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
-                  <p className="text-sm text-muted-foreground">正在异步加载村民关系页面...</p>
-                </div>
-              </div>
-            }
-          >
-            <NPCs
-              selectedSaveId={selectedSaveId}
-              onNavigateToItem={(itemName) => {
-                setItemNavigationTarget(itemName)
-                setCurrentPage("items")
-              }}
-              onInstallNpcLocationsMod={handleInstallNpcLocationsMod}
-            />
-          </Suspense>
+          <NPCs
+            selectedSaveId={selectedSaveId}
+            onNavigateToItem={(itemName) => {
+              setItemNavigationTarget(itemName)
+              setCurrentPage("items")
+            }}
+            onInstallNpcLocationsMod={handleInstallNpcLocationsMod}
+          />
         )
       case "calendar":
         return <Calendar selectedSaveId={selectedSaveId} />
@@ -601,18 +596,7 @@ function App() {
           </div>
         )
       case "sponsors":
-        return (
-          <Suspense fallback={
-            <div className="p-8">
-              <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 rounded-lg border bg-accent/10">
-                <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
-                <p className="text-sm text-muted-foreground">正在加载鸣谢页面...</p>
-              </div>
-            </div>
-          }>
-            <Sponsors />
-          </Suspense>
-        )
+        return <Sponsors />
       default:
         return <Dashboard selectedSaveId={selectedSaveId} />
     }
@@ -676,7 +660,9 @@ function App() {
               </div>
             )}
 
-            {renderPage()}
+            <Suspense fallback={<PageFallback label={t("common.loadingPage", { defaultValue: "正在加载页面…" })} />}>
+              {renderPage()}
+            </Suspense>
           </main>
         </div>
       </div>

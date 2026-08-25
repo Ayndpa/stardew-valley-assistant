@@ -112,17 +112,31 @@ struct ItemSnapshot {
 static ITEM_SNAPSHOT_CACHE: LazyLock<Mutex<HashMap<String, Arc<ItemSnapshot>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-#[tauri::command]
+/// 返回整本物品百科。
+///
+/// `include_icons` 默认为 true 以兼容既有调用方；只需要 id / 名称 / 分类的页面
+/// （首页、收集进度）应显式传 false —— 图标是逐个物品的 base64 PNG，
+/// 会把单次 IPC 响应从几十 KB 撑到 500 KB 以上。
+#[tauri::command(async)]
 pub fn get_item_game_data(
     game_dir: Option<String>,
     lang: Option<String>,
+    include_icons: Option<bool>,
 ) -> Result<ItemGameData, String> {
     let snapshot = load_item_snapshot(game_dir, lang)?;
+    let with_icons = include_icons.unwrap_or(true);
     let mut texture_cache = HashMap::new();
     let encyclopedia = snapshot
         .encyclopedia
         .iter()
-        .map(|entry| build_item_entry(&snapshot.content_dir, entry, &mut texture_cache))
+        .map(|entry| {
+            build_item_entry(
+                &snapshot.content_dir,
+                entry,
+                &mut texture_cache,
+                with_icons,
+            )
+        })
         .collect::<Vec<_>>();
 
     let (data_source, generated_at) = if let Some(export) = super::item_prices::read_game_data_export() {
@@ -140,7 +154,7 @@ pub fn get_item_game_data(
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_item_game_data_overview(
     game_dir: Option<String>,
     lang: Option<String>,
@@ -162,7 +176,7 @@ pub fn get_item_game_data_overview(
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn query_item_game_data(
     game_dir: Option<String>,
     search_term: Option<String>,
@@ -215,6 +229,7 @@ pub fn query_item_game_data(
                 &snapshot.content_dir,
                 &snapshot.encyclopedia[*index],
                 &mut texture_cache,
+                true,
             )
         })
         .collect::<Vec<_>>();
@@ -233,7 +248,13 @@ fn load_item_snapshot(
 ) -> Result<Arc<ItemSnapshot>, String> {
     let content_dir = super::locate_content_dir(game_dir.as_deref())?;
     let lang_str = lang.as_deref().unwrap_or("zh").to_lowercase();
-    let cache_key = format!("{}:{}", content_dir.to_string_lossy(), lang_str);
+    // 快照里含有来自伴侣模组导出文件的价格，导出文件更新后必须重建。
+    let cache_key = format!(
+        "{}:{}:{}",
+        content_dir.to_string_lossy(),
+        lang_str,
+        super::item_prices::export_fingerprint()
+    );
 
     if let Some(snapshot) = ITEM_SNAPSHOT_CACHE
         .lock()
@@ -576,6 +597,7 @@ fn build_item_entry(
     content_dir: &std::path::Path,
     item: &IndexedItemEntry,
     texture_cache: &mut HashMap<String, super::image_utils::Texture>,
+    include_icon: bool,
 ) -> ItemEncyclopediaEntry {
     ItemEncyclopediaEntry {
         id: item.id.clone(),
@@ -586,7 +608,11 @@ fn build_item_entry(
         item_type_key: item.item_type_key.clone(),
         category: item.category.clone(),
         category_key: item.category_key.clone(),
-        icon: render_object_icon(content_dir, &item.raw_object, texture_cache).ok(),
+        icon: if include_icon {
+            render_object_icon(content_dir, &item.raw_object, texture_cache).ok()
+        } else {
+            None
+        },
         sell_price: item.sell_price,
         price_source: item.price_source.clone(),
         edibility: item.edibility,

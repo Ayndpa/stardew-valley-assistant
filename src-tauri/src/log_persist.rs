@@ -86,7 +86,7 @@ fn get_current_log_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(path)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn write_log_entries(app: AppHandle, entries: Vec<LogEntry>) -> Result<(), String> {
     let path = get_current_log_path(&app)?;
 
@@ -118,7 +118,7 @@ pub fn write_log_entries(app: AppHandle, entries: Vec<LogEntry>) -> Result<(), S
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn read_log_files(app: AppHandle) -> Result<Vec<LogFileInfo>, String> {
     let log_dir = get_log_dir(&app)?;
 
@@ -154,7 +154,7 @@ pub fn get_log_dir_path(app: AppHandle) -> Result<String, String> {
     Ok(log_dir.to_string_lossy().to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn clear_log_files(app: AppHandle) -> Result<(), String> {
     let log_dir = get_log_dir(&app)?;
 
