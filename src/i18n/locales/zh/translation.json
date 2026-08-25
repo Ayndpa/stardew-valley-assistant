@@ -38,6 +38,16 @@
     "forceQuitTooltip": "强制退出游戏进程",
     "collapseSidebar": "收起侧边栏",
     "expandSidebar": "展开侧边栏",
+    "collapseGroup": "收起分组",
+    "expandGroup": "展开分组",
+    "groups": {
+      "overview": "总览",
+      "farm": "农场经营",
+      "wiki": "资料图鉴",
+      "saveTools": "存档工具",
+      "mods": "模组",
+      "misc": "其他"
+    },
     "version": "超级星露谷",
     "appName": "超级星露谷",
     "appNameSubtitle": ""

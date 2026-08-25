@@ -38,6 +38,16 @@
     "forceQuitTooltip": "Force quit the game process",
     "collapseSidebar": "Collapse Sidebar",
     "expandSidebar": "Expand Sidebar",
+    "collapseGroup": "Collapse group",
+    "expandGroup": "Expand group",
+    "groups": {
+      "overview": "Overview",
+      "farm": "Farm",
+      "wiki": "Reference",
+      "saveTools": "Save Tools",
+      "mods": "Mods",
+      "misc": "More"
+    },
     "version": "Stardew Valley Assistant",
     "appName": "Stardew Valley",
     "appNameSubtitle": "Assistant"

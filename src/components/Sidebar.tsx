@@ -59,28 +59,83 @@ interface SidebarProps {
   enabledFeatures: Page[]
 }
 
-const navItems: { id: Page; label: string; icon: React.ReactNode }[] = [
-  { id: "dashboard", label: "仪表盘", icon: <LayoutDashboard /> },
-  { id: "collections", label: "收集进度", icon: <Trophy className="h-4 w-4" /> },
-  { id: "crops", label: "作物管理", icon: <Sprout /> },
-  { id: "items", label: "物品百科", icon: <Package className="h-4 w-4" /> },
-  { id: "bundles", label: "收集包", icon: <PackageOpen className="h-4 w-4" /> },
-  { id: "animals", label: "动物管理", icon: <PawPrint className="h-4 w-4" /> },
-  { id: "npcs", label: "村民关系", icon: <Users /> },
-  { id: "calendar", label: "节日日历", icon: <CalendarDays /> },
-  { id: "fishingMap", label: "游戏地图", icon: <Map className="h-4 w-4" /> },
-  { id: "children", label: "孩子管理", icon: <Baby className="h-4 w-4" /> },
-  { id: "cheats", label: "游戏作弊", icon: <Zap className="h-4 w-4" /> },
-  { id: "modData", label: "模组数据", icon: <Database className="h-4 w-4" /> },
-  { id: "saveEditor", label: "存档编辑", icon: <PencilRuler className="h-4 w-4" /> },
-  { id: "saveBackups", label: "存档备份", icon: <ArchiveRestore className="h-4 w-4" /> },
-  { id: "mods", label: "模组管理", icon: <Puzzle /> },
-  { id: "onlineMods", label: "获取模组", icon: <Download className="h-4 w-4" /> },
-  { id: "downloads", label: "下载管理", icon: <ListChecks className="h-4 w-4" /> },
-  { id: "todo", label: "便签任务", icon: <Notebook className="h-4 w-4" /> },
-  { id: "sponsors", label: "特别鸣谢", icon: <Heart className="h-4 w-4 text-rose-500 animate-pulse" /> },
-  { id: "settings", label: "设置", icon: <Settings /> },
+interface NavItem {
+  id: Page
+  icon: React.ReactNode
+}
+
+interface NavGroup {
+  id: string
+  items: NavItem[]
+}
+
+/** 始终可见的页面，不受 enabledFeatures 过滤 */
+const ALWAYS_VISIBLE: Page[] = ["dashboard", "settings", "sponsors"]
+
+const navGroups: NavGroup[] = [
+  {
+    id: "overview",
+    items: [
+      { id: "dashboard", icon: <LayoutDashboard /> },
+      { id: "todo", icon: <Notebook /> },
+    ],
+  },
+  {
+    id: "farm",
+    items: [
+      { id: "collections", icon: <Trophy /> },
+      { id: "bundles", icon: <PackageOpen /> },
+      { id: "crops", icon: <Sprout /> },
+      { id: "animals", icon: <PawPrint /> },
+      { id: "npcs", icon: <Users /> },
+      { id: "children", icon: <Baby /> },
+    ],
+  },
+  {
+    id: "wiki",
+    items: [
+      { id: "items", icon: <Package /> },
+      { id: "calendar", icon: <CalendarDays /> },
+      { id: "fishingMap", icon: <Map /> },
+    ],
+  },
+  {
+    id: "saveTools",
+    items: [
+      { id: "saveEditor", icon: <PencilRuler /> },
+      { id: "saveBackups", icon: <ArchiveRestore /> },
+      { id: "cheats", icon: <Zap /> },
+      { id: "modData", icon: <Database /> },
+    ],
+  },
+  {
+    id: "mods",
+    items: [
+      { id: "mods", icon: <Puzzle /> },
+      { id: "onlineMods", icon: <Download /> },
+      { id: "downloads", icon: <ListChecks /> },
+    ],
+  },
+  {
+    id: "misc",
+    items: [
+      { id: "sponsors", icon: <Heart className="text-rose-500 animate-pulse" /> },
+      { id: "settings", icon: <Settings /> },
+    ],
+  },
 ]
+
+const COLLAPSED_GROUPS_KEY = "sidebar.collapsedGroups"
+
+function readCollapsedGroups(): string[] {
+  try {
+    const raw = localStorage.getItem(COLLAPSED_GROUPS_KEY)
+    const parsed = raw ? JSON.parse(raw) : null
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : []
+  } catch {
+    return []
+  }
+}
 
 function SaveAvatar({
   save,
@@ -132,6 +187,7 @@ export function Sidebar({
   const [isLaunchMenuOpen, setIsLaunchMenuOpen] = useState(false)
   const [appVersion, setAppVersion] = useState<string>("")
   const [isBeta, setIsBeta] = useState(false)
+  const [collapsedGroups, setCollapsedGroups] = useState<string[]>(readCollapsedGroups)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const launchDropdownRef = useRef<HTMLDivElement>(null)
 
@@ -158,8 +214,37 @@ export function Sidebar({
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [])
 
+  // 导航到某个页面时，自动展开它所在的分组
+  useEffect(() => {
+    const owner = navGroups.find((group) => group.items.some((item) => item.id === currentPage))
+    if (owner) {
+      setCollapsedGroups((prev) => (prev.includes(owner.id) ? prev.filter((id) => id !== owner.id) : prev))
+    }
+  }, [currentPage])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(COLLAPSED_GROUPS_KEY, JSON.stringify(collapsedGroups))
+    } catch {
+      // 忽略隐私模式等写入失败的场景
+    }
+  }, [collapsedGroups])
+
   const currentSave = saves.find((s) => s.id === selectedSaveId) || saves[0]
   const activeDownloadCount = downloadStats.queued + downloadStats.running + downloadStats.paused
+
+  const visibleGroups = navGroups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter(
+        (item) => ALWAYS_VISIBLE.includes(item.id) || enabledFeatures.includes(item.id)
+      ),
+    }))
+    .filter((group) => group.items.length > 0)
+
+  const toggleGroup = (id: string) => {
+    setCollapsedGroups((prev) => (prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]))
+  }
 
   const handleSelectSave = (id: string) => {
     onSaveChange(id)
@@ -393,25 +478,33 @@ export function Sidebar({
 
       {/* Navigation */}
       <ScrollArea className={cn("flex-1 pb-4", collapsed ? "px-2" : "px-3")}>
-        <nav className="flex flex-col gap-1">
-          {navItems
-            .filter((item) => item.id === "dashboard" || item.id === "settings" || item.id === "sponsors" || enabledFeatures.includes(item.id))
-            .map((item) => {
+        <nav className="flex flex-col">
+          {visibleGroups.map((group, groupIndex) => {
+            const isGroupCollapsed = !collapsed && collapsedGroups.includes(group.id)
+            const groupLabel = t(`sidebar.groups.${group.id}`)
+            const groupHasDownloadBadge =
+              activeDownloadCount > 0 && group.items.some((item) => item.id === "downloads")
+
+            const renderItem = (item: NavItem) => {
+              const isActive = currentPage === item.id
               const showDownloadCount = item.id === "downloads" && activeDownloadCount > 0
               return (
                 <Button
                   key={item.id}
-                  variant={currentPage === item.id ? "secondary" : "ghost"}
+                  variant={isActive ? "secondary" : "ghost"}
                   className={cn(
                     "gap-3 h-10 text-sm font-medium transition-all duration-200 relative",
                     collapsed ? "justify-center px-2" : "justify-start px-3",
-                    currentPage === item.id
+                    isActive
                       ? "bg-sidebar-accent text-sidebar-accent-foreground"
                       : "text-sidebar-foreground hover:bg-sidebar-accent/50"
                   )}
                   onClick={() => onNavigate(item.id)}
-                  title={collapsed ? t(`sidebar.${item.id}`) : undefined}
+                  title={collapsed ? `${groupLabel} · ${t(`sidebar.${item.id}`)}` : undefined}
                 >
+                  {isActive && (
+                    <span className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-r bg-primary" />
+                  )}
                   <span className="shrink-0">{item.icon}</span>
                   {!collapsed && (
                     <>
@@ -428,7 +521,43 @@ export function Sidebar({
                   )}
                 </Button>
               )
-            })}
+            }
+
+            // 收起状态下不显示分组标题，仅用分隔线区分
+            if (collapsed) {
+              return (
+                <div key={group.id} className="flex flex-col gap-1">
+                  {groupIndex > 0 && <Separator className="my-2 bg-sidebar-border/50" />}
+                  {group.items.map(renderItem)}
+                </div>
+              )
+            }
+
+            return (
+              <div key={group.id} className="flex flex-col">
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(group.id)}
+                  className="flex w-full items-center gap-1.5 rounded-md px-3 pb-1 pt-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground transition-colors duration-200 hover:text-sidebar-foreground cursor-pointer"
+                  title={isGroupCollapsed ? t("sidebar.expandGroup") : t("sidebar.collapseGroup")}
+                >
+                  <span className="min-w-0 flex-1 truncate text-left">{groupLabel}</span>
+                  {isGroupCollapsed && groupHasDownloadBadge && (
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+                  )}
+                  <ChevronDown
+                    className={cn(
+                      "h-3 w-3 shrink-0 transition-transform duration-200",
+                      isGroupCollapsed && "-rotate-90"
+                    )}
+                  />
+                </button>
+                {!isGroupCollapsed && (
+                  <div className="flex flex-col gap-1">{group.items.map(renderItem)}</div>
+                )}
+              </div>
+            )
+          })}
         </nav>
       </ScrollArea>
 
