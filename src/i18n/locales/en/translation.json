@@ -1587,9 +1587,9 @@
     "onlineDetail": {
       "fetchingNexusInfo": "Fetching Nexus mod info...",
       "cloudflareVerifyNeeded": "Cloudflare verification required",
-      "startingScraper": "Starting secure parsing channel...",
+      "startingScraper": "Loading mod details...",
       "cloudflareDesc": "Nexus verification page is shown in a separate window. Please complete the verification there and the mod details will load automatically.",
-      "scraperDesc": "Loading Nexus page via WebView and syncing parse results. The verification window will appear automatically when Cloudflare challenge is encountered.",
+      "scraperDesc": "Fetching detailed information for this mod. This may take a moment.",
       "loadFailed": "Failed to load mod details",
       "reload": "Reload",
       "errorNoContent": "No Nexus page content received. Please retry.",

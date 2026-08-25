@@ -1457,9 +1457,9 @@
     "onlineDetail": {
       "fetchingNexusInfo": "正在获取 Nexus 模组信息...",
       "cloudflareVerifyNeeded": "需要完成 Cloudflare 验证",
-      "startingScraper": "正在启动后台安全解析通道...",
+      "startingScraper": "正在解析模组详情...",
       "cloudflareDesc": "Nexus 的验证页面已在独立窗口显示。请在该窗口中点击验证框，验证通过后这里会自动继续加载模组详情。",
-      "scraperDesc": "正在通过 WebView 加载 Nexus 页面并同步解析结果。遇到 Cloudflare 人机验证时，验证窗口会自动显示。",
+      "scraperDesc": "正在获取该模组的详细信息，请稍候。",
       "loadFailed": "模组详情加载失败",
       "reload": "重新加载",
       "errorNoContent": "未收到 Nexus 页面内容，请重试。",
