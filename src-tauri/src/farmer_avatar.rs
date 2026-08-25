@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{LazyLock, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 
 use serde::{Deserialize, Serialize};
 
 use crate::game::find_stardew_valley;
 use crate::game_data::image_utils::{Canvas, Pixel, Rect, Texture};
+use crate::game_data::xnb::loaders::load_int_string_dictionary_xnb;
 use crate::game_data::xnb::load_xnb_texture;
 
 const SPRITE_SCALE: i32 = 4;
@@ -129,9 +130,17 @@ pub fn render_farmer_avatar(
     game_dir: Option<&str>,
 ) -> Result<String, String> {
     let assets = locate_farmer_asset_dir(game_dir)?;
-    let base_name = farmer_base_texture_name(appearance);
-    let mut base = load_farmer_texture(&assets, &base_name)?;
-    let hairstyles = load_farmer_texture(&assets, "hairstyles")?;
+    let hair_style = load_hair_style_metadata(&assets);
+    let hair_style = hair_style.get(&appearance.hair);
+    let base_name = farmer_base_texture_name(appearance, hair_style);
+    let mut base = load_farmer_texture(&assets, base_name)?;
+    // 1.6 起 hair >= 100 的发型放在 Data/HairData 指定的图集（如 hairstyles2）里，
+    // 沿用主图集的索引公式会算出越界坐标，头发就整个画不出来。
+    let hairstyles = match hair_style {
+        Some(metadata) => load_farmer_texture(&assets, &metadata.texture)
+            .or_else(|_| load_farmer_texture(&assets, DEFAULT_HAIR_TEXTURE))?,
+        None => load_farmer_texture(&assets, DEFAULT_HAIR_TEXTURE)?,
+    };
     let shirts = load_farmer_texture(&assets, "shirts")?;
     let pants = load_farmer_texture(&assets, "pants")?;
     let skin_colors = load_farmer_texture(&assets, "skinColors")?;
@@ -166,7 +175,7 @@ pub fn render_farmer_avatar(
 
     draw_pants(&mut canvas, &pants, appearance);
     draw_accessory(&mut canvas, accessories.as_ref(), appearance, true);
-    draw_hair(&mut canvas, &hairstyles, appearance);
+    draw_hair(&mut canvas, &hairstyles, appearance, hair_style);
     draw_accessory(&mut canvas, accessories.as_ref(), appearance, false);
     draw_shirt(&mut canvas, &shirts, appearance);
     draw_hat(&mut canvas, hats.as_ref(), appearance);
@@ -356,8 +365,86 @@ fn load_farmer_texture(assets: &Path, name: &str) -> Result<Texture, String> {
     load_xnb_texture(&assets.join(format!("{}.xnb", name)))
 }
 
-fn farmer_base_texture_name(appearance: &FarmerAppearance) -> &'static str {
-    match (appearance.is_male, is_bald_base_hair(appearance.hair)) {
+const DEFAULT_HAIR_TEXTURE: &str = "hairstyles";
+
+/// `Data/HairData` 中一条发型记录，对应游戏里的 `Farmer.HairStyleMetadata`。
+#[derive(Debug, Clone)]
+struct HairStyleMetadata {
+    /// 发型所在图集名（相对 `Characters/Farmer`），例如 `hairstyles2`。
+    texture: String,
+    tile_x: i32,
+    tile_y: i32,
+    is_bald_style: bool,
+}
+
+type HairStyleTable = Arc<HashMap<i32, HairStyleMetadata>>;
+
+/// 每个资源目录的发型元数据缓存：列表页会为每个存档各渲染一次头像，
+/// 而这张表要走一次 LZX 解压，没必要重复解。
+static HAIR_DATA_CACHE: LazyLock<Mutex<HashMap<PathBuf, HairStyleTable>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// 读取 `Content/Data/HairData`。缺失或格式异常时退回空表，
+/// 此时全部发型按 1.5 的主图集索引公式渲染。
+fn load_hair_style_metadata(assets: &Path) -> HairStyleTable {
+    if let Ok(cache) = HAIR_DATA_CACHE.lock() {
+        if let Some(hit) = cache.get(assets) {
+            return hit.clone();
+        }
+    }
+
+    let entries = assets
+        .parent()
+        .and_then(Path::parent)
+        .map(|content| content.join("Data").join("HairData.xnb"))
+        .filter(|path| path.exists())
+        .and_then(|path| load_int_string_dictionary_xnb(&path).ok())
+        .unwrap_or_default();
+
+    let parsed = entries
+        .into_iter()
+        .filter_map(|(key, value)| {
+            let hair = key.trim().parse::<i32>().ok()?;
+            Some((hair, parse_hair_style_metadata(&value)?))
+        })
+        .collect::<HashMap<_, _>>();
+
+    let parsed = Arc::new(parsed);
+    if let Ok(mut cache) = HAIR_DATA_CACHE.lock() {
+        cache.insert(assets.to_path_buf(), parsed.clone());
+    }
+    parsed
+}
+
+/// 字段依次为 `贴图/tileX/tileY/usesUniqueLeftSprite/coveredIndex/isBaldStyle`。
+fn parse_hair_style_metadata(value: &str) -> Option<HairStyleMetadata> {
+    let fields = value.split('/').collect::<Vec<_>>();
+    if fields.len() < 3 {
+        return None;
+    }
+
+    // 游戏里贴图字段写的是资源名（可能带 `Characters\Farmer\` 前缀），"null" 表示用主图集。
+    let texture = fields[0].trim().replace('\\', "/");
+    let texture = texture.rsplit('/').next().unwrap_or(DEFAULT_HAIR_TEXTURE);
+    let texture = if texture.is_empty() || texture.eq_ignore_ascii_case("null") {
+        DEFAULT_HAIR_TEXTURE
+    } else {
+        texture
+    };
+
+    Some(HairStyleMetadata {
+        texture: texture.to_string(),
+        tile_x: fields[1].trim().parse().ok()?,
+        tile_y: fields[2].trim().parse().ok()?,
+        is_bald_style: fields.get(5).map(|f| f.trim()) == Some("true"),
+    })
+}
+
+fn farmer_base_texture_name(
+    appearance: &FarmerAppearance,
+    hair_style: Option<&HairStyleMetadata>,
+) -> &'static str {
+    match (appearance.is_male, is_bald_base_hair(appearance.hair, hair_style)) {
         (true, true) => "farmer_base_bald",
         (true, false) => "farmer_base",
         (false, true) => "farmer_girl_base_bald",
@@ -365,8 +452,11 @@ fn farmer_base_texture_name(appearance: &FarmerAppearance) -> &'static str {
     }
 }
 
-fn is_bald_base_hair(hair: i32) -> bool {
-    (49..=55).contains(&hair)
+fn is_bald_base_hair(hair: i32, hair_style: Option<&HairStyleMetadata>) -> bool {
+    match hair_style {
+        Some(metadata) => metadata.is_bald_style,
+        None => (49..=55).contains(&hair),
+    }
 }
 
 fn draw_pants(canvas: &mut Canvas, pants: &Texture, appearance: &FarmerAppearance) {
@@ -389,10 +479,26 @@ fn draw_pants(canvas: &mut Canvas, pants: &Texture, appearance: &FarmerAppearanc
     );
 }
 
-fn draw_hair(canvas: &mut Canvas, hairstyles: &Texture, appearance: &FarmerAppearance) {
-    let hair = appearance.hair.max(0) as usize;
-    let x = (hair * 16) % hairstyles.width;
-    let y = (hair * 16 / hairstyles.width) * 96;
+fn draw_hair(
+    canvas: &mut Canvas,
+    hairstyles: &Texture,
+    appearance: &FarmerAppearance,
+    hair_style: Option<&HairStyleMetadata>,
+) {
+    // HairData 里的发型直接给出图集坐标；其余发型仍按主图集「每行 96px」的索引推算。
+    let (x, y) = match hair_style {
+        Some(metadata) => (
+            metadata.tile_x.max(0) as usize * 16,
+            metadata.tile_y.max(0) as usize * 16,
+        ),
+        None => {
+            let hair = appearance.hair.max(0) as usize;
+            (
+                (hair * 16) % hairstyles.width,
+                (hair * 16 / hairstyles.width) * 96,
+            )
+        }
+    };
     let gender_offset = if appearance.is_male && appearance.hair >= 16 {
         -4
     } else if !appearance.is_male && appearance.hair < 16 {
@@ -878,6 +984,34 @@ mod tests {
         let avatar = render_farmer_avatar(&appearance, source_root.to_str()).unwrap();
         assert!(avatar.starts_with("data:image/png;base64,"));
         assert!(avatar.len() > 1000);
+    }
+
+    /// hair >= 100 的发型在 `hairstyles2` 里，1.5 的索引公式会算到图集外面，
+    /// 结果是头像整个没有头发。
+    #[test]
+    fn draws_hair_styles_defined_in_hair_data() {
+        let Ok(assets) = locate_farmer_asset_dir(None) else {
+            return;
+        };
+        let metadata = load_hair_style_metadata(&assets);
+        let Some(style) = metadata.get(&110) else {
+            return;
+        };
+        assert_eq!(style.texture, "hairstyles2");
+
+        let appearance = FarmerAppearance::from_save_xml(
+            r#"<Farmer><Gender>Male</Gender><hair>110</hair></Farmer>"#,
+        );
+        let hairstyles = load_farmer_texture(&assets, &style.texture).unwrap();
+
+        let mut canvas = Canvas::new(CANVAS_WIDTH, CANVAS_HEIGHT);
+        draw_hair(&mut canvas, &hairstyles, &appearance, Some(style));
+        assert!(canvas.pixels.iter().any(|pixel| pixel.a > 0));
+
+        // 修复前走的就是这条分支：源矩形落在图集外，draw_scaled 直接放弃绘制。
+        let mut fallback = Canvas::new(CANVAS_WIDTH, CANVAS_HEIGHT);
+        draw_hair(&mut fallback, &hairstyles, &appearance, None);
+        assert!(fallback.pixels.iter().all(|pixel| pixel.a == 0));
     }
 
     #[test]
