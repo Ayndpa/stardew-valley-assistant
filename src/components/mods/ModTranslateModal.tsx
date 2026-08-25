@@ -72,6 +72,21 @@ async function translateModWithOpenAI(
   }
 }
 
+/**
+ * 匹配 `{{i18n:Key}}` 占位符，冒号半角全角都算。
+ * 旧版本会把它写进 manifest，翻译引擎又会把这串东西当正文译一遍
+ * （顺手把冒号转成全角），必须在送进翻译前拦掉，否则越修越坏。
+ */
+const I18N_PLACEHOLDER = /^\{\{\s*i18n\s*[:：][\s\S]*\}\}$/i
+
+function isI18nPlaceholder(text: string | undefined): boolean {
+  return I18N_PLACEHOLDER.test((text || "").trim())
+}
+
+function hasChinese(text: string | undefined): boolean {
+  return /[一-龥]/.test(text || "")
+}
+
 export function ModTranslateModal({ isOpen, onClose, mods, onScan }: ModTranslateModalProps) {
   const [engine, setEngine] = useState<"builtin" | "openai">("builtin")
   const [apiKey, setApiKey] = useState("")
@@ -109,8 +124,11 @@ export function ModTranslateModal({ isOpen, onClose, mods, onScan }: ModTranslat
 
   if (!isOpen) return null
 
-  // Filter mods
-  const untranslatedMods = mods.filter((m) => !/[\u4e00-\u9fa5]/.test(m.name))
+  // 待处理：名称不含中文的，以及 manifest 里残留旧版占位符、需要重写一次的
+  const brokenMods = mods.filter((m) => m.manifestNeedsRepair)
+  const untranslatedMods = mods.filter(
+    (m) => !/[\u4e00-\u9fa5]/.test(m.name) || m.manifestNeedsRepair
+  )
   const targetModsCount = translateAll ? mods.length : untranslatedMods.length
 
   const handleSaveSettings = () => {
@@ -155,6 +173,7 @@ export function ModTranslateModal({ isOpen, onClose, mods, onScan }: ModTranslat
     }
 
     let successCount = 0
+    const failedMods: { name: string; reason: string }[] = []
 
     for (let i = 0; i < modsToTranslate.length; i++) {
       const mod = modsToTranslate[i]
@@ -162,14 +181,20 @@ export function ModTranslateModal({ isOpen, onClose, mods, onScan }: ModTranslat
       setProgress(Math.round((i / modsToTranslate.length) * 100))
 
       try {
+        // 名称/描述若还是残留的占位符，就退回文件夹名，绝不把它送进翻译引擎
+        const sourceName = isI18nPlaceholder(mod.name)
+          ? mod.englishName || mod.folderName
+          : mod.name
+        const sourceDesc = isI18nPlaceholder(mod.description) ? "" : mod.description
+
         let translatedName = ""
         let translatedDesc = ""
 
         if (engine === "openai") {
           // Translate using OpenAI API
           const res = await translateModWithOpenAI(
-            mod.name,
-            mod.description,
+            sourceName,
+            sourceDesc,
             apiKey,
             baseUrl,
             model
@@ -178,18 +203,31 @@ export function ModTranslateModal({ isOpen, onClose, mods, onScan }: ModTranslat
           translatedDesc = res.description
         } else {
           // Translate using Built-in Translation Library
-          const res = await syncModTranslations([mod])
+          const res = await syncModTranslations([
+            { ...mod, name: sourceName, description: sourceDesc },
+          ])
           const translatedMod = res.mods[0]
           translatedName = translatedMod.name
           translatedDesc = translatedMod.description
+        }
+
+        // 翻译引擎也可能把占位符原样吐回来，写盘前再拦一次
+        if (isI18nPlaceholder(translatedName)) translatedName = sourceName
+        if (isI18nPlaceholder(translatedDesc)) translatedDesc = sourceDesc
+
+        // 译名里一个中文都没有，说明这次根本没译出来。此时不写盘，
+        // 否则等于用英文原名覆盖一遍，还会被统计成"翻译成功"
+        if (!hasChinese(translatedName)) {
+          failedMods.push({ name: sourceName, reason: "翻译引擎未返回中文结果" })
+          continue
         }
 
         // Call backend command to write translation to files
         await invoke("write_mod_translation", {
           gameDir,
           folderName: mod.folderName,
-          originalName: mod.englishName || mod.name,
-          originalDescription: mod.description,
+          originalName: mod.englishName || sourceName,
+          originalDescription: sourceDesc,
           translatedName,
           translatedDescription: translatedDesc,
         })
@@ -197,6 +235,7 @@ export function ModTranslateModal({ isOpen, onClose, mods, onScan }: ModTranslat
         successCount++
       } catch (err: any) {
         console.error(`Failed to translate mod ${mod.name}:`, err)
+        failedMods.push({ name: mod.name, reason: err?.message || String(err) })
       }
     }
 
@@ -204,6 +243,21 @@ export function ModTranslateModal({ isOpen, onClose, mods, onScan }: ModTranslat
     setIsTranslating(false)
     setCurrentModName("")
     onScan()
+
+    // 有失败的就把结果留在弹窗里，别静悄悄关掉让人以为全成功了
+    if (failedMods.length > 0) {
+      const preview = failedMods
+        .slice(0, 5)
+        .map((item) => `${item.name}（${item.reason}）`)
+        .join("；")
+      const more = failedMods.length > 5 ? ` 等共 ${failedMods.length} 个` : ""
+      setError(
+        `成功 ${successCount} 个，失败 ${failedMods.length} 个：${preview}${more}。` +
+          `失败模组的文件未被改动，详细错误见开发者工具控制台。`
+      )
+      return
+    }
+
     onClose()
   }
 
@@ -217,7 +271,7 @@ export function ModTranslateModal({ isOpen, onClose, mods, onScan }: ModTranslat
               一键翻译本地模组名称与描述
             </CardTitle>
             <CardDescription className="text-xs mt-1">
-              通过在本地模组文件夹中创建 i18n 翻译文件和修改 manifest.json，使游戏内配置菜单直接显示中文。
+              把译文直接写入本地模组的 manifest.json，并在 i18n/default.json 中备份原文，使 SMAPI 日志与游戏内配置菜单直接显示中文。
             </CardDescription>
           </div>
           <button
@@ -356,10 +410,21 @@ export function ModTranslateModal({ isOpen, onClose, mods, onScan }: ModTranslat
                 </div>
               </div>
 
+              {brokenMods.length > 0 && (
+                <div className="bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 p-3 rounded-lg flex items-start gap-2 text-[11px]">
+                  <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                  <div>
+                    检测到 <b>{brokenMods.length}</b> 个模组的 manifest.json 里残留着旧版写入的
+                    占位符，游戏内会原样显示成 <code>{"{{i18n:ModName}}"}</code>。
+                    这些模组已自动加入待处理列表，重新翻译一次即可修复。
+                  </div>
+                </div>
+              )}
+
               {/* Stats */}
               <div className="text-[11px] text-muted-foreground flex justify-between items-center px-1">
                 <span>当前已安装模组总数: <b>{mods.length}</b></span>
-                <span>未汉化模组数: <b>{untranslatedMods.length}</b></span>
+                <span>待处理模组数: <b>{untranslatedMods.length}</b></span>
               </div>
             </>
           )}

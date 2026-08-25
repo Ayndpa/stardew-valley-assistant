@@ -50,6 +50,10 @@ pub struct Mod {
     pub parent_path: String,
     pub dependencies: Vec<String>,
     pub config: Vec<ModConfigField>,
+    /// manifest 的 Name/Description 仍是旧版写入的 `{{i18n:...}}` 占位符。
+    /// SMAPI 不解析这种写法，游戏内会原样显示，需要重新翻译一次修好。
+    #[serde(default)]
+    pub manifest_needs_repair: bool,
 }
 
 // Re-export commands for lib.rs

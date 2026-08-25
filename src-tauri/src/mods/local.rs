@@ -155,10 +155,33 @@ fn find_key_in_json_file(path: &Path, key: &str) -> Option<String> {
 }
 
 /// 从 `{{i18n:Key}}` 占位符中取出 Key。
+///
+/// 冒号同时接受全角 `：`：占位符被误当成正文送进翻译引擎时，引擎会把半角冒号
+/// 转成全角，这类被写坏的值也要能识别出来，否则永远修不掉。
 fn parse_i18n_key(value: &str) -> Option<String> {
     let inner = value.trim().strip_prefix("{{")?.strip_suffix("}}")?.trim();
-    inner.get(..5).filter(|p| p.eq_ignore_ascii_case("i18n:"))?;
-    Some(inner[5..].trim().to_string())
+    let split_at = inner.char_indices().nth(4).map(|(i, _)| i)?;
+    let (head, rest) = inner.split_at(split_at);
+    if !head.eq_ignore_ascii_case("i18n") {
+        return None;
+    }
+    let rest = rest.trim_start();
+    let key = rest.strip_prefix(':').or_else(|| rest.strip_prefix('：'))?;
+    Some(key.trim().to_string())
+}
+
+/// 词条内容本身也可能是被写坏的占位符，这种值不能当正文用。
+fn clean_text(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() || parse_i18n_key(trimmed).is_some() {
+        return None;
+    }
+    Some(trimmed.to_string())
+}
+
+/// 从候选值里挑出第一个可用的正文，跳过空串与 i18n 占位符。
+fn first_clean_text(candidates: &[&str]) -> Option<String> {
+    candidates.iter().find_map(|c| clean_text(c))
 }
 
 fn resolve_i18n_string(value: &str, mod_dir: &Path) -> String {
@@ -168,7 +191,11 @@ fn resolve_i18n_string(value: &str, mod_dir: &Path) -> String {
     let i18n_dir = mod_dir.join("i18n");
     // zh.json 优先，缺失时回退 default.json
     find_key_in_json_file(&i18n_dir.join("zh.json"), &key)
-        .or_else(|| find_key_in_json_file(&i18n_dir.join("default.json"), &key))
+        .and_then(|text| clean_text(&text))
+        .or_else(|| {
+            find_key_in_json_file(&i18n_dir.join("default.json"), &key)
+                .and_then(|text| clean_text(&text))
+        })
         .unwrap_or_else(|| value.to_string())
 }
 
@@ -207,6 +234,10 @@ fn parse_mod_folder(mod_dir: &Path, mods_root: &Path) -> Result<Mod, String> {
         .description
         .unwrap_or_else(|| "No description provided.".to_string());
     let description = resolve_i18n_string(&raw_description, mod_dir);
+    // 占位符可能出现在 manifest 里，也可能藏在被翻译坏的 i18n 词条里
+    let manifest_needs_repair = [&raw_name, &raw_description, &name, &description]
+        .iter()
+        .any(|text| parse_i18n_key(text).is_some());
 
     // 有多个 Nexus 更新键时取最后一个，与旧行为一致
     let nexus_id = manifest
@@ -288,6 +319,7 @@ fn parse_mod_folder(mod_dir: &Path, mods_root: &Path) -> Result<Mod, String> {
         parent_path,
         dependencies,
         config: config_fields,
+        manifest_needs_repair,
     })
 }
 
@@ -574,27 +606,32 @@ fn actual_key(obj: &Map<String, Value>, wanted: &str, fallback: &str) -> String 
         .unwrap_or_else(|| fallback.to_string())
 }
 
-/// 把 manifest 字段替换成 `{{i18n:...}}` 占位符，返回 (原文, 是否改动了 manifest)。
-fn ensure_i18n_placeholder(
-    obj: &mut Map<String, Value>,
+/// 取出 manifest 字段当前对应的原文。
+///
+/// 旧版本会把字段写成 `{{i18n:...}}`，但 SMAPI 并不解析 manifest 里的 i18n 占位符，
+/// 这种模组的原文只能从 i18n 词条里找回来；字段缺失时用调用方给的兜底值。
+fn original_manifest_text(
+    obj: &Map<String, Value>,
     key: &str,
-    i18n_key: &str,
+    mod_dir: &Path,
     fallback: String,
-) -> (String, bool) {
-    let placeholder = Value::String(format!("{{{{i18n:{}}}}}", i18n_key));
-    match obj.get(key) {
-        None => {
-            obj.insert(key.to_string(), placeholder);
-            (fallback, true)
+) -> String {
+    let Some(raw) = obj.get(key).and_then(|val| val.as_str()) else {
+        return fallback;
+    };
+    match parse_i18n_key(raw).filter(|k| !k.is_empty()) {
+        Some(i18n_key) => {
+            let i18n_dir = mod_dir.join("i18n");
+            // default.json 存的才是原文，zh.json 只是兜底
+            find_key_in_json_file(&i18n_dir.join("default.json"), &i18n_key)
+                .and_then(|text| clean_text(&text))
+                .or_else(|| {
+                    find_key_in_json_file(&i18n_dir.join("zh.json"), &i18n_key)
+                        .and_then(|text| clean_text(&text))
+                })
+                .unwrap_or(fallback)
         }
-        Some(val) => match val.as_str() {
-            Some(s) if !s.starts_with("{{") => {
-                let raw = s.to_string();
-                obj.insert(key.to_string(), placeholder);
-                (raw, true)
-            }
-            _ => (fallback, false),
-        },
+        None => clean_text(raw).unwrap_or(fallback),
     }
 }
 
@@ -610,63 +647,53 @@ pub fn write_mod_translation(
     let mod_dir = resolve_mod_dir(&game_dir, &folder_name)?;
     let (manifest_path, mut manifest_val) = read_manifest_object(&mod_dir)?;
 
-    // 1. 把 Name / Description 换成 i18n 占位符（字段名大小写不敏感）
     let obj = manifest_val
         .as_object_mut()
         .ok_or_else(|| "manifest.json must be a JSON object".to_string())?;
+    // 字段名大小写不敏感
     let name_key = actual_key(obj, "name", "Name");
     let desc_key = actual_key(obj, "description", "Description");
 
-    let (raw_orig_name, name_changed) =
-        ensure_i18n_placeholder(obj, &name_key, "ModName", original_name);
-    let (raw_orig_desc, desc_changed) =
-        ensure_i18n_placeholder(obj, &desc_key, "ModDescription", original_description);
+    // 兜底名：占位符已经把原名冲掉时，文件夹名是唯一还可信的信息
+    let folder_label = mod_dir
+        .file_name()
+        .map(|n| n.to_string_lossy().trim_start_matches('.').to_string())
+        .unwrap_or_else(|| folder_name.clone());
 
-    if name_changed || desc_changed {
-        write_json_pretty(&manifest_path, &manifest_val)?;
-    }
+    // 1. 先取回原文，稍后备份进 i18n/default.json 供还原
+    let raw_orig_name = original_manifest_text(obj, &name_key, &mod_dir, original_name);
+    let raw_orig_desc = original_manifest_text(obj, &desc_key, &mod_dir, original_description);
 
-    // 2. Create i18n directory if needed
+    // 2. 译文必须以字面量写进 manifest：SMAPI 从不解析 manifest 里的 {{i18n:...}}，
+    //    写占位符会让游戏内、SMAPI 日志和 GMCM 直接显示 "{{i18n:ModName}}"。
+    //    译文本身也可能是"被翻译过的占位符"（引擎会把冒号转成全角），一律拒收。
+    let final_name = first_clean_text(&[&translated_name, &raw_orig_name, &folder_label])
+        .unwrap_or_else(|| folder_label.clone());
+    let final_desc =
+        first_clean_text(&[&translated_description, &raw_orig_desc]).unwrap_or_default();
+    obj.insert(name_key, Value::String(final_name));
+    obj.insert(desc_key, Value::String(final_desc));
+    write_json_pretty(&manifest_path, &manifest_val)?;
+
+    // 3. 原文写入 i18n/default.json，只在缺键时写，避免覆盖模组自带的词条
     let i18n_dir = mod_dir.join("i18n");
     fs::create_dir_all(&i18n_dir).map_err(|e| format!("Failed to create i18n directory: {}", e))?;
 
-    // 3. default.json 只在缺键时写入原文
+    let backup_name =
+        first_clean_text(&[&raw_orig_name, &folder_label]).unwrap_or_else(|| folder_label.clone());
+    let backup_desc = first_clean_text(&[&raw_orig_desc]).unwrap_or_default();
+
     let default_path = i18n_dir.join("default.json");
     let mut default_val = read_loose_json_object(&default_path);
     if let Some(def_obj) = default_val.as_object_mut() {
         def_obj
             .entry("ModName".to_string())
-            .or_insert_with(|| Value::String(raw_orig_name));
+            .or_insert_with(|| Value::String(backup_name));
         def_obj
             .entry("ModDescription".to_string())
-            .or_insert_with(|| Value::String(raw_orig_desc));
+            .or_insert_with(|| Value::String(backup_desc));
     }
-    write_json_pretty(&default_path, &default_val)?;
-
-    // 4. zh.json 始终覆盖为译文
-    let zh_path = i18n_dir.join("zh.json");
-    let mut zh_val = read_loose_json_object(&zh_path);
-    if let Some(zh_obj) = zh_val.as_object_mut() {
-        zh_obj.insert("ModName".to_string(), Value::String(translated_name));
-        zh_obj.insert(
-            "ModDescription".to_string(),
-            Value::String(translated_description),
-        );
-    }
-    write_json_pretty(&zh_path, &zh_val)
-}
-
-/// 更新已存在的 i18n 文件中的某个键（大小写不敏感匹配），文件不存在则跳过。
-fn update_existing_i18n_value(path: &Path, key: &str, value: &str) -> Result<(), String> {
-    if !path.exists() {
-        return Ok(());
-    }
-    let mut json = read_loose_json_object(path);
-    if let Some(obj) = json.as_object_mut() {
-        let real_key = actual_key(obj, key, key);
-        obj.insert(real_key, Value::String(value.to_string()));
-    }
-    write_json_pretty(path, &json)
+    write_json_pretty(&default_path, &default_val)
 }
 
 #[tauri::command]
@@ -683,25 +710,9 @@ pub fn rename_local_mod(
         .ok_or_else(|| "manifest.json must be a JSON object".to_string())?;
     let name_key = actual_key(obj, "name", "Name");
 
-    let i18n_key = obj
-        .get(&name_key)
-        .and_then(|val| val.as_str())
-        .and_then(parse_i18n_key)
-        .filter(|key| !key.is_empty());
-
-    match i18n_key {
-        // 名称是 i18n 占位符：改词条，不动 manifest
-        Some(key) => {
-            let i18n_dir = mod_dir.join("i18n");
-            update_existing_i18n_value(&i18n_dir.join("zh.json"), &key, &new_name)?;
-            update_existing_i18n_value(&i18n_dir.join("default.json"), &key, &new_name)
-        }
-        // Rename directly inside manifest.json
-        None => {
-            obj.insert(name_key, Value::String(new_name));
-            write_json_pretty(&manifest_path, &manifest_val)
-        }
-    }
+    // 直接写字面量：SMAPI 不解析 manifest 里的 {{i18n:...}}，改词条不会影响游戏内显示
+    obj.insert(name_key, Value::String(new_name));
+    write_json_pretty(&manifest_path, &manifest_val)
 }
 
 #[cfg(test)]
@@ -774,6 +785,48 @@ mod tests {
         assert_eq!(parse_i18n_key("  {{ I18N: Mod Name }} ").as_deref(), Some("Mod Name"));
         assert_eq!(parse_i18n_key("{{Other:Key}}"), None);
         assert_eq!(parse_i18n_key("普通名称"), None);
+        // 被翻译引擎转成全角冒号的坏值
+        assert_eq!(
+            parse_i18n_key("{{i18n：ModName}}").as_deref(),
+            Some("ModName")
+        );
+        assert_eq!(parse_i18n_key("{{i18n}}"), None);
+        assert_eq!(parse_i18n_key("{{}}"), None);
+    }
+
+    #[test]
+    fn test_first_clean_text() {
+        assert_eq!(
+            first_clean_text(&["{{i18n:ModName}}", "  ", "Cool Mod"]).as_deref(),
+            Some("Cool Mod")
+        );
+        assert_eq!(
+            first_clean_text(&["{{i18n：ModName}}", "备用名"]).as_deref(),
+            Some("备用名")
+        );
+        assert_eq!(first_clean_text(&["{{i18n:X}}", ""]), None);
+    }
+
+    #[test]
+    fn test_original_manifest_text() {
+        // 词条文件不存在，占位符只能回退到调用方给的兜底值
+        let mod_dir = Path::new("__not_a_real_mod_dir__");
+        let mut obj = Map::new();
+
+        obj.insert("Name".to_string(), Value::String("Cool Mod".to_string()));
+        let got = original_manifest_text(&obj, "Name", mod_dir, "fallback".to_string());
+        assert_eq!(got, "Cool Mod");
+
+        obj.insert(
+            "Name".to_string(),
+            Value::String("{{i18n:ModName}}".to_string()),
+        );
+        let got = original_manifest_text(&obj, "Name", mod_dir, "fallback".to_string());
+        assert_eq!(got, "fallback");
+
+        // 字段缺失
+        let got = original_manifest_text(&obj, "Description", mod_dir, "fallback".to_string());
+        assert_eq!(got, "fallback");
     }
 
     #[test]

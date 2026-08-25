@@ -12,37 +12,7 @@ import { useSavesList } from "@/hooks/useSavesList"
 import { useGameLauncher } from "@/hooks/useGameLauncher"
 import { useNxmDeepLink } from "@/hooks/useNxmDeepLink"
 import { useGlobalDragAndDrop } from "@/hooks/useGlobalDragAndDrop"
-import { useBackdrop } from "@/lib/backdrop-provider"
 import "./index.css"
-
-function BackgroundImageLayer({ filePath }: { filePath: string }) {
-  const [src, setSrc] = useState("")
-
-  useEffect(() => {
-    let cancelled = false
-    async function load() {
-      try {
-        const { convertFileSrc } = await import("@tauri-apps/api/core")
-        if (!cancelled) {
-          setSrc(convertFileSrc(filePath))
-        }
-      } catch (err) {
-        console.error("Failed to convert file path:", err)
-      }
-    }
-    load()
-    return () => { cancelled = true }
-  }, [filePath])
-
-  if (!src) return null
-
-  return (
-    <div
-      className="bg-image-layer"
-      style={{ backgroundImage: `url('${src}')` }}
-    />
-  )
-}
 
 export type Page = "dashboard" | "collections" | "crops" | "items" | "npcs" | "calendar" | "fishingMap" | "saveEditor" | "saveBackups" | "settings" | "mods" | "onlineMods" | "downloads" | "bundles" | "children" | "animals" | "cheats" | "modData" | "sponsors" | "todo"
 
@@ -119,17 +89,6 @@ function App() {
 
   // Custom Hooks
   const { saves, selectedSaveId, fetchSavesList, handleSaveChange } = useSavesList()
-
-  // Backdrop settings
-  const {
-    backdropType,
-    opacity,
-    backgroundImage,
-    setBackdropType,
-    setOpacity,
-    setBackgroundImage,
-    clearBackgroundImage,
-  } = useBackdrop()
 
   // --- Sidebar collapsed state (synced across windows) ---
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -492,13 +451,6 @@ function App() {
           enabledFeatures={enabledFeatures}
           onEnabledFeaturesChange={updateEnabledFeatures}
           onUpdateFound={setUpdateDialogInfo}
-          backdropType={backdropType}
-          backdropOpacity={opacity}
-          backgroundImage={backgroundImage}
-          onBackdropTypeChange={setBackdropType}
-          onBackdropOpacityChange={setOpacity}
-          onBackgroundImageChange={setBackgroundImage}
-          onBackgroundImageClear={clearBackgroundImage}
           />
         )
       case "saveBackups":
@@ -598,10 +550,6 @@ function App() {
   return (
     <div ref={containerRef} className="app-shell relative flex h-screen overflow-hidden">
       <div className="app-frame relative flex min-h-0 flex-1 flex-col overflow-hidden">
-        {/* Background Image Layer */}
-        {backgroundImage && (
-          <BackgroundImageLayer filePath={backgroundImage} />
-        )}
         <TitleBar currentPage={currentPage} currentSave={currentSave} />
         <div className="app-workspace flex min-h-0 flex-1 overflow-hidden">
           <Sidebar

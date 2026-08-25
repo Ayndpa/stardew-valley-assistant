@@ -94,47 +94,6 @@ async fn fetch_afdian_sponsors(page: i32) -> Result<String, String> {
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, Monitor, PhysicalPosition, PhysicalSize, Size, State};
 use tauri_plugin_deep_link::DeepLinkExt;
-#[cfg(windows)]
-use window_vibrancy::{apply_acrylic, apply_mica, apply_tabbed, clear_acrylic, clear_blur, clear_mica, clear_tabbed};
-
-// FFI for ntdll::RtlGetVersion — more reliable than GetVersionEx on Win10+
-#[cfg(windows)]
-#[repr(C)]
-struct RTL_OSVERSIONINFOW {
-    dw_os_version_info_size: u32,
-    dw_major_version: u32,
-    dw_minor_version: u32,
-    dw_build_number: u32,
-    dw_platform_id: u32,
-    sz_csd_version: [u16; 128],
-}
-
-#[cfg(windows)]
-extern "system" {
-    fn RtlGetVersion(lp_version_information: *mut RTL_OSVERSIONINFOW) -> i32;
-}
-
-#[cfg(windows)]
-fn is_windows_11_or_later() -> bool {
-    unsafe {
-        let mut info = RTL_OSVERSIONINFOW {
-            dw_os_version_info_size: std::mem::size_of::<RTL_OSVERSIONINFOW>() as u32,
-            dw_major_version: 0,
-            dw_minor_version: 0,
-            dw_build_number: 0,
-            dw_platform_id: 0,
-            sz_csd_version: [0; 128],
-        };
-        if RtlGetVersion(&mut info) == 0 {
-            // Windows 11 = build 22000+
-            info.dw_major_version > 10
-                || (info.dw_major_version == 10 && info.dw_build_number >= 22000)
-        } else {
-            // Assume Win10 if detection fails
-            false
-        }
-    }
-}
 
 const MAIN_WINDOW_MIN_WIDTH: f64 = 800.0;
 const MAIN_WINDOW_MIN_HEIGHT: f64 = 600.0;
@@ -380,138 +339,6 @@ fn show_main_window_in_front(window: &tauri::WebviewWindow) {
     });
 }
 
-#[cfg(windows)]
-fn apply_windows_backdrop(window: &tauri::WebviewWindow) {
-    // Windows 11 (build >= 22000): use Mica backdrop
-    // Windows 10: use opaque Acrylic to avoid black border artifacts
-    //              on borderless transparent windows
-    if is_windows_11_or_later() {
-        let _ = apply_mica(window, None);
-    } else {
-        // Windows 10: fully opaque Acrylic + solid CSS fallback prevents black edges
-        let _ = apply_acrylic(window, Some((24, 28, 32, 255)));
-    }
-}
-
-#[cfg(not(windows))]
-fn apply_windows_backdrop(_window: &tauri::WebviewWindow) {}
-
-// ==================== Backdrop Settings ====================
-
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub enum BackdropType {
-    Mica,
-    Acrylic,
-    Tabbed,
-    None,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BackdropSettings {
-    pub backdrop_type: BackdropType,
-    pub opacity: u8,  // 0-255, reserved for native backdrop tint alpha
-    pub is_dark: bool,
-}
-
-#[cfg(windows)]
-#[tauri::command]
-fn set_window_backdrop(window: tauri::WebviewWindow, settings: BackdropSettings) -> Result<(), String> {
-    println!("set_window_backdrop called with: {:?}", settings);
-
-    // Clear all existing effects first
-    let _ = clear_mica(&window);
-    let _ = clear_acrylic(&window);
-    let _ = clear_blur(&window);
-    let _ = clear_tabbed(&window);
-
-    match settings.backdrop_type {
-        BackdropType::Mica => {
-            apply_mica(&window, Some(settings.is_dark)).map_err(|e| e.to_string())?;
-        }
-        BackdropType::Acrylic => {
-            // Use a semi-transparent tint for acrylic effect
-            let tint_color = if settings.is_dark {
-                (0, 0, 0, 80)  // Very transparent black
-            } else {
-                (255, 255, 255, 80)  // Very transparent white
-            };
-            apply_acrylic(&window, Some(tint_color)).map_err(|e| e.to_string())?;
-        }
-        BackdropType::Tabbed => {
-            apply_tabbed(&window, Some(settings.is_dark)).map_err(|e| e.to_string())?;
-        }
-        BackdropType::None => {
-            // Already cleared above, nothing to do
-        }
-    }
-
-    Ok(())
-}
-
-#[cfg(not(windows))]
-#[tauri::command]
-fn set_window_backdrop(_window: tauri::WebviewWindow, _settings: BackdropSettings) -> Result<(), String> {
-    // Non-Windows platforms don't support backdrop effects
-    Ok(())
-}
-
-// ==================== Background Image ====================
-
-#[tauri::command]
-fn set_background_image(app: tauri::AppHandle, path: String) -> Result<String, String> {
-    let source_path = std::path::Path::new(&path);
-    if !source_path.exists() {
-        return Err("File does not exist".to_string());
-    }
-
-    // Validate it's an image file
-    let ext = source_path.extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_lowercase();
-    if !["png", "jpg", "jpeg", "gif", "webp", "bmp"].contains(&ext.as_str()) {
-        return Err("Unsupported image format".to_string());
-    }
-
-    // Get app data directory
-    let app_data_dir = app.path().app_data_dir()
-        .map_err(|e| e.to_string())?;
-    let backgrounds_dir = app_data_dir.join("backgrounds");
-    fs::create_dir_all(&backgrounds_dir).map_err(|e| e.to_string())?;
-
-    // Generate a safe filename
-    let filename = format!("background.{}", ext);
-    let dest_path = backgrounds_dir.join(&filename);
-
-    // Copy the file
-    fs::copy(source_path, &dest_path).map_err(|e| e.to_string())?;
-
-    // Return the path as a string for the frontend to use
-    Ok(dest_path.to_string_lossy().to_string())
-}
-
-#[tauri::command]
-fn clear_background_image(app: tauri::AppHandle) -> Result<(), String> {
-    let app_data_dir = app.path().app_data_dir()
-        .map_err(|e| e.to_string())?;
-    let backgrounds_dir = app_data_dir.join("backgrounds");
-
-    if backgrounds_dir.exists() {
-        // Remove all files in backgrounds directory
-        for entry in fs::read_dir(&backgrounds_dir).map_err(|e| e.to_string())? {
-            let entry = entry.map_err(|e| e.to_string())?;
-            let path = entry.path();
-            if path.is_file() {
-                let _ = fs::remove_file(path);
-            }
-        }
-    }
-
-    Ok(())
-}
-
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -615,9 +442,6 @@ pub fn run() {
             read_log_files,
             get_log_dir_path,
             clear_log_files,
-            set_window_backdrop,
-            set_background_image,
-            clear_background_image,
             cheat_refill_energy,
             cheat_refill_health,
             cheat_toggle_speed,
@@ -678,7 +502,6 @@ pub fn run() {
                     MAIN_WINDOW_MIN_WIDTH,
                     MAIN_WINDOW_MIN_HEIGHT,
                 ))));
-                apply_windows_backdrop(&window);
                 show_main_window_in_front(&window);
                 restore_main_window_state(app_handle, &window);
 

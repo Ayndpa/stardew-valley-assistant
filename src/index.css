@@ -33,12 +33,6 @@
 }
 
 :root {
-  --panel-opacity: 100;
-  --card-opacity: min(100, calc(var(--panel-opacity) + 40));
-  --titlebar-opacity: min(100, calc(var(--panel-opacity) + 24));
-  --frame-opacity: min(100, calc(var(--panel-opacity) + 18));
-  --bg-rgb: 255, 255, 255;
-  --card-rgb: 255, 255, 255;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -68,8 +62,6 @@
 }
 
 .dark {
-  --bg-rgb: 10, 10, 10;
-  --card-rgb: 22, 22, 22;
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.2 0 0);
@@ -211,68 +203,35 @@
     overflow: hidden;
   }
   body {
-    /* Transparent to show native window effects (Mica/Acrylic/Blur) */
-    background: transparent;
+    background: var(--background);
     color: var(--foreground);
     font-family: system-ui, -apple-system, sans-serif;
   }
-  #root {
-    background: transparent;
-  }
 }
 
-.app-shell {
-  background: transparent;
+/* 窗口表面一律不透明：明暗跟随系统主题，透明度交给操作系统自己决定，
+   应用内不再提供任何透明度 / 背景图开关。半透明的界面会让 Chromium
+   关掉次像素抗锯齿，文字发虚，浮层也会透出下方内容。 */
+.app-shell,
+.app-panel {
+  background: var(--background);
 }
 
 .app-frame {
-  background: rgba(var(--card-rgb), calc(var(--frame-opacity) / 100));
+  background: var(--card);
   overflow: hidden;
 }
 
-.app-workspace {
-  background: color-mix(in oklab, var(--background) 26%, transparent);
-}
-
-.app-panel {
-  background: rgba(var(--bg-rgb), calc(var(--panel-opacity) / 100)) !important;
+/* 只定位、不设 z-index：一旦设了 z-index 就会各自生成层叠上下文，
+   侧边栏里溢出到主面板上方的下拉菜单会被主面板背景盖住。 */
+.app-panel,
+.app-sidebar {
+  position: relative;
 }
 
 .titlebar,
 .app-sidebar {
-  background: rgba(var(--card-rgb), calc(var(--titlebar-opacity) / 100)) !important;
-}
-
-.app-panel,
-.app-sidebar {
-  position: relative;
-  z-index: 1;
-}
-
-.titlebar {
-  backdrop-filter: blur(24px) saturate(1.08);
-}
-
-.bg-card {
-  background-color: rgba(var(--card-rgb), calc(var(--card-opacity) / 100)) !important;
-}
-
-/* Background image layer */
-.bg-image-layer {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-  opacity: 0.15;
-  pointer-events: none;
-  transition: opacity 0.3s ease;
-}
-
-/* When backdrop is "none", lean more on the custom background image */
-[data-backdrop="none"] .bg-image-layer {
-  opacity: 1;
+  background: var(--card);
 }
 
 .titlebar-brand {

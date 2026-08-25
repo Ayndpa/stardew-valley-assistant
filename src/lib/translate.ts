@@ -7,36 +7,32 @@ export interface TranslateState {
   error: string | null
 }
 
-// Edge Translate token cache
-let edgeTokenCache: { token: string; expiry: number } | null = null
-
-export async function getEdgeToken(): Promise<string> {
-  if (edgeTokenCache && Date.now() < edgeTokenCache.expiry) {
-    return edgeTokenCache.token
-  }
-  const resp = await fetch("https://edge.microsoft.com/translate/auth")
-  if (!resp.ok) throw new Error("获取 Edge 翻译令牌失败")
-  const token = await resp.text()
-  edgeTokenCache = { token, expiry: Date.now() + 8 * 60 * 1000 } // ~10min, refresh at 8min
-  return token
-}
+// 微软已下线 edge.microsoft.com/translate/auth（返回 404），新接口免鉴权，
+// 直接 POST 一个字符串数组即可，返回结构与旧的 cognitive 接口一致。
+const EDGE_TRANSLATE_ENDPOINT = "https://edge.microsoft.com/translate/translatetext"
 
 export async function edgeTranslate(texts: string[], to: string): Promise<string[]> {
-  const token = await getEdgeToken()
+  if (texts.length === 0) return []
+
   const resp = await fetch(
-    `https://api-edge.cognitive.microsofttranslator.com/translate?api-version=3.0&from=en&to=${to}`,
+    `${EDGE_TRANSLATE_ENDPOINT}?from=en&to=${encodeURIComponent(to)}`,
     {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(texts.map(t => ({ Text: t }))),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(texts),
     }
   )
-  if (!resp.ok) throw new Error("翻译请求失败")
+  if (!resp.ok) {
+    const detail = await resp.text().catch(() => "")
+    throw new Error(`翻译请求失败 (${resp.status})${detail ? `: ${detail}` : ""}`)
+  }
+
   const data = await resp.json()
-  return data.map((item: any) => item.translations[0].text as string)
+  if (!Array.isArray(data)) {
+    throw new Error("翻译接口返回了非预期的数据结构")
+  }
+  // 单条译文缺失时回退原文，避免整批作废
+  return data.map((item: any, index: number) => item?.translations?.[0]?.text ?? texts[index])
 }
 
 // Strip HTML tags for translation, then re-apply

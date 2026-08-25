@@ -102,6 +102,8 @@ export interface Mod {
   parentPath?: string
   dependencies: string[]
   config: ModConfigField[]
+  /** manifest 里残留着旧版写入的 {{i18n:...}} 占位符，游戏内会原样显示，需要重新翻译修复 */
+  manifestNeedsRepair?: boolean
 }
 
 interface ModListProps {

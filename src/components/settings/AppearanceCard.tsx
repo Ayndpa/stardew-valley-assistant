@@ -1,37 +1,16 @@
-import { Palette, Sun, Moon, Monitor, Check, GlassWater, Droplets, EyeOff, Layers, Image, X } from "lucide-react"
+import { Palette, Sun, Moon, Monitor, Check } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ThemeMode, ThemeSeason } from "@/lib/theme-provider"
-import { BackdropType } from "@/lib/backdrop-provider"
 import { useTranslation } from "react-i18next"
-
-// Helper function for dynamic imports
-async function getTauriDialog() {
-  if (typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__) {
-    try {
-      const mod = await import("@tauri-apps/plugin-dialog")
-      return mod.open
-    } catch (err) {
-      console.error("Failed to load Tauri Dialog plugin", err)
-    }
-  }
-  return null
-}
 
 interface AppearanceCardProps {
   themeMode: ThemeMode
   themeSeason: ThemeSeason
   setThemeMode: (mode: ThemeMode) => void
   setThemeSeason: (season: ThemeSeason) => void
-  backdropType: BackdropType
-  opacity: number
-  backgroundImage: string
-  setBackdropType: (type: BackdropType) => void
-  setOpacity: (opacity: number) => void
-  setBackgroundImage: (path: string) => void
-  clearBackgroundImage: () => void
 }
 
 export function AppearanceCard({
@@ -39,13 +18,6 @@ export function AppearanceCard({
   themeSeason,
   setThemeMode,
   setThemeSeason,
-  backdropType,
-  opacity,
-  backgroundImage,
-  setBackdropType,
-  setOpacity,
-  setBackgroundImage,
-  clearBackgroundImage,
 }: AppearanceCardProps) {
   const { t } = useTranslation()
 
@@ -175,140 +147,6 @@ export function AppearanceCard({
                 </button>
               )
             })}
-          </div>
-        </div>
-
-        <Separator className="bg-border/60" />
-
-        {/* Backdrop Effects */}
-        <div className="space-y-3">
-          <div className="flex flex-col gap-1">
-            <h4 className="text-sm font-semibold tracking-wide text-foreground">
-              {t("settings.appearance.backdrop.title")}
-            </h4>
-            <p className="text-xs text-muted-foreground">
-              {t("settings.appearance.backdrop.description")}
-            </p>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {[
-              {
-                value: "mica" as BackdropType,
-                label: t("settings.appearance.backdrop.mica"),
-                icon: GlassWater,
-              },
-              {
-                value: "acrylic" as BackdropType,
-                label: t("settings.appearance.backdrop.acrylic"),
-                icon: Droplets,
-              },
-              {
-                value: "tabbed" as BackdropType,
-                label: t("settings.appearance.backdrop.tabbed"),
-                icon: Layers,
-              },
-              {
-                value: "none" as BackdropType,
-                label: t("settings.appearance.backdrop.none"),
-                icon: EyeOff,
-              },
-            ].map((item) => {
-              const Icon = item.icon
-              const isActive = backdropType === item.value
-              return (
-                <Button
-                  key={item.value}
-                  variant={isActive ? "default" : "outline"}
-                  onClick={() => setBackdropType(item.value)}
-                  className={cn(
-                    "flex items-center justify-center gap-2 py-4 h-auto transition-all duration-200 cursor-pointer",
-                    isActive ? "shadow-md scale-[1.02] font-semibold" : "hover:bg-accent/40"
-                  )}
-                >
-                  <Icon className="h-4 w-4 shrink-0" />
-                  <span>{item.label}</span>
-                </Button>
-              )
-            })}
-          </div>
-
-          {/* Opacity Slider - for all backdrop types */}
-          <div className="space-y-2 mt-4">
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-medium text-foreground">
-                {t("settings.appearance.backdrop.opacity")}
-              </label>
-              <span className="text-sm text-muted-foreground">{opacity}%</span>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {t("settings.appearance.backdrop.opacityDesc")}
-            </p>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={opacity}
-              onChange={(e) => setOpacity(parseInt(e.target.value))}
-              className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
-            />
-          </div>
-        </div>
-
-        <Separator className="bg-border/60" />
-
-        {/* Background Image */}
-        <div className="space-y-3">
-          <div className="flex flex-col gap-1">
-            <h4 className="text-sm font-semibold tracking-wide text-foreground">
-              {t("settings.appearance.backgroundImage.title")}
-            </h4>
-            <p className="text-xs text-muted-foreground">
-              {t("settings.appearance.backgroundImage.description")}
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <Button
-              variant="outline"
-              onClick={async () => {
-                const dialog = await getTauriDialog()
-                if (dialog) {
-                  try {
-                    const selected = await dialog({
-                      multiple: false,
-                      title: t("settings.appearance.backgroundImage.select"),
-                      filters: [{
-                        name: "Images",
-                        extensions: ["png", "jpg", "jpeg", "gif", "webp", "bmp"]
-                      }]
-                    })
-                    if (selected) {
-                      const path = Array.isArray(selected) ? selected[0] : selected
-                      setBackgroundImage(path)
-                    }
-                  } catch (err) {
-                    console.error("Dialog error:", err)
-                  }
-                }
-              }}
-              className="flex items-center gap-2"
-            >
-              <Image className="h-4 w-4" />
-              {t("settings.appearance.backgroundImage.select")}
-            </Button>
-
-            {backgroundImage && (
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={clearBackgroundImage}
-                className="flex items-center gap-2"
-              >
-                <X className="h-4 w-4" />
-                {t("settings.appearance.backgroundImage.clear")}
-              </Button>
-            )}
           </div>
         </div>
       </CardContent>

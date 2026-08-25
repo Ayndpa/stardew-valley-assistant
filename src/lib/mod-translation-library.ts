@@ -153,6 +153,19 @@ async function createCategory(name: string) {
   return rows[0] ?? null
 }
 
+/**
+ * 共享翻译库只是加速手段，连不上时必须能退化成纯机器翻译。
+ * Supabase 在部分网络环境下不可达，早期实现直接抛错，会让整个翻译流程失败。
+ */
+async function ensureCategorySafe(name: string) {
+  try {
+    return await ensureCategory(name)
+  } catch (error) {
+    console.error("Translation library unavailable, falling back to machine translation:", error)
+    return null
+  }
+}
+
 async function ensureCategory(name: string) {
   const existing = await findCategory(name)
   if (existing) return existing
@@ -213,7 +226,10 @@ function modKeyPath(id: string, field: "name" | "description") {
   return `mods.${id}.${field}`
 }
 
-async function resolveTranslatedFields(categoryId: string, requests: TranslationFieldRequest[]) {
+async function resolveTranslatedFields(
+  categoryId: string | null,
+  requests: TranslationFieldRequest[]
+) {
   if (requests.length === 0) return []
 
   const results: TranslationFieldResult[] = []
@@ -222,11 +238,12 @@ async function resolveTranslatedFields(categoryId: string, requests: Translation
   for (const request of requests) {
     const keyPath = modKeyPath(request.id, request.field)
     const cached = getCachedTranslation(keyPath)
-    if (cached?.trim()) {
+    // 缓存里可能残留着历史坏值（原文/占位符），校验不过就当没缓存，重新翻一次
+    if (isUsableTranslation(cached, request.fallbackContent)) {
       results.push({
         id: request.id,
         field: request.field,
-        content: cached,
+        content: cached as string,
         applied: 1,
         submitted: 0,
       })
@@ -236,6 +253,11 @@ async function resolveTranslatedFields(categoryId: string, requests: Translation
   }
 
   if (uncachedRequests.length === 0) return results
+
+  // 共享库不可用时直接走机器翻译，不能因此让整个流程失败
+  if (!categoryId) {
+    return results.concat(await machineTranslateRequests(uncachedRequests))
+  }
 
   const keyPaths = uncachedRequests.map((request) => modKeyPath(request.id, request.field))
   let keys: TranslationKey[] = []
@@ -280,33 +302,35 @@ async function resolveTranslatedFields(categoryId: string, requests: Translation
     }
 
     const existing = translationByKeyId.get(key.id)
-    if (existing?.content?.trim()) {
-      setCachedTranslation(keyPath, existing.content)
+    // 共享库里也可能存着历史坏值，同样要校验
+    if (isUsableTranslation(existing?.content, request.fallbackContent)) {
+      const content = existing!.content
+      setCachedTranslation(keyPath, content)
       results.push({
         id: request.id,
         field: request.field,
-        content: existing.content,
+        content,
         applied: 1,
         submitted: 0,
       })
       continue
     }
 
-    const translatedFallbackContent = await machineTranslateText(request.fallbackContent, { html: request.html })
-    if (translatedFallbackContent.trim()) {
+    const outcome = await machineTranslateText(request.fallbackContent, { html: request.html })
+    if (outcome.translated) {
       translationsToCreate.push({
         key_id: key.id,
         language_code: TARGET_LANGUAGE,
-        content: translatedFallbackContent,
+        content: outcome.content,
       })
-      setCachedTranslation(keyPath, translatedFallbackContent)
+      setCachedTranslation(keyPath, outcome.content)
     }
     results.push({
       id: request.id,
       field: request.field,
-      content: translatedFallbackContent,
+      content: outcome.content,
       applied: 0,
-      submitted: translatedFallbackContent.trim() ? 1 : 0,
+      submitted: outcome.translated ? 1 : 0,
     })
   }
 
@@ -328,38 +352,63 @@ async function machineTranslateRequests(requests: TranslationFieldRequest[]) {
 
 async function machineTranslateRequest(request: TranslationFieldRequest): Promise<TranslationFieldResult> {
   const keyPath = modKeyPath(request.id, request.field)
-  const translatedFallbackContent = await machineTranslateText(request.fallbackContent, { html: request.html })
+  const outcome = await machineTranslateText(request.fallbackContent, { html: request.html })
 
-  if (translatedFallbackContent.trim()) {
-    setCachedTranslation(keyPath, translatedFallbackContent)
+  // 只缓存真正译出来的结果，避免一次网络失败把原文钉死 7 天
+  if (outcome.translated) {
+    setCachedTranslation(keyPath, outcome.content)
   }
 
   return {
     id: request.id,
     field: request.field,
-    content: translatedFallbackContent,
+    content: outcome.content,
     applied: 0,
     submitted: 0,
   }
 }
 
-function shouldMachineTranslate(text: string) {
-  const trimmed = text.trim()
-  if (!trimmed) return false
-  return !/[\u3400-\u9fff]/.test(trimmed)
+/** 翻译结果。translated=false 表示这次没真正译出来，不能入缓存也不能上传共享库。 */
+type MachineTranslationOutcome = {
+  content: string
+  translated: boolean
 }
 
-async function machineTranslateText(text: string, options?: { html?: boolean }) {
-  if (!shouldMachineTranslate(text)) return text
+/**
+ * 判断一段文本能不能当作译文使用。
+ *
+ * 历史上翻译失败会把原文原样返回并被当成译文缓存/上传，导致模组名永远停在英文；
+ * 旧版写进 manifest 的 i18n 占位符也被当正文译过一轮，缓存里可能是被翻译坏的占位符。
+ * 两者都要挡掉，否则坏值会一直被复用。
+ */
+function isUsableTranslation(content: string | null | undefined, source: string) {
+  const trimmed = (content || "").trim()
+  if (!trimmed) return false
+  if (/^\{\{\s*i18n\s*[:\uff1a][\s\S]*\}\}$/i.test(trimmed)) return false
+  return trimmed !== source.trim()
+}
+
+async function machineTranslateText(
+  text: string,
+  options?: { html?: boolean }
+): Promise<MachineTranslationOutcome> {
+  const trimmed = text.trim()
+  if (!trimmed) return { content: text, translated: false }
+  // 本来就是中文，直接沿用
+  if (/[\u3400-\u9fff]/.test(trimmed)) return { content: text, translated: true }
+
   try {
-    if (options?.html) {
-      return await translateHtmlTextOnly(text, "zh-Hans")
+    const result = options?.html
+      ? await translateHtmlTextOnly(text, "zh-Hans")
+      : (await edgeTranslate([text], "zh-Hans"))[0]
+    // 引擎失败或被限流时会把原文原样吐回来，这种结果不算译文
+    if (!isUsableTranslation(result, text)) {
+      return { content: text, translated: false }
     }
-    const [translatedText] = await edgeTranslate([text], "zh-Hans")
-    return translatedText || text
+    return { content: result, translated: true }
   } catch (error) {
     console.error("Failed to machine translate mod fields:", error)
-    return text
+    return { content: text, translated: false }
   }
 }
 
@@ -368,10 +417,7 @@ export async function syncModTranslations(mods: Mod[]): Promise<ModTranslationSy
     return { mods, stats: { applied: 0, submitted: 0 } }
   }
 
-  const category = await ensureCategory(MODS_CATEGORY)
-  if (!category) {
-    throw new Error("无法初始化 Mods 翻译分类")
-  }
+  const category = await ensureCategorySafe(MODS_CATEGORY)
 
   let applied = 0
   let submitted = 0
@@ -389,7 +435,7 @@ export async function syncModTranslations(mods: Mod[]): Promise<ModTranslationSy
       fallbackContent: mod.description,
     },
   ])
-  const fieldResults = await resolveTranslatedFields(category.id, requests)
+  const fieldResults = await resolveTranslatedFields(category?.id ?? null, requests)
   const resultByKey = new Map(fieldResults.map((result) => [`${result.id}:${result.field}`, result]))
 
   const translatedMods = mods.map((mod) => {
@@ -417,10 +463,7 @@ export async function syncOnlineModTranslations(mods: SmapiMod[]): Promise<Onlin
     return { mods, stats: { applied: 0, submitted: 0 } }
   }
 
-  const category = await ensureCategory(MODS_CATEGORY)
-  if (!category) {
-    throw new Error("无法初始化 Mods 翻译分类")
-  }
+  const category = await ensureCategorySafe(MODS_CATEGORY)
 
   let applied = 0
   let submitted = 0
@@ -446,7 +489,7 @@ export async function syncOnlineModTranslations(mods: SmapiMod[]): Promise<Onlin
     }
   })
 
-  const fieldResults = await resolveTranslatedFields(category.id, requests)
+  const fieldResults = await resolveTranslatedFields(category?.id ?? null, requests)
   const resultByKey = new Map(fieldResults.map((result) => [`${result.id}:${result.field}`, result]))
 
   const translatedMods = mods.map((mod) => {
@@ -478,10 +521,7 @@ export async function syncNexusModNameTranslations<T extends { nexusId: string; 
     return { mods, stats: { applied: 0, submitted: 0 } }
   }
 
-  const category = await ensureCategory(MODS_CATEGORY)
-  if (!category) {
-    throw new Error("无法初始化 Mods 翻译分类")
-  }
+  const category = await ensureCategorySafe(MODS_CATEGORY)
 
   const requests: TranslationFieldRequest[] = mods.map((mod) => ({
     id: `nexus.${mod.nexusId}`,
@@ -490,7 +530,7 @@ export async function syncNexusModNameTranslations<T extends { nexusId: string; 
     fallbackContent: mod.name,
   }))
 
-  const fieldResults = await resolveTranslatedFields(category.id, requests)
+  const fieldResults = await resolveTranslatedFields(category?.id ?? null, requests)
   const resultById = new Map(fieldResults.map((result) => [result.id, result]))
   let applied = 0
   let submitted = 0

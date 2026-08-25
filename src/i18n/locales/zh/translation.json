@@ -176,23 +176,7 @@
       "fall": "秋季橙 (Fall Maple)",
       "fallDesc": "红橙枫叶挂满枝头，丰收的喜悦",
       "winter": "冬季蓝 (Winter Frost)",
-      "winterDesc": "冰雪覆盖的幽静寒蓝，静谧纯洁",
-      "backdrop": {
-        "title": "透明效果",
-        "description": "选择窗口背景的透明效果类型，让桌面壁纸透出",
-        "mica": "Mica",
-        "acrylic": "亚克力",
-        "tabbed": "Tabbed",
-        "none": "关闭",
-        "opacity": "面板不透明度",
-        "opacityDesc": "调整标题栏、侧边栏和内容区的背景不透明度，越低越透明"
-      },
-      "backgroundImage": {
-        "title": "自定义背景图片",
-        "description": "选择一张图片作为应用背景",
-        "select": "选择图片",
-        "clear": "清除"
-      }
+      "winterDesc": "冰雪覆盖的幽静寒蓝，静谧纯洁"
     },
     "features": {
       "title": "侧边栏功能定制",
