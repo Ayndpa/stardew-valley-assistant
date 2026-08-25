@@ -83,22 +83,9 @@ pub struct ItemGameDataQueryResult {
 
 #[derive(Debug, Clone)]
 struct IndexedItemEntry {
-    id: String,
-    name: String,
-    internal_name: String,
-    description: String,
-    item_type: String,
-    item_type_key: String,
-    category: String,
-    category_key: String,
-    sell_price: i32,
-    price_source: String,
-    edibility: Option<i32>,
-    can_be_given_as_gift: bool,
-    can_be_trashed: bool,
-    recipe_sources: Vec<String>,
+    /// 缓存中的条目，其 `icon` 恒为 None —— 图标在响应阶段按需渲染。
+    entry: ItemEncyclopediaEntry,
     raw_object: RawObjectData,
-    fish_conditions: Option<FishConditions>,
 }
 
 #[derive(Debug, Clone)]
@@ -111,6 +98,33 @@ struct ItemSnapshot {
 
 static ITEM_SNAPSHOT_CACHE: LazyLock<Mutex<HashMap<String, Arc<ItemSnapshot>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// 按语言挑选文案。
+fn zh_en(zh: &str, en: &str, is_zh: bool) -> String {
+    if is_zh { zh } else { en }.to_string()
+}
+
+/// 分类 / 类型统一返回 (稳定 key, 本地化标签)。
+fn localized_pair(key: &str, zh: &str, en: &str, is_zh: bool) -> (String, String) {
+    (key.to_string(), zh_en(zh, en, is_zh))
+}
+
+/// 空白文本回退到 `fallback`。
+fn text_or(value: String, fallback: &str) -> String {
+    if value.trim().is_empty() {
+        fallback.to_string()
+    } else {
+        value
+    }
+}
+
+/// 价格数据来源：优先伴侣模组导出文件，否则为 XNB 解包。
+fn resolve_data_source() -> (String, Option<String>) {
+    match super::item_prices::read_game_data_export() {
+        Some(export) => ("export".to_string(), export.generated_at),
+        None => ("xnb".to_string(), None),
+    }
+}
 
 /// 返回整本物品百科。
 ///
@@ -129,21 +143,10 @@ pub fn get_item_game_data(
     let encyclopedia = snapshot
         .encyclopedia
         .iter()
-        .map(|entry| {
-            build_item_entry(
-                &snapshot.content_dir,
-                entry,
-                &mut texture_cache,
-                with_icons,
-            )
-        })
+        .map(|entry| build_item_entry(&snapshot.content_dir, entry, &mut texture_cache, with_icons))
         .collect::<Vec<_>>();
 
-    let (data_source, generated_at) = if let Some(export) = super::item_prices::read_game_data_export() {
-        ("export".to_string(), export.generated_at)
-    } else {
-        ("xnb".to_string(), None)
-    };
+    let (data_source, generated_at) = resolve_data_source();
 
     Ok(ItemGameData {
         encyclopedia,
@@ -160,12 +163,7 @@ pub fn get_item_game_data_overview(
     lang: Option<String>,
 ) -> Result<ItemGameDataOverview, String> {
     let snapshot = load_item_snapshot(game_dir, lang)?;
-    
-    let (data_source, generated_at) = if let Some(export) = super::item_prices::read_game_data_export() {
-        ("export".to_string(), export.generated_at)
-    } else {
-        ("xnb".to_string(), None)
-    };
+    let (data_source, generated_at) = resolve_data_source();
 
     Ok(ItemGameDataOverview {
         categories: snapshot.categories.clone(),
@@ -274,9 +272,47 @@ fn load_item_snapshot(
     Ok(snapshot)
 }
 
+/// 武器 / 工具这类没有价格来源与可食用性的条目，字段填充方式一致。
+fn simple_entry(
+    id: String,
+    name: String,
+    description: String,
+    (item_type_key, item_type): (String, String),
+    (category_key, category): (String, String),
+    sell_price: i32,
+    raw_object: RawObjectData,
+) -> IndexedItemEntry {
+    IndexedItemEntry {
+        entry: ItemEncyclopediaEntry {
+            id,
+            name,
+            internal_name: raw_object.name.clone(),
+            description,
+            item_type,
+            item_type_key,
+            category,
+            category_key,
+            icon: None,
+            sell_price,
+            price_source: "xnb".to_string(),
+            edibility: None,
+            can_be_given_as_gift: false,
+            can_be_trashed: false,
+            recipe_sources: Vec::new(),
+            fish_conditions: None,
+        },
+        raw_object,
+    }
+}
+
 fn build_item_snapshot(content_dir: PathBuf, lang: Option<&str>) -> Result<ItemSnapshot, String> {
     let lang_str = lang.unwrap_or("zh").to_lowercase();
     let is_zh = lang_str.starts_with("zh");
+    let missing_desc = zh_en(
+        "游戏内容未提供描述。",
+        "No description provided by game content.",
+        is_zh,
+    );
 
     let objects = load_objects_xnb(&content_dir.join("Data").join("Objects.xnb"))?;
     let localized_tables = load_localized_string_tables_with_lang(
@@ -295,8 +331,8 @@ fn build_item_snapshot(content_dir: PathBuf, lang: Option<&str>) -> Result<ItemS
         load_cooking_recipe_sources_localized(&content_dir, &localized_tables, is_zh);
 
     // Load fish data (tolerate if file not found)
-    let fish_data = load_string_dictionary_xnb(&content_dir.join("Data").join("Fish.xnb"))
-        .unwrap_or_default();
+    let fish_data =
+        load_string_dictionary_xnb(&content_dir.join("Data").join("Fish.xnb")).unwrap_or_default();
 
     // Build reverse index: fish_id -> list of location display names
     let fish_locations_map = build_fish_locations_map(&content_dir, is_zh);
@@ -307,30 +343,30 @@ fn build_item_snapshot(content_dir: PathBuf, lang: Option<&str>) -> Result<ItemS
     let mut encyclopedia = Vec::with_capacity(objects.len());
 
     for (id, object) in objects {
-        let name = resolve_localized_text(&object.display_name, &localized_tables);
-        let description = resolve_localized_text(&object.description, &localized_tables);
+        let name = text_or(
+            resolve_localized_text(&object.display_name, &localized_tables),
+            &object.name,
+        );
+        let description = text_or(
+            resolve_localized_text(&object.description, &localized_tables),
+            &missing_desc,
+        );
         let (item_type_key, item_type) =
             classify_item_type_localized(&object.object_type, object.category, is_zh);
         let (category_key, category) =
             classify_category_localized(object.category, &object.object_type, is_zh);
-        let edibility = (object.edibility > -300).then_some(object.edibility);
-        let item_recipe_sources = recipe_sources.get(&id).cloned().unwrap_or_default();
 
         // Build fish conditions if this object has a Fish.xnb entry
         let fish_conditions = fish_data.get(&id).map(|raw_str| {
             let (seasons, time_ranges, weather, min_level, is_trap) =
                 parse_fish_conditions(raw_str);
-            let locations = fish_locations_map
-                .get(&id)
-                .cloned()
-                .unwrap_or_default();
             FishConditions {
                 seasons,
                 time_ranges,
                 weather,
                 min_level,
                 is_trap,
-                locations,
+                locations: fish_locations_map.get(&id).cloned().unwrap_or_default(),
             }
         });
 
@@ -341,51 +377,32 @@ fn build_item_snapshot(content_dir: PathBuf, lang: Option<&str>) -> Result<ItemS
             .unwrap_or((object.price, "xnb"));
 
         encyclopedia.push(IndexedItemEntry {
-            id,
-            name: if name.trim().is_empty() {
-                object.name.clone()
-            } else {
-                name
+            entry: ItemEncyclopediaEntry {
+                recipe_sources: recipe_sources.get(&id).cloned().unwrap_or_default(),
+                id,
+                name,
+                internal_name: object.name.clone(),
+                description,
+                item_type,
+                item_type_key,
+                category,
+                category_key,
+                icon: None,
+                sell_price,
+                price_source: price_source.to_string(),
+                edibility: (object.edibility > -300).then_some(object.edibility),
+                can_be_given_as_gift: object.can_be_given_as_gift,
+                can_be_trashed: object.can_be_trashed,
+                fish_conditions,
             },
-            internal_name: object.name.clone(),
-            description: if description.trim().is_empty() {
-                if is_zh {
-                    "游戏内容未提供描述。".to_string()
-                } else {
-                    "No description provided by game content.".to_string()
-                }
-            } else {
-                description
-            },
-            item_type,
-            item_type_key,
-            category,
-            category_key,
-            sell_price,
-            price_source: price_source.to_string(),
-            edibility,
-            can_be_given_as_gift: object.can_be_given_as_gift,
-            can_be_trashed: object.can_be_trashed,
-            recipe_sources: item_recipe_sources,
             raw_object: object,
-            fish_conditions,
         });
     }
 
     // ── Load weapons from Data/Weapons.xnb (tolerate if missing) ──
-    let weapons = load_weapons_xnb(&content_dir.join("Data").join("Weapons.xnb"))
-        .unwrap_or_default();
+    let weapons =
+        load_weapons_xnb(&content_dir.join("Data").join("Weapons.xnb")).unwrap_or_default();
     for (id, weapon) in weapons {
-        let name = resolve_localized_text(&weapon.display_name, &localized_tables);
-        let description = resolve_localized_text(&weapon.description, &localized_tables);
-        let (item_type_key, item_type) = classify_weapon_type_localized(weapon.weapon_type, is_zh);
-        let (category_key, category) = classify_weapon_category_localized(weapon.weapon_type, is_zh);
-        let sprite_index = weapon.sprite_index.max(0);
-        let texture = if weapon.texture.trim().is_empty() {
-            "TileSheets/weapons".to_string()
-        } else {
-            weapon.texture.clone()
-        };
         let raw_object = RawObjectData {
             name: weapon.name.clone(),
             display_name: weapon.display_name.clone(),
@@ -393,108 +410,69 @@ fn build_item_snapshot(content_dir: PathBuf, lang: Option<&str>) -> Result<ItemS
             object_type: String::new(),
             category: 0,
             price: 0,
-            texture,
-            sprite_index,
+            texture: text_or(weapon.texture.clone(), "TileSheets/weapons"),
+            sprite_index: weapon.sprite_index.max(0),
             edibility: -300,
             can_be_given_as_gift: false,
             can_be_trashed: false,
         };
-        encyclopedia.push(IndexedItemEntry {
-            id: format!("(W){}", id),
-            name: if name.trim().is_empty() {
-                weapon.name.clone()
-            } else {
-                name
-            },
-            internal_name: weapon.name.clone(),
-            description: if description.trim().is_empty() {
-                if is_zh {
-                    "游戏内容未提供描述。".to_string()
-                } else {
-                    "No description provided by game content.".to_string()
-                }
-            } else {
-                description
-            },
-            item_type,
-            item_type_key,
-            category,
-            category_key,
-            sell_price: 0,
-            price_source: "xnb".to_string(),
-            edibility: None,
-            can_be_given_as_gift: false,
-            can_be_trashed: false,
-            recipe_sources: Vec::new(),
+        encyclopedia.push(simple_entry(
+            format!("(W){}", id),
+            text_or(
+                resolve_localized_text(&weapon.display_name, &localized_tables),
+                &weapon.name,
+            ),
+            text_or(
+                resolve_localized_text(&weapon.description, &localized_tables),
+                &missing_desc,
+            ),
+            classify_weapon_type_localized(is_zh),
+            classify_weapon_category_localized(weapon.weapon_type, is_zh),
+            0,
             raw_object,
-            fish_conditions: None,
-        });
+        ));
     }
 
     // ── Load tools from Data/Tools.xnb (tolerate if missing) ──
-    let tools = load_tools_xnb(&content_dir.join("Data").join("Tools.xnb"))
-        .unwrap_or_default();
+    let tools = load_tools_xnb(&content_dir.join("Data").join("Tools.xnb")).unwrap_or_default();
     for (id, tool) in tools {
-        let name = resolve_localized_text(&tool.display_name, &localized_tables);
-        let description = resolve_localized_text(&tool.description, &localized_tables);
-        let (item_type_key, item_type) = ("tool".to_string(), if is_zh { "工具" } else { "Tool" }.to_string());
-        let (category_key, category) = classify_tool_category_localized(&tool.class_name, is_zh);
-        let sprite_index = if tool.menu_sprite_index >= 0 {
-            tool.menu_sprite_index
-        } else {
-            tool.sprite_index.max(0)
-        };
-        let texture = if tool.texture.trim().is_empty() {
-            "TileSheets/tools".to_string()
-        } else {
-            tool.texture.clone()
-        };
+        let sale_price = tool.sale_price.max(0);
         let raw_object = RawObjectData {
             name: tool.name.clone(),
             display_name: tool.display_name.clone(),
             description: tool.description.clone(),
             object_type: String::new(),
             category: 0,
-            price: tool.sale_price.max(0),
-            texture,
-            sprite_index,
+            price: sale_price,
+            texture: text_or(tool.texture.clone(), "TileSheets/tools"),
+            sprite_index: if tool.menu_sprite_index >= 0 {
+                tool.menu_sprite_index
+            } else {
+                tool.sprite_index.max(0)
+            },
             edibility: -300,
             can_be_given_as_gift: false,
             can_be_trashed: false,
         };
-        encyclopedia.push(IndexedItemEntry {
-            id: format!("(T){}", id),
-            name: if name.trim().is_empty() {
-                tool.name.clone()
-            } else {
-                name
-            },
-            internal_name: tool.name.clone(),
-            description: if description.trim().is_empty() {
-                if is_zh {
-                    "游戏内容未提供描述。".to_string()
-                } else {
-                    "No description provided by game content.".to_string()
-                }
-            } else {
-                description
-            },
-            item_type,
-            item_type_key,
-            category,
-            category_key,
-            sell_price: tool.sale_price.max(0),
-            price_source: "xnb".to_string(),
-            edibility: None,
-            can_be_given_as_gift: false,
-            can_be_trashed: false,
-            recipe_sources: Vec::new(),
+        encyclopedia.push(simple_entry(
+            format!("(T){}", id),
+            text_or(
+                resolve_localized_text(&tool.display_name, &localized_tables),
+                &tool.name,
+            ),
+            text_or(
+                resolve_localized_text(&tool.description, &localized_tables),
+                &missing_desc,
+            ),
+            ("tool".to_string(), zh_en("工具", "Tool", is_zh)),
+            classify_tool_category_localized(&tool.class_name, is_zh),
+            sale_price,
             raw_object,
-            fish_conditions: None,
-        });
+        ));
     }
 
     encyclopedia.sort_by(|a, b| {
+        let (a, b) = (&a.entry, &b.entry);
         item_type_order(&a.item_type_key)
             .cmp(&item_type_order(&b.item_type_key))
             .then(category_order(&a.category_key).cmp(&category_order(&b.category_key)))
@@ -505,11 +483,11 @@ fn build_item_snapshot(content_dir: PathBuf, lang: Option<&str>) -> Result<ItemS
     let mut categories = vec![all_label.to_string()];
     let mut item_types = vec![all_label.to_string()];
     for item in &encyclopedia {
-        if !item_types.contains(&item.item_type) {
-            item_types.push(item.item_type.clone());
+        if !item_types.contains(&item.entry.item_type) {
+            item_types.push(item.entry.item_type.clone());
         }
-        if !categories.contains(&item.category) {
-            categories.push(item.category.clone());
+        if !categories.contains(&item.entry.category) {
+            categories.push(item.entry.category.clone());
         }
     }
 
@@ -523,10 +501,14 @@ fn build_item_snapshot(content_dir: PathBuf, lang: Option<&str>) -> Result<ItemS
 
 /// Build a reverse index from fish item ID to a list of location display names
 /// where that fish can be caught, derived from Locations.xnb.
-fn build_fish_locations_map(content_dir: &std::path::Path, is_zh: bool) -> HashMap<String, Vec<String>> {
-    let location_data = match load_location_fishing_xnb(&content_dir.join("Data").join("Locations.xnb")) {
-        Ok(data) => data,
-        Err(_) => return HashMap::new(),
+fn build_fish_locations_map(
+    content_dir: &std::path::Path,
+    is_zh: bool,
+) -> HashMap<String, Vec<String>> {
+    let Ok(location_data) =
+        load_location_fishing_xnb(&content_dir.join("Data").join("Locations.xnb"))
+    else {
+        return HashMap::new();
     };
 
     let resolve_name = if is_zh {
@@ -560,13 +542,10 @@ fn build_fish_locations_map(content_dir: &std::path::Path, is_zh: bool) -> HashM
 /// Normalize an item ID from Locations.xnb fish entries to a plain numeric ID.
 fn normalize_fish_item_id(item_id: &str) -> Option<String> {
     let trimmed = item_id.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
     if let Some(id) = trimmed.strip_prefix("(O)") {
         return Some(id.to_string());
     }
-    if trimmed.chars().all(|ch| ch.is_ascii_digit()) {
+    if !trimmed.is_empty() && trimmed.chars().all(|ch| ch.is_ascii_digit()) {
         return Some(trimmed.to_string());
     }
     None
@@ -579,6 +558,7 @@ fn matches_item(
     item_type: &str,
     all_label: &str,
 ) -> bool {
+    let item = &item.entry;
     let matches_keyword = keyword.is_empty()
         || item.name.to_lowercase().contains(keyword)
         || item.internal_name.to_lowercase().contains(keyword)
@@ -600,26 +580,10 @@ fn build_item_entry(
     include_icon: bool,
 ) -> ItemEncyclopediaEntry {
     ItemEncyclopediaEntry {
-        id: item.id.clone(),
-        name: item.name.clone(),
-        internal_name: item.internal_name.clone(),
-        description: item.description.clone(),
-        item_type: item.item_type.clone(),
-        item_type_key: item.item_type_key.clone(),
-        category: item.category.clone(),
-        category_key: item.category_key.clone(),
-        icon: if include_icon {
-            render_object_icon(content_dir, &item.raw_object, texture_cache).ok()
-        } else {
-            None
-        },
-        sell_price: item.sell_price,
-        price_source: item.price_source.clone(),
-        edibility: item.edibility,
-        can_be_given_as_gift: item.can_be_given_as_gift,
-        can_be_trashed: item.can_be_trashed,
-        recipe_sources: item.recipe_sources.clone(),
-        fish_conditions: item.fish_conditions.clone(),
+        icon: include_icon
+            .then(|| render_object_icon(content_dir, &item.raw_object, texture_cache).ok())
+            .flatten(),
+        ..item.entry.clone()
     }
 }
 
@@ -633,17 +597,14 @@ pub fn load_cooking_recipe_sources_localized(
     let tv_recipe_weeks = load_tv_recipe_weeks_localized(content_dir, is_zh);
     let mut sources_by_item_id: HashMap<String, Vec<String>> = HashMap::new();
 
-    for (_recipe_name, raw_recipe) in &recipes {
+    for (recipe_name, raw_recipe) in &recipes {
         let fields = raw_recipe.split('/').collect::<Vec<_>>();
         let Some(raw_outputs) = fields.get(2).map(|value| value.trim()) else {
             continue;
         };
-        let raw_condition = fields.get(3).map(|value| value.trim()).unwrap_or_default();
-        let recipe_display_name = fields.get(4).map(|value| value.trim()).unwrap_or_default();
         let sources = describe_cooking_recipe_sources_localized(
-            raw_condition,
-            _recipe_name,
-            recipe_display_name,
+            fields.get(3).map(|value| value.trim()).unwrap_or_default(),
+            recipe_name,
             localized_tables,
             &tv_recipe_weeks,
             is_zh,
@@ -678,20 +639,16 @@ fn load_tv_recipe_weeks_localized(
         load_string_dictionary_best_effort(&[tv_dir.join("CookingChannel.xnb")])
     };
 
-    let mut recipe_to_week: HashMap<String, i32> = HashMap::new();
-    for (week_str, value) in tv_data {
-        let Some(recipe_name) = value.split('/').next() else {
-            continue;
-        };
-        let recipe_name = recipe_name.trim().to_string();
-        if recipe_name.is_empty() {
-            continue;
-        }
-        if let Ok(week) = week_str.parse::<i32>() {
-            recipe_to_week.insert(recipe_name, week);
-        }
-    }
-    recipe_to_week
+    tv_data
+        .into_iter()
+        .filter_map(|(week_str, value)| {
+            let recipe_name = value.split('/').next()?.trim().to_string();
+            if recipe_name.is_empty() {
+                return None;
+            }
+            Some((recipe_name, week_str.parse::<i32>().ok()?))
+        })
+        .collect()
 }
 
 fn parse_recipe_output_item_ids(raw_outputs: &str) -> Vec<String> {
@@ -706,7 +663,6 @@ fn parse_recipe_output_item_ids(raw_outputs: &str) -> Vec<String> {
 fn describe_cooking_recipe_sources_localized(
     raw_condition: &str,
     recipe_name: &str,
-    recipe_display_name: &str,
     localized_tables: &HashMap<String, HashMap<String, String>>,
     tv_recipe_weeks: &HashMap<String, i32>,
     is_zh: bool,
@@ -721,16 +677,12 @@ fn describe_cooking_recipe_sources_localized(
     // Check condition-based source
     let parts = raw_condition.split_whitespace().collect::<Vec<_>>();
     let condition_source = match parts.as_slice() {
-        [] => Some(if is_zh {
-            "未提供获取条件".to_string()
-        } else {
-            "No acquisition conditions provided".to_string()
-        }),
-        ["default"] => Some(if is_zh {
-            "初始已掌握".to_string()
-        } else {
-            "Learned by default".to_string()
-        }),
+        [] => Some(zh_en(
+            "未提供获取条件",
+            "No acquisition conditions provided",
+            is_zh,
+        )),
+        ["default"] => Some(zh_en("初始已掌握", "Learned by default", is_zh)),
         ["f", npc, hearts, ..] => {
             let npc_name = localized_tables
                 .get("NPCNames")
@@ -743,20 +695,15 @@ fn describe_cooking_recipe_sources_localized(
                 format!("Mail from {} at {} hearts", npc_name, hearts)
             })
         }
-        ["s", skill, level, ..] => Some(if is_zh {
-            format!(
-                "{}等级达到 {} 级解锁",
-                translate_skill_name_localized(skill, is_zh),
-                level
-            )
-        } else {
-            format!(
-                "Reach {} Level {} to unlock",
-                translate_skill_name_localized(skill, is_zh),
-                level
-            )
-        }),
-        ["l", ..] => describe_learned_source_localized(recipe_name, recipe_display_name, is_zh),
+        ["s", skill, level, ..] => {
+            let skill_name = translate_skill_name_localized(skill, is_zh);
+            Some(if is_zh {
+                format!("{}等级达到 {} 级解锁", skill_name, level)
+            } else {
+                format!("Reach {} Level {} to unlock", skill_name, level)
+            })
+        }
+        ["l", ..] => describe_learned_source_localized(recipe_name, is_zh),
         _ => Some(if is_zh {
             format!("特殊条件：{}", raw_condition)
         } else {
@@ -773,82 +720,40 @@ fn describe_cooking_recipe_sources_localized(
     sources
 }
 
-fn describe_learned_source_localized(
-    recipe_name: &str,
-    _recipe_display_name: &str,
-    is_zh: bool,
-) -> Option<String> {
-    let known_source = match recipe_name {
-        "Banana Pudding" => Some(if is_zh {
-            "姜岛度假村获得"
-        } else {
-            "Obtained from Ginger Island Resort"
-        }),
-        "Ginger Ale" => Some(if is_zh {
-            "姜岛度假村购买"
-        } else {
-            "Purchased from Ginger Island Resort"
-        }),
-        "Tropical Curry" => Some(if is_zh {
-            "姜岛度假村获得"
-        } else {
-            "Obtained from Ginger Island Resort"
-        }),
-        "Triple Shot Espresso" => Some(if is_zh {
-            "星之果实餐吧购买"
-        } else {
-            "Purchased from the Stardrop Saloon"
-        }),
-        _ => None,
-    };
+/// 条件为 "l"（需自行学习）时已知的具体获取途径。
+const LEARNED_RECIPE_SOURCES: &[(&str, &str, &str)] = &[
+    ("Banana Pudding", "姜岛度假村获得", "Obtained from Ginger Island Resort"),
+    ("Ginger Ale", "姜岛度假村购买", "Purchased from Ginger Island Resort"),
+    ("Tropical Curry", "姜岛度假村获得", "Obtained from Ginger Island Resort"),
+    ("Triple Shot Espresso", "星之果实餐吧购买", "Purchased from the Stardrop Saloon"),
+];
 
-    known_source.map(|s| s.to_string())
+fn describe_learned_source_localized(recipe_name: &str, is_zh: bool) -> Option<String> {
+    LEARNED_RECIPE_SOURCES
+        .iter()
+        .find(|(name, ..)| *name == recipe_name)
+        .map(|&(_, zh, en)| zh_en(zh, en, is_zh))
 }
 
 fn tv_week_to_schedule_localized(week: i32, is_zh: bool) -> String {
+    const SEASONS: [(&str, &str); 4] = [
+        ("春季", "Spring"),
+        ("夏季", "Summer"),
+        ("秋季", "Fall"),
+        ("冬季", "Winter"),
+    ];
+
     let day_in_cycle = week * 7;
     let year = (day_in_cycle - 1) / 112 + 1;
     let day_in_year = (day_in_cycle - 1) % 112 + 1;
     let season_index = (day_in_year - 1) / 28;
     let day_in_season = (day_in_year - 1) % 28 + 1;
 
-    let season_name = match season_index {
-        0 => {
-            if is_zh {
-                "春季"
-            } else {
-                "Spring"
-            }
-        }
-        1 => {
-            if is_zh {
-                "夏季"
-            } else {
-                "Summer"
-            }
-        }
-        2 => {
-            if is_zh {
-                "秋季"
-            } else {
-                "Fall"
-            }
-        }
-        3 => {
-            if is_zh {
-                "冬季"
-            } else {
-                "Winter"
-            }
-        }
-        _ => {
-            if is_zh {
-                "未知"
-            } else {
-                "Unknown"
-            }
-        }
-    };
+    let (zh, en) = SEASONS
+        .get(season_index as usize)
+        .copied()
+        .unwrap_or(("未知", "Unknown"));
+    let season_name = if is_zh { zh } else { en };
 
     if is_zh {
         format!(
@@ -864,126 +769,125 @@ fn tv_week_to_schedule_localized(week: i32, is_zh: bool) -> String {
 }
 
 fn translate_skill_name_localized(skill: &str, is_zh: bool) -> String {
-    if is_zh {
-        match skill {
-            "Farming" => "耕种".to_string(),
-            "Fishing" => "钓鱼".to_string(),
-            "Foraging" => "采集".to_string(),
-            "Mining" => "采矿".to_string(),
-            "Combat" => "战斗".to_string(),
-            "Luck" => "运气".to_string(),
-            _ => skill.to_string(),
-        }
-    } else {
-        skill.to_string()
+    if !is_zh {
+        return skill.to_string();
     }
+    match skill {
+        "Farming" => "耕种",
+        "Fishing" => "钓鱼",
+        "Foraging" => "采集",
+        "Mining" => "采矿",
+        "Combat" => "战斗",
+        "Luck" => "运气",
+        _ => skill,
+    }
+    .to_string()
 }
+
+/// Objects.xnb 的 type 字段 -> (稳定 key, 中文, 英文)
+const OBJECT_TYPE_LABELS: &[(&str, &str, &str)] = &[
+    ("basic", "基础物品", "Basic Item"),
+    ("arch", "古物", "Artifact"),
+    ("fish", "鱼类", "Fish"),
+    ("ring", "戒指", "Ring"),
+    ("minerals", "矿物", "Mineral"),
+    ("cooking", "料理", "Cooking"),
+    ("crafting", "工艺品", "Crafting"),
+    ("seeds", "种子", "Seeds"),
+    ("litter", "杂物", "Litter"),
+    ("interactive", "互动物品", "Interactive"),
+    ("quest", "任务物品", "Quest Item"),
+    ("asdf", "特殊物品", "Special Item"),
+    ("weapon", "武器", "Weapon"),
+    ("tool", "工具", "Tool"),
+];
+
+/// Objects.xnb 的 category 数值 -> (稳定 key, 中文, 英文)
+const CATEGORY_LABELS: &[(i32, &str, &str, &str)] = &[
+    (-2, "gem", "宝石", "Gem"),
+    (-4, "fish", "鱼类", "Fish"),
+    (-5, "egg", "蛋类", "Egg"),
+    (-6, "milk", "奶制品", "Milk Product"),
+    (-7, "cooking", "料理", "Cooking"),
+    (-8, "crafting", "工艺品", "Crafting"),
+    (-9, "big_craftable", "大型工艺品", "Big Craftable"),
+    (-12, "mineral", "矿物", "Mineral"),
+    (-14, "meat", "肉类", "Meat"),
+    (-15, "metal_resource", "金属资源", "Metal Resource"),
+    (-16, "building_resource", "建筑资源", "Building Resource"),
+    (-17, "sell_at_pierre", "杂货商品", "General Merchandise"),
+    (-18, "animal_product", "动物产物", "Animal Product"),
+    (-19, "fertilizer", "肥料", "Fertilizer"),
+    (-20, "junk", "垃圾", "Trash"),
+    (-21, "bait", "鱼饵", "Bait"),
+    (-22, "tackle", "渔具", "Tackle"),
+    (-24, "furniture", "家具", "Furniture"),
+    (-25, "ingredient", "食材", "Ingredient"),
+    (-26, "artisan_goods", "工匠物品", "Artisan Good"),
+    (-27, "syrup", "树液制品", "Syrup"),
+    (-28, "monster_loot", "怪物掉落", "Monster Loot"),
+    (-74, "seed", "种子", "Seed"),
+    (-75, "vegetable", "蔬菜", "Vegetable"),
+    (-76, "flower", "花卉", "Flower"),
+    (-77, "forage", "采集物", "Forage"),
+    (-78, "fruit", "水果", "Fruit"),
+    (-79, "shellfish", "贝类", "Shellfish"),
+    (-80, "festival_reward", "节日奖励", "Festival Reward"),
+    (-81, "fodder", "饲料", "Fodder"),
+    (-82, "clothing", "服饰", "Clothing"),
+    (-95, "hat", "帽子", "Hat"),
+    (-96, "trinket", "饰品", "Trinket"),
+];
+
+/// Weapons.xnb 的 type 数值 -> (稳定 key, 中文, 英文)
+const WEAPON_CATEGORY_LABELS: &[(i32, &str, &str, &str)] = &[
+    (0, "sword", "剑", "Sword"),
+    (1, "dagger", "匕首", "Dagger"),
+    (2, "club", "锤", "Club"),
+    (3, "defense_sword", "防御剑", "Defense Sword"),
+];
+
+/// Tools.xnb 的 ClassName（小写） -> (稳定 key, 中文, 英文)
+const TOOL_CATEGORY_LABELS: &[(&str, &str, &str, &str)] = &[
+    ("axe", "axe", "斧", "Axe"),
+    ("pickaxe", "pickaxe", "镐", "Pickaxe"),
+    ("hoe", "hoe", "锄头", "Hoe"),
+    ("wateringcan", "watering_can", "洒水壶", "Watering Can"),
+    ("fishingrod", "fishing_rod", "鱼竿", "Fishing Rod"),
+    ("milkpail", "milk_pail", "挤奶桶", "Milk Pail"),
+    ("shears", "shears", "剪刀", "Shears"),
+    ("pan", "pan", "淘盘", "Pan"),
+    ("wand", "wand", "回程魔杖", "Return Scepter"),
+    ("slingshot", "slingshot", "弹弓", "Slingshot"),
+];
 
 fn translate_object_type_label(key: &str, is_zh: bool) -> String {
-    match key {
-        "basic" => if is_zh { "基础物品" } else { "Basic Item" }.to_string(),
-        "arch" => if is_zh { "古物" } else { "Artifact" }.to_string(),
-        "fish" => if is_zh { "鱼类" } else { "Fish" }.to_string(),
-        "ring" => if is_zh { "戒指" } else { "Ring" }.to_string(),
-        "minerals" => if is_zh { "矿物" } else { "Mineral" }.to_string(),
-        "cooking" => if is_zh { "料理" } else { "Cooking" }.to_string(),
-        "crafting" => if is_zh { "工艺品" } else { "Crafting" }.to_string(),
-        "seeds" => if is_zh { "种子" } else { "Seeds" }.to_string(),
-        "litter" => if is_zh { "杂物" } else { "Litter" }.to_string(),
-        "interactive" => if is_zh { "互动物品" } else { "Interactive" }.to_string(),
-        "quest" => if is_zh { "任务物品" } else { "Quest Item" }.to_string(),
-        "asdf" => if is_zh {
-            "特殊物品"
-        } else {
-            "Special Item"
-        }
-        .to_string(),
-        "weapon" => if is_zh { "武器" } else { "Weapon" }.to_string(),
-        "tool" => if is_zh { "工具" } else { "Tool" }.to_string(),
-        _ => key.to_string(),
-    }
+    OBJECT_TYPE_LABELS
+        .iter()
+        .find(|(k, ..)| *k == key)
+        .map(|&(_, zh, en)| zh_en(zh, en, is_zh))
+        .unwrap_or_else(|| key.to_string())
 }
 
-fn classify_weapon_type_localized(_weapon_type: i32, is_zh: bool) -> (String, String) {
-    (
-        "weapon".to_string(),
-        if is_zh { "武器" } else { "Weapon" }.to_string(),
-    )
+fn classify_weapon_type_localized(is_zh: bool) -> (String, String) {
+    localized_pair("weapon", "武器", "Weapon", is_zh)
 }
 
 fn classify_weapon_category_localized(weapon_type: i32, is_zh: bool) -> (String, String) {
-    match weapon_type {
-        0 => (
-            "sword".to_string(),
-            if is_zh { "剑" } else { "Sword" }.to_string(),
-        ),
-        1 => (
-            "dagger".to_string(),
-            if is_zh { "匕首" } else { "Dagger" }.to_string(),
-        ),
-        2 => (
-            "club".to_string(),
-            if is_zh { "锤" } else { "Club" }.to_string(),
-        ),
-        3 => (
-            "defense_sword".to_string(),
-            if is_zh { "防御剑" } else { "Defense Sword" }.to_string(),
-        ),
-        _ => (
-            "weapon_other".to_string(),
-            if is_zh { "其他武器" } else { "Other Weapon" }.to_string(),
-        ),
-    }
+    WEAPON_CATEGORY_LABELS
+        .iter()
+        .find(|(t, ..)| *t == weapon_type)
+        .map(|&(_, key, zh, en)| localized_pair(key, zh, en, is_zh))
+        .unwrap_or_else(|| localized_pair("weapon_other", "其他武器", "Other Weapon", is_zh))
 }
 
 fn classify_tool_category_localized(class_name: &str, is_zh: bool) -> (String, String) {
     let normalized = class_name.trim().to_ascii_lowercase();
-    match normalized.as_str() {
-        "axe" => (
-            "axe".to_string(),
-            if is_zh { "斧" } else { "Axe" }.to_string(),
-        ),
-        "pickaxe" => (
-            "pickaxe".to_string(),
-            if is_zh { "镐" } else { "Pickaxe" }.to_string(),
-        ),
-        "hoe" => (
-            "hoe".to_string(),
-            if is_zh { "锄头" } else { "Hoe" }.to_string(),
-        ),
-        "wateringcan" => (
-            "watering_can".to_string(),
-            if is_zh { "洒水壶" } else { "Watering Can" }.to_string(),
-        ),
-        "fishingrod" => (
-            "fishing_rod".to_string(),
-            if is_zh { "鱼竿" } else { "Fishing Rod" }.to_string(),
-        ),
-        "milkpail" => (
-            "milk_pail".to_string(),
-            if is_zh { "挤奶桶" } else { "Milk Pail" }.to_string(),
-        ),
-        "shears" => (
-            "shears".to_string(),
-            if is_zh { "剪刀" } else { "Shears" }.to_string(),
-        ),
-        "pan" => (
-            "pan".to_string(),
-            if is_zh { "淘盘" } else { "Pan" }.to_string(),
-        ),
-        "wand" => (
-            "wand".to_string(),
-            if is_zh { "回程魔杖" } else { "Return Scepter" }.to_string(),
-        ),
-        "slingshot" => (
-            "slingshot".to_string(),
-            if is_zh { "弹弓" } else { "Slingshot" }.to_string(),
-        ),
-        _ => (
-            "tool_other".to_string(),
-            if is_zh { "其他工具" } else { "Other Tool" }.to_string(),
-        ),
-    }
+    TOOL_CATEGORY_LABELS
+        .iter()
+        .find(|(name, ..)| *name == normalized)
+        .map(|&(_, key, zh, en)| localized_pair(key, zh, en, is_zh))
+        .unwrap_or_else(|| localized_pair("tool_other", "其他工具", "Other Tool", is_zh))
 }
 
 fn classify_item_type_localized(object_type: &str, category: i32, is_zh: bool) -> (String, String) {
@@ -998,229 +902,77 @@ fn classify_item_type_localized(object_type: &str, category: i32, is_zh: bool) -
 }
 
 fn classify_category_localized(category: i32, object_type: &str, is_zh: bool) -> (String, String) {
-    match category {
-        -2 => (
-            "gem".to_string(),
-            if is_zh { "宝石" } else { "Gem" }.to_string(),
-        ),
-        -4 => (
-            "fish".to_string(),
-            if is_zh { "鱼类" } else { "Fish" }.to_string(),
-        ),
-        -5 => (
-            "egg".to_string(),
-            if is_zh { "蛋类" } else { "Egg" }.to_string(),
-        ),
-        -6 => (
-            "milk".to_string(),
-            if is_zh { "奶制品" } else { "Milk Product" }.to_string(),
-        ),
-        -7 => (
-            "cooking".to_string(),
-            if is_zh { "料理" } else { "Cooking" }.to_string(),
-        ),
-        -8 => (
-            "crafting".to_string(),
-            if is_zh { "工艺品" } else { "Crafting" }.to_string(),
-        ),
-        -9 => (
-            "big_craftable".to_string(),
-            if is_zh {
-                "大型工艺品"
-            } else {
-                "Big Craftable"
-            }
-            .to_string(),
-        ),
-        -12 => (
-            "mineral".to_string(),
-            if is_zh { "矿物" } else { "Mineral" }.to_string(),
-        ),
-        -14 => (
-            "meat".to_string(),
-            if is_zh { "肉类" } else { "Meat" }.to_string(),
-        ),
-        -15 => (
-            "metal_resource".to_string(),
-            if is_zh {
-                "金属资源"
-            } else {
-                "Metal Resource"
-            }
-            .to_string(),
-        ),
-        -16 => (
-            "building_resource".to_string(),
-            if is_zh {
-                "建筑资源"
-            } else {
-                "Building Resource"
-            }
-            .to_string(),
-        ),
-        -17 => (
-            "sell_at_pierre".to_string(),
-            if is_zh {
-                "杂货商品"
-            } else {
-                "General Merchandise"
-            }
-            .to_string(),
-        ),
-        -18 => (
-            "animal_product".to_string(),
-            if is_zh {
-                "动物产物"
-            } else {
-                "Animal Product"
-            }
-            .to_string(),
-        ),
-        -19 => (
-            "fertilizer".to_string(),
-            if is_zh { "肥料" } else { "Fertilizer" }.to_string(),
-        ),
-        -20 => (
-            "junk".to_string(),
-            if is_zh { "垃圾" } else { "Trash" }.to_string(),
-        ),
-        -21 => (
-            "bait".to_string(),
-            if is_zh { "鱼饵" } else { "Bait" }.to_string(),
-        ),
-        -22 => (
-            "tackle".to_string(),
-            if is_zh { "渔具" } else { "Tackle" }.to_string(),
-        ),
-        -24 => (
-            "furniture".to_string(),
-            if is_zh { "家具" } else { "Furniture" }.to_string(),
-        ),
-        -25 => (
-            "ingredient".to_string(),
-            if is_zh { "食材" } else { "Ingredient" }.to_string(),
-        ),
-        -26 => (
-            "artisan_goods".to_string(),
-            if is_zh {
-                "工匠物品"
-            } else {
-                "Artisan Good"
-            }
-            .to_string(),
-        ),
-        -27 => (
-            "syrup".to_string(),
-            if is_zh { "树液制品" } else { "Syrup" }.to_string(),
-        ),
-        -28 => (
-            "monster_loot".to_string(),
-            if is_zh {
-                "怪物掉落"
-            } else {
-                "Monster Loot"
-            }
-            .to_string(),
-        ),
-        -74 => (
-            "seed".to_string(),
-            if is_zh { "种子" } else { "Seed" }.to_string(),
-        ),
-        -75 => (
-            "vegetable".to_string(),
-            if is_zh { "蔬菜" } else { "Vegetable" }.to_string(),
-        ),
-        -76 => (
-            "flower".to_string(),
-            if is_zh { "花卉" } else { "Flower" }.to_string(),
-        ),
-        -77 => (
-            "forage".to_string(),
-            if is_zh { "采集物" } else { "Forage" }.to_string(),
-        ),
-        -78 => (
-            "fruit".to_string(),
-            if is_zh { "水果" } else { "Fruit" }.to_string(),
-        ),
-        -79 => (
-            "shellfish".to_string(),
-            if is_zh { "贝类" } else { "Shellfish" }.to_string(),
-        ),
-        -80 => (
-            "festival_reward".to_string(),
-            if is_zh {
-                "节日奖励"
-            } else {
-                "Festival Reward"
-            }
-            .to_string(),
-        ),
-        -81 => (
-            "fodder".to_string(),
-            if is_zh { "饲料" } else { "Fodder" }.to_string(),
-        ),
-        -82 => (
-            "clothing".to_string(),
-            if is_zh { "服饰" } else { "Clothing" }.to_string(),
-        ),
-        -95 => (
-            "hat".to_string(),
-            if is_zh { "帽子" } else { "Hat" }.to_string(),
-        ),
-        -96 => (
-            "trinket".to_string(),
-            if is_zh { "饰品" } else { "Trinket" }.to_string(),
-        ),
-        0 if !object_type.trim().is_empty() => {
-            let key = object_type.trim().to_ascii_lowercase();
-            (key.clone(), translate_object_type_label(&key, is_zh))
-        }
-        _ => (
-            "other".to_string(),
-            if is_zh { "其他" } else { "Other" }.to_string(),
-        ),
+    if let Some(&(_, key, zh, en)) = CATEGORY_LABELS.iter().find(|(c, ..)| *c == category) {
+        return localized_pair(key, zh, en, is_zh);
     }
+    if category == 0 && !object_type.trim().is_empty() {
+        let key = object_type.trim().to_ascii_lowercase();
+        let label = translate_object_type_label(&key, is_zh);
+        return (key, label);
+    }
+    localized_pair("other", "其他", "Other", is_zh)
 }
 
+/// 排序权重：表内顺序即展示顺序，未列出的排到最后。
+const ITEM_TYPE_ORDER: &[&str] = &[
+    "basic",
+    "fish",
+    "cooking",
+    "crafting",
+    "minerals",
+    "arch",
+    "ring",
+    "seeds",
+    "litter",
+    "interactive",
+    "quest",
+    "asdf",
+    "weapon",
+    "tool",
+];
+
+/// 同一组内的分类共享一个权重。
+const CATEGORY_ORDER: &[&[&str]] = &[
+    &["seed"],
+    &["vegetable"],
+    &["fruit"],
+    &["flower"],
+    &["forage"],
+    &["fish"],
+    &["cooking"],
+    &["ingredient"],
+    &["artisan_goods"],
+    &["animal_product"],
+    &["mineral", "gem"],
+    &["metal_resource"],
+    &["building_resource"],
+    &["monster_loot"],
+    &["sword", "dagger", "club", "defense_sword", "weapon_other"],
+    &[
+        "axe",
+        "pickaxe",
+        "hoe",
+        "watering_can",
+        "fishing_rod",
+        "milk_pail",
+        "shears",
+        "pan",
+        "wand",
+        "slingshot",
+        "tool_other",
+    ],
+];
+
 fn item_type_order(key: &str) -> i32 {
-    match key {
-        "basic" => 0,
-        "fish" => 1,
-        "cooking" => 2,
-        "crafting" => 3,
-        "minerals" => 4,
-        "arch" => 5,
-        "ring" => 6,
-        "seeds" => 7,
-        "litter" => 8,
-        "interactive" => 9,
-        "quest" => 10,
-        "asdf" => 11,
-        "weapon" => 12,
-        "tool" => 13,
-        _ => 99,
-    }
+    ITEM_TYPE_ORDER
+        .iter()
+        .position(|k| *k == key)
+        .map_or(99, |index| index as i32)
 }
 
 fn category_order(key: &str) -> i32 {
-    match key {
-        "seed" => 0,
-        "vegetable" => 1,
-        "fruit" => 2,
-        "flower" => 3,
-        "forage" => 4,
-        "fish" => 5,
-        "cooking" => 6,
-        "ingredient" => 7,
-        "artisan_goods" => 8,
-        "animal_product" => 9,
-        "mineral" | "gem" => 10,
-        "metal_resource" => 11,
-        "building_resource" => 12,
-        "monster_loot" => 13,
-        "sword" | "dagger" | "club" | "defense_sword" | "weapon_other" => 14,
-        "axe" | "pickaxe" | "hoe" | "watering_can" | "fishing_rod" | "milk_pail"
-        | "shears" | "pan" | "wand" | "slingshot" | "tool_other" => 15,
-        _ => 99,
-    }
+    CATEGORY_ORDER
+        .iter()
+        .position(|group| group.contains(&key))
+        .map_or(99, |index| index as i32)
 }
