@@ -105,7 +105,6 @@ const navGroups: NavGroup[] = [
       { id: "saveEditor", icon: <PencilRuler /> },
       { id: "saveBackups", icon: <ArchiveRestore /> },
       { id: "cheats", icon: <Zap /> },
-      { id: "modData", icon: <Database /> },
     ],
   },
   {
@@ -114,6 +113,7 @@ const navGroups: NavGroup[] = [
       { id: "mods", icon: <Puzzle /> },
       { id: "onlineMods", icon: <Download /> },
       { id: "downloads", icon: <ListChecks /> },
+      { id: "modData", icon: <Database /> },
     ],
   },
   {

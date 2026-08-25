@@ -46,12 +46,12 @@ export function FeaturesCard({
     { id: "fishingMap", icon: Fish },
     { id: "todo", icon: Notebook },
     { id: "cheats", icon: Zap },
-    { id: "modData", icon: Database },
     { id: "saveEditor", icon: PencilRuler },
     { id: "saveBackups", icon: ArchiveRestore },
     { id: "mods", icon: Puzzle },
     { id: "onlineMods", icon: Download },
     { id: "downloads", icon: ListChecks },
+    { id: "modData", icon: Database },
   ]
 
   const handleToggle = (id: Page, checked: boolean) => {
