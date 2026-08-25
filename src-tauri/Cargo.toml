@@ -1,6 +1,6 @@
 [package]
 name = "stardew-valley-assistant"
-version = "0.1.5"
+version = "0.1.6"
 description = "Tauri + React desktop assistant for Stardew Valley: mod management, save editor, crop profit calculator and game data tools"
 authors = ["ayndpa"]
 edition = "2021"
