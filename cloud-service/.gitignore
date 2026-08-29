@@ -1,5 +1,9 @@
 node_modules
 dist
 *.local
+*.exe
 .env
 .env.*
+.dev.vars
+.wrangler
+cli/admin.json

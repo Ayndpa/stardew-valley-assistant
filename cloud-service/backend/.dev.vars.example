@@ -1,0 +1,7 @@
+# wrangler dev 本地环境变量（复制为 .dev.vars，勿提交）
+# 复用现有 Supabase 数据库：使用连接串（Supavisor pooler 5432 或直连）
+DATABASE_URL=postgresql://postgres.mrmllvptnjlggskghkka:YOUR_DB_PASSWORD@aws-0-region.pooler.supabase.com:5432/postgres
+# JWT 签名密钥（生产环境务必换成随机长密钥）
+JWT_SECRET=change-me-to-a-long-random-secret
+# 管理接口密钥：CLI 管理器以 Bearer <ADMIN_KEY> 调用 /api/admin/*；不设置则禁用管理接口
+ADMIN_KEY=change-me-to-a-long-random-admin-key

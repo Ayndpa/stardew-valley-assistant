@@ -1,0 +1,19 @@
+name = "stardew-account-backend"
+main = "src/index.ts"
+compatibility_date = "2025-11-01"
+# postgres.js / bcryptjs 在 Node 兼容路径上引用了 node:buffer / node:events / node:stream
+compatibility_flags = ["nodejs_compat"]
+
+# 敏感配置用 secret/var 设置，勿写进本文件：
+#   bunx wrangler secret put DATABASE_URL   # Supabase 连接串（推荐 Supavisor 池化端口）
+#   bunx wrangler secret put JWT_SECRET
+#   bunx wrangler secret put ADMIN_KEY      # 留空（不设置）则禁用 /api/admin/*
+#
+# 可选：接入 Hyperdrive 连接池（Workers 下访问 Postgres 的推荐方式）
+#   1. bunx wrangler hyperdrive create account-db --connection-string="<DATABASE_URL>"
+#   2. 取消下方绑定注释并填入 id
+#   3. 代码会优先使用 HYPERDRIVE 连接串，未绑定时回落到 DATABASE_URL
+#
+# [[hyperdrive]]
+# binding = "HYPERDRIVE"
+# id = "<hyperdrive-id>"

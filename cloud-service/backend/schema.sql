@@ -1,5 +1,5 @@
--- 账户系统数据库迁移（Go 后端直接连接现有 Supabase PostgreSQL 数据库时执行）
--- 复用现有数据库，新建账户相关的表；由 Go 后端自管（bcrypt + JWT），不依赖 Supabase Auth。
+-- 账户系统数据库迁移（后端直接连接现有 Supabase PostgreSQL 数据库时执行）
+-- 复用现有数据库，新建账户相关的表；由后端自管（bcrypt + JWT），不依赖 Supabase Auth。
 
 -- 账户表
 create table if not exists public.accounts (
@@ -12,7 +12,7 @@ create table if not exists public.accounts (
     updated_at timestamptz not null default now()
 );
 
-comment on table public.accounts is '账户系统：邮箱 + bcrypt 密码，Go 后端管理';
+comment on table public.accounts is '账户系统：邮箱 + bcrypt 密码，后端管理';
 
 -- 用户设置表：后续「手机电脑互通」云同步的配置/数据挂在这里。
 create table if not exists public.user_settings (
@@ -45,6 +45,6 @@ create trigger user_settings_set_updated_at
     for each row execute function public.set_updated_at();
 
 -- 最佳实践：即使 PostgREST 未暴露这些表，也开启 RLS 兜底。
--- Go 后端以数据库 owner 直连会绕过 RLS，不受影响。
+-- 后端以数据库 owner 直连会绕过 RLS，不受影响。
 alter table public.accounts enable row level security;
 alter table public.user_settings enable row level security;
