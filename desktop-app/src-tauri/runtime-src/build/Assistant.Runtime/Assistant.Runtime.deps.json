@@ -1,0 +1,89 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v6.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v6.0": {
+      "Assistant.Runtime/1.0.0": {
+        "dependencies": {
+          "Lib.Harmony": "2.2.2"
+        },
+        "runtime": {
+          "Assistant.Runtime.dll": {}
+        }
+      },
+      "Lib.Harmony/2.2.2": {
+        "dependencies": {
+          "MonoMod.Common": "22.6.3.1"
+        },
+        "runtime": {
+          "lib/net6.0/0Harmony.dll": {
+            "assemblyVersion": "2.2.2.0",
+            "fileVersion": "2.2.2.0"
+          }
+        }
+      },
+      "Mono.Cecil/0.11.4": {
+        "runtime": {
+          "lib/netstandard2.0/Mono.Cecil.Mdb.dll": {
+            "assemblyVersion": "0.11.4.0",
+            "fileVersion": "0.11.4.0"
+          },
+          "lib/netstandard2.0/Mono.Cecil.Pdb.dll": {
+            "assemblyVersion": "0.11.4.0",
+            "fileVersion": "0.11.4.0"
+          },
+          "lib/netstandard2.0/Mono.Cecil.Rocks.dll": {
+            "assemblyVersion": "0.11.4.0",
+            "fileVersion": "0.11.4.0"
+          },
+          "lib/netstandard2.0/Mono.Cecil.dll": {
+            "assemblyVersion": "0.11.4.0",
+            "fileVersion": "0.11.4.0"
+          }
+        }
+      },
+      "MonoMod.Common/22.6.3.1": {
+        "dependencies": {
+          "Mono.Cecil": "0.11.4"
+        },
+        "runtime": {
+          "lib/net5.0/MonoMod.Common.dll": {
+            "assemblyVersion": "22.6.3.1",
+            "fileVersion": "22.6.3.1"
+          }
+        }
+      }
+    }
+  },
+  "libraries": {
+    "Assistant.Runtime/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "Lib.Harmony/2.2.2": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-70KvWz+DiUELxafsYL/LHxA/jH3PDWeApLo/VwtnrpTvRWQ/eUdPfS/l5funmhZWOy41QXw6UjVv+6C57Nx77A==",
+      "path": "lib.harmony/2.2.2",
+      "hashPath": "lib.harmony.2.2.2.nupkg.sha512"
+    },
+    "Mono.Cecil/0.11.4": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-IC1h5g0NeJGHIUgzM1P82ld57knhP0IcQfrYITDPXlNpMYGUrsG5TxuaWTjaeqDNQMBDNZkB8L0rBnwsY6JHuQ==",
+      "path": "mono.cecil/0.11.4",
+      "hashPath": "mono.cecil.0.11.4.nupkg.sha512"
+    },
+    "MonoMod.Common/22.6.3.1": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-7CUFpelStpHwdWhIJrwyn56f1IXe3OLrNc9oytWIvBu6mAFT4ELqH1o9gVjmMIN6xf1KPl+OTYd0YRUP8wRZ9g==",
+      "path": "monomod.common/22.6.3.1",
+      "hashPath": "monomod.common.22.6.3.1.nupkg.sha512"
+    }
+  }
+}
