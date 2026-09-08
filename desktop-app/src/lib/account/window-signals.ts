@@ -5,10 +5,11 @@
  * - socialOpenChats：当前打开的私聊窗口对应的好友 id 列表（聊天窗口挂载/卸载时维护）
  */
 import { useCallback, useSyncExternalStore } from "react"
+import type { SocialWindowSync } from "@shared/account/social-provider"
 import type { RoomRef } from "./types"
 
-export const TOKEN_KEY = "accountToken"
-export const USER_KEY = "accountUser"
+// 登录态的键定义在 shared 里（AccountProvider 共用），这里转发出去保持既有 import 路径
+export { TOKEN_KEY, USER_KEY } from "@shared/account/storage"
 export const CURRENT_ROOM_KEY = "socialCurrentRoom"
 export const OPEN_CHATS_KEY = "socialOpenChats"
 
@@ -66,6 +67,12 @@ export function addOpenChat(userId: string) {
 export function removeOpenChat(userId: string) {
   const list = readOpenChats().filter((id) => id !== userId)
   safeSet(OPEN_CHATS_KEY, list.length ? JSON.stringify(list) : null)
+}
+
+/** 注入给共享 SocialProvider 的多窗口同步适配器（手机端不需要，传空实现） */
+export const desktopWindowSync: SocialWindowSync = {
+  readOpenChats,
+  writeCurrentRoom,
 }
 
 /** 订阅某个 localStorage 键的原始值（其他窗口修改时通过 storage 事件刷新） */

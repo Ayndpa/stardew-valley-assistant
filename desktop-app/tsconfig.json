@@ -17,7 +17,15 @@
     /* Path aliases */
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@shared/*": ["../shared/*"],
+      /* shared/ 在本包之外，Node 解析找不到本包的 node_modules，
+         这里把它用到的少数运行时依赖显式指回来（与 vite.config.ts 的 alias 一一对应） */
+      "react": ["./node_modules/@types/react"],
+      "react/*": ["./node_modules/@types/react/*"],
+      "react-i18next": ["./node_modules/react-i18next"],
+      "i18next": ["./node_modules/i18next"],
+      "@tauri-apps/api/*": ["./node_modules/@tauri-apps/api/*"]
     },
 
     /* Linting */
@@ -26,6 +34,6 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"],
+  "include": ["src", "../shared"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

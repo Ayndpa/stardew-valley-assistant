@@ -1,12 +1,19 @@
 import i18n from "i18next"
 import { initReactI18next } from "react-i18next"
 import LanguageDetector from "i18next-browser-languagedetector"
+import { loadSharedSocial, withSharedSocial } from "@shared/i18n"
 
 // 两份语言包各约 85–90 KB，静态 import 会把它们一起打进启动就要解析的主 chunk。
 // 改为按需加载：启动只取当前语言，切换语言时再拉另一份。
 const loaders: Record<string, () => Promise<{ default: Record<string, unknown> }>> = {
   zh: () => import("./locales/zh/translation.json"),
   en: () => import("./locales/en/translation.json"),
+}
+
+/** social.* 词条与手机端共用，存放在 shared/i18n；这里与本端语言包合并后再交给 i18next */
+async function loadBundle(code: string): Promise<Record<string, unknown>> {
+  const [own, social] = await Promise.all([loaders[code](), loadSharedSocial(code)])
+  return withSharedSocial(own.default, social)
 }
 
 const SUPPORTED = Object.keys(loaders)
@@ -23,8 +30,7 @@ const loaded = new Set<string>()
 async function ensureBundle(lng: string) {
   const code = normalize(lng)
   if (loaded.has(code)) return code
-  const mod = await loaders[code]()
-  i18n.addResourceBundle(code, "translation", mod.default, true, true)
+  i18n.addResourceBundle(code, "translation", await loadBundle(code), true, true)
   loaded.add(code)
   return code
 }
@@ -42,7 +48,7 @@ function detectInitialLanguage(): string {
 /** 在渲染 React 之前调用：先备好当前语言的资源，避免首帧闪出原始 key。 */
 export async function initI18n() {
   const initialLanguage = detectInitialLanguage()
-  const initialBundle = await loaders[initialLanguage]()
+  const initialBundle = await loadBundle(initialLanguage)
   loaded.add(initialLanguage)
 
   await i18n
@@ -50,7 +56,7 @@ export async function initI18n() {
     .use(initReactI18next)
     .init({
       resources: {
-        [initialLanguage]: { translation: initialBundle.default },
+        [initialLanguage]: { translation: initialBundle },
       },
       lng: initialLanguage,
       fallbackLng: FALLBACK,
