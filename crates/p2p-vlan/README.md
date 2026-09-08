@@ -1,7 +1,7 @@
 # p2p-vlan
 
 星露谷助手的虚拟局域网引擎（契约见 `cloud-service/REALTIME.md` §7）：房间内成员各持一块
-`10.77.0.0/24` 的 TUN 虚拟网卡（Windows 用 Wintun，`wintun.dll` 随应用打包在 `src-tauri/resources/`），
+`10.77.0.0/24` 的 TUN 虚拟网卡（Windows 用 Wintun，`wintun.dll` 随应用打包在 `desktop-app/src-tauri/resources/`），
 成员两两之间用 ICE 打洞建立 UDP 直连，组成全互联网状网络；服务端只转发握手信令。
 因为创建网卡需要管理员权限，引擎实际运行在一个由应用自身 exe 以 `--vlan-helper` 启动的提权辅助进程里（§7.4）。
 
@@ -26,13 +26,13 @@ webrtc-ice 的 controlling 端会提名"最先验证成功"的候选对且不再
 
 ```powershell
 # 无需管理员：单元测试 + 进程内网状网络（内存网卡、回环候选）+ 辅助进程管道协议
-cargo test -p p2p-vlan
+cargo test
 
 # 需要管理员权限（默认 ignore），请在提权的终端里运行：
-cargo test -p p2p-vlan --test wintun_smoke -- --ignored   # 打开真实 Wintun 网卡，从本机发 UDP 确认能读到
-cargo test -p p2p-vlan --test wintun_e2e -- --ignored     # 真实网卡 + ICE 网状网络双向收发，结束后网卡被移除
+cargo test --test wintun_smoke -- --ignored   # 打开真实 Wintun 网卡，从本机发 UDP 确认能读到
+cargo test --test wintun_e2e -- --ignored     # 真实网卡 + ICE 网状网络双向收发，结束后网卡被移除
 
-# 真实提权辅助进程端到端（未提权时会弹一次 UAC）：先构建应用 exe
-$env:SKIP_ASSISTANT_RUNTIME_BUILD = "1"; cargo build
-cargo run -p p2p-vlan --example helper_e2e
+# 真实提权辅助进程端到端（未提权时会弹一次 UAC）：先在 desktop-app/src-tauri 下构建应用 exe
+#   $env:SKIP_ASSISTANT_RUNTIME_BUILD = "1"; cargo build   （在 desktop-app/src-tauri 目录执行）
+cargo run --example helper_e2e
 ```

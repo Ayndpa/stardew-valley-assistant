@@ -3,7 +3,7 @@
 //!
 //! 打开 10.77.0.2/24 的 TUN，确认 `Get-NetAdapter` 里能看到它，再从本机 UDP 套接字
 //! 向 10.77.0.9:24642 发一个数据报，断言 TUN 读到目的地址为 10.77.0.9 的 IPv4 包。
-//! wintun.dll 依次取：环境变量 `WINTUN_DLL`、src-tauri/resources/wintun.dll、
+//! wintun.dll 依次取：环境变量 `WINTUN_DLL`、desktop-app/src-tauri/resources/wintun.dll、
 //! 系统默认搜索路径。
 
 #![cfg(windows)]
@@ -20,7 +20,7 @@ fn wintun_dll() -> Option<PathBuf> {
     if let Ok(p) = std::env::var("WINTUN_DLL") {
         return Some(PathBuf::from(p));
     }
-    let bundled = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../resources/wintun.dll");
+    let bundled = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../desktop-app/desktop-app/src-tauri/resources/wintun.dll");
     bundled.is_file().then_some(bundled)
 }
 

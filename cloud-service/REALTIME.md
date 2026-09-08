@@ -252,7 +252,7 @@ attachment 保存 `{ userId }`。
 - 私聊记录只保存在内存（`Map<friendId, Message[]>`，每人最多 200 条），重启即清空，与"服务端不记录"的语义一致。
 - 新消息且用户不在联机页面 → 通过现有 `onShowToast` 提示，并在侧边栏图标显示未读数。
 
-## 6. 虚拟局域网（VLAN，crate `desktop-app/src-tauri/crates/p2p-vlan`）
+## 6. 虚拟局域网（VLAN，共享 crate `crates/p2p-vlan`，桌面端与手机端的 src-tauri 均以路径依赖引用）
 
 房间内所有开启了虚拟局域网的成员组成同一网段 `10.77.0.0/24` 的虚拟局域网：
 每人一块 TUN 虚拟网卡（Windows 用 Wintun，dll 随应用打包在 resources 目录），IP 为服务端分配的 `vip`，MTU 1280。
