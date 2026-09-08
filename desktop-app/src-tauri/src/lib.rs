@@ -1,9 +1,12 @@
 mod download_control;
 mod farmer_avatar;
 mod game;
-mod game_data;
+// 对外公开：这一层现在主要是 sdv-game-data 的 re-export 门面，
+// 私有模块会让那些转发项被判成 unused。
+pub mod game_data;
 mod log_persist;
-mod mods;
+// 同 game_data：本地模组这块现在是 sdv-mods 的 re-export 门面。
+pub mod mods;
 mod runtime;
 mod saves;
 mod smapi;

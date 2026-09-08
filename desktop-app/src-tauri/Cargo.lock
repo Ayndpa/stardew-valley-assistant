@@ -3871,6 +3871,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
+name = "sdv-game-data"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "image",
+ "log",
+ "lzxd",
+ "md5",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "sdv-mods"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "seahash"
 version = "4.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4248,6 +4269,8 @@ dependencies = [
  "lzxd",
  "md5",
  "p2p-vlan",
+ "sdv-game-data",
+ "sdv-mods",
  "serde",
  "serde_json",
  "sysinfo",

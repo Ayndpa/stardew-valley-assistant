@@ -240,7 +240,7 @@ pub fn read_u32_le(data: &[u8], offset: usize) -> Result<u32, String> {
     ]))
 }
 
-#[cfg(test)]
+/// 以中文为默认语言加载字符串表。仅作调用点的便利封装，语言可变时请直接用带 lang 的版本。
 pub fn load_localized_string_tables(
     content_dir: &Path,
     asset_names: &[&str],

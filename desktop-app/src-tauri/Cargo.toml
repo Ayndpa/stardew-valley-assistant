@@ -42,6 +42,10 @@ chrono = { version = "0.4", features = ["serde"] }
 sysinfo = "0.34"
 # 虚拟局域网（Wintun + ICE 网状直连 + 提权辅助进程）：仓库根目录的共享 crate，手机端 src-tauri 同样引用
 p2p-vlan = { path = "../../crates/p2p-vlan" }
+# 游戏数据解析（XNB/tBIN 解包 + 各类百科构建）：同样是两端共用的共享 crate
+sdv-game-data = { path = "../../crates/sdv-game-data" }
+# SMAPI 模组目录管理（manifest 解析 + 启用/禁用规则）：两端共用
+sdv-mods = { path = "../../crates/sdv-mods" }
 
 [target."cfg(any(target_os = \"macos\", windows, target_os = \"linux\"))".dependencies]
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }

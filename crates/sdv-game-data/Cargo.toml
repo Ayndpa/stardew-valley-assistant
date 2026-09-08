@@ -1,0 +1,25 @@
+[package]
+name = "sdv-game-data"
+version = "0.1.0"
+edition = "2021"
+description = "星露谷游戏数据解析：XNB/tBIN 解包、图标渲染与各类百科数据构建，桌面端与手机端共用"
+
+[lib]
+name = "sdv_game_data"
+path = "src/lib.rs"
+
+# 这个 crate 必须能为 Android 交叉编译，因此只依赖纯 Rust、无系统库的包；
+# 尤其不得引入 tauri——手机端会在没有 tauri command 上下文的地方直接调用它。
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+lzxd = "0.2.6"
+image = { version = "0.25", default-features = false, features = ["png"] }
+base64 = "0.22"
+md5 = "0.7"
+log = "0.4"
+
+# XNB 解包、LZX 解压和 PNG 编码都是热循环，跨 crate 内联能明显受益。
+[profile.release]
+lto = "thin"
+codegen-units = 1

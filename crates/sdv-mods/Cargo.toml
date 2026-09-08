@@ -1,0 +1,14 @@
+[package]
+name = "sdv-mods"
+version = "0.1.0"
+edition = "2021"
+description = "SMAPI 模组目录管理：manifest 宽松 JSON 解析、i18n 占位符还原、模组扫描与启用/禁用规则，桌面端与手机端共用"
+
+[lib]
+name = "sdv_mods"
+path = "src/lib.rs"
+
+# 与 sdv-game-data 一样必须能为 Android 交叉编译，因此不引入 tauri 与任何系统库。
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
