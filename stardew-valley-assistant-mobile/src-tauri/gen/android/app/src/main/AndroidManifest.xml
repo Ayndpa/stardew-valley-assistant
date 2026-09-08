@@ -1,6 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- 虚拟局域网联机：VpnService 必须跑在前台服务里，否则切到游戏后会被系统回收。
+         Android 14 起前台服务必须声明类型，VPN 没有专用类型，只能用 specialUse。 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- 前台服务的常驻通知，Android 13 起需要用户授权才会显示（不授权也不影响联机） -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- 打 Mod 启动：把重新打包并签名的游戏交给系统安装器 -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <!-- Android 11 起查询其它应用需要显式声明，否则查不到游戏是否已安装、也拿不到启动入口 -->
+    <queries>
+        <package android:name="com.chucklefish.stardewvalley" />
+        <package android:name="io.github.ayndpa.sdv_assistant_mobile.game" />
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:mimeType="application/vnd.android.package-archive" />
+        </intent>
+    </queries>
 
     <!-- AndroidTV support -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
@@ -23,6 +44,31 @@
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- 安装会话的状态回调。系统首次回调是「需要用户确认」，
+             必须由应用把确认页拉起来，否则安装会一直悬着。 -->
+        <receiver
+            android:name=".GameLauncher$InstallResultReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="io.github.ayndpa.sdv_assistant_mobile.INSTALL_RESULT" />
+            </intent-filter>
+        </receiver>
+
+        <!-- 虚拟局域网隧道。BIND_VPN_SERVICE 让只有系统能绑定它，
+             这是 Android 对 VpnService 的强制要求。 -->
+        <service
+            android:name=".StardewVpnService"
+            android:exported="false"
+            android:permission="android.permission.BIND_VPN_SERVICE"
+            android:foregroundServiceType="specialUse">
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="在玩家联机期间维持星露谷物语的虚拟局域网隧道，切换到游戏后仍需保持连接" />
+        </service>
 
         <provider
           android:name="androidx.core.content.FileProvider"

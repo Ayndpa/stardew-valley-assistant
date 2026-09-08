@@ -79,10 +79,37 @@ impl TunIo for tun_rs::AsyncDevice {
     }
 }
 
+/// Android：接管 `VpnService.establish()` 建好的 tun 文件描述符。
+///
+/// 和桌面端最大的不同是**谁来建网卡**。桌面端由 [`open_tun`] 自己创建适配器并配 IP，
+/// Android 上应用没有这个权限：网卡由系统按 `VpnService.Builder` 的描述建好，
+/// IP、掩码、MTU、路由全都在 Java 侧配置完毕，Rust 只拿到一个已经能读写 IP 包的 fd。
+/// 所以这里不做任何设备配置，只把 fd 包成异步 I/O。
+///
+/// 调用方必须保证 Java 侧调过 `ParcelFileDescriptor.detachFd()`——描述符的所有权
+/// 转移给了 Rust，返回的设备析构时会关闭它。若 Java 侧仍持有同一个 fd，
+/// 双方都会去 close，可能误关到别的文件。
+///
+/// # Safety
+///
+/// `fd` 必须是有效的、当前进程独占的 tun 文件描述符。
+#[cfg(target_os = "android")]
+pub unsafe fn tun_from_fd(fd: std::os::fd::RawFd) -> Result<impl TunIo> {
+    if fd < 0 {
+        return Err(anyhow!("VpnService 未返回有效的虚拟网卡描述符"));
+    }
+    // `from_fd` 内部会把描述符设成非阻塞并注册到 tokio 的事件循环。
+    tun_rs::AsyncDevice::from_fd(fd).map_err(|e| anyhow!("接管 VpnService 虚拟网卡失败: {e}"))
+}
+
 /// 打开一块真实 TUN 设备并配置 IP / 前缀 / MTU。
 ///
 /// 权限不足（Windows 下创建 Wintun 适配器需要管理员）时返回的错误文本以
 /// [`PERMISSION_HINT`] 开头，其余错误给出 dll 路径等诊断信息。
+///
+/// Android 上不存在这个函数：应用无权自己创建网卡，只能由系统按
+/// `VpnService.Builder` 建好后交回描述符，见 [`tun_from_fd`]。
+#[cfg(not(target_os = "android"))]
 pub fn open_tun(cfg: &TunConfig) -> Result<impl TunIo> {
     if cfg.vip.is_unspecified() {
         return Err(anyhow!("虚拟 IP 未指定"));
@@ -110,6 +137,7 @@ pub fn open_tun(cfg: &TunConfig) -> Result<impl TunIo> {
 }
 
 /// 把创建设备的 I/O 错误翻译成给用户看的中文
+#[cfg(not(target_os = "android"))]
 fn classify_error(e: io::Error, cfg: &TunConfig) -> anyhow::Error {
     if is_permission_denied(&e) {
         return anyhow!(
@@ -130,6 +158,7 @@ fn classify_error(e: io::Error, cfg: &TunConfig) -> anyhow::Error {
 
 /// 操作系统层面的"拒绝访问"：ErrorKind::PermissionDenied、
 /// Windows ERROR_ACCESS_DENIED(5) / ERROR_PRIVILEGE_NOT_HELD(1314)、Unix EPERM(1) / EACCES(13)
+#[cfg(not(target_os = "android"))]
 fn is_permission_denied(e: &io::Error) -> bool {
     if e.kind() == io::ErrorKind::PermissionDenied {
         return true;
@@ -143,7 +172,7 @@ fn is_permission_denied(e: &io::Error) -> bool {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_os = "android")))]
 mod tests {
     use super::*;
 

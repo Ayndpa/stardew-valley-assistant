@@ -36,10 +36,37 @@
 - **🌐 宣传网站**：[ayndpa.github.io/stardew-valley-assistant-pages](https://ayndpa.github.io/stardew-valley-assistant-pages/)（[源码仓库](https://github.com/Ayndpa/stardew-valley-assistant-pages)）
 - **反馈建议**：请在 GitHub Issues 中提出
 
+## 📱 移动端
+
+除桌面端外，仓库还包含一个 Android 助手 `stardew-valley-assistant-mobile/`。
+
+手机上没有「游戏安装目录」这回事，玩家手里只有一个安装包，所以移动端多了一步：
+选择安装包 → 校验并解出游戏资源到应用私有目录 → 之后所有数据查询都读这份副本。
+联机的虚拟局域网在桌面端靠 Wintun 虚拟网卡，在手机端则由 Android `VpnService`
+建立隧道，两端共用同一个点对点引擎。
+
+详见 [移动端说明](stardew-valley-assistant-mobile/README.md)。
+
+## 🧩 仓库结构
+
+```
+desktop-app/                     桌面端（Tauri + React）
+stardew-valley-assistant-mobile/ 移动端（Tauri + React，Android）
+cloud-service/                   账号、好友、大厅与房间的云服务
+crates/                          两端共用的 Rust 库
+  p2p-vlan/                      虚拟局域网引擎（ICE 直连 + 数据包转发）
+  sdv-game-data/                 xnb 解包与游戏数据模型
+shared/                          两端共用的前端代码（账号与社交）
+```
+
+共享的库刻意不依赖 Tauri，平台差异留在各自的应用层：桌面端和移动端只是在
+同一套实现外面各包一层命令，避免两端逻辑随时间漂移。
+
 ## 🛠️ 技术栈
 
 - **前端**：React, TypeScript, Tailwind CSS, Lucide React
 - **后端**：Rust (Tauri), Supabase
+- **云服务**：Cloudflare Workers (Hono) + PostgreSQL
 - **打包工具**：Vite
 
 ## 🚀 快速开始

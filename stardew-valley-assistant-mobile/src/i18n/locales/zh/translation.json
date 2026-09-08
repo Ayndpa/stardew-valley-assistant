@@ -1,0 +1,104 @@
+{
+  "common": {
+    "back": "返回",
+    "cancel": "取消",
+    "confirm": "确定",
+    "save": "保存",
+    "retry": "重试",
+    "close": "关闭",
+    "loading": "加载中…",
+    "copy": "复制",
+    "copied": "已复制",
+    "send": "发送",
+    "search": "搜索",
+    "language": "语言",
+    "comingSoon": "即将上线"
+  },
+  "home": {
+    "subtitle": "Stardew Valley Assistant",
+    "onlineSection": "联机",
+    "soonSection": "即将上线",
+    "soonHint": "更多功能正在开发中，敬请期待。",
+    "version": "v0.1.0 · 移动端预览",
+    "online": {
+      "lobby": "联机大厅",
+      "lobbyDesc": "创建或加入房间",
+      "room": "我的房间",
+      "roomDesc": "查看当前房间",
+      "roomIdle": "尚未加入房间",
+      "friends": "好友私聊",
+      "friendsDesc": "添加好友并聊天",
+      "friendsUnread": "{{count}} 条未读"
+    },
+    "features": {
+      "collections": "收藏图鉴",
+      "crops": "作物收益",
+      "npcs": "村民好感",
+      "calendar": "日程日历",
+      "bundles": "献祭收集",
+      "fishing": "钓鱼点位",
+      "mods": "模组管理",
+      "launcher": "一键启动"
+    }
+  },
+  "social": {
+    "nav": {
+      "home": "首页",
+      "lobby": "大厅",
+      "room": "房间",
+      "friends": "好友",
+      "me": "我的"
+    },
+    "account": {
+      "title": "我的",
+      "profile": "账号资料",
+      "editName": "修改用户名",
+      "namePlaceholder": "输入新的用户名",
+      "nameSaved": "用户名已更新",
+      "nameFailed": "修改用户名失败",
+      "userId": "用户 ID",
+      "email": "邮箱",
+      "connection": "服务器连接",
+      "logout": "退出登录",
+      "logoutConfirmTitle": "退出登录",
+      "logoutConfirmMessage": "退出后将断开好友与房间连接，确定退出吗？"
+    },
+    "friends": {
+      "removed": "已删除好友 {{name}}"
+    },
+    "chat": {
+      "placeholder": "输入消息",
+      "notDelivered": "未送达"
+    },
+    "lobby": {
+      "title": "大厅",
+      "tabRooms": "房间",
+      "tabChat": "聊天",
+      "joining": "正在加入…",
+      "codePlaceholder": "输入 6 位房间号",
+      "joinByCode": "加入"
+    },
+    "room": {
+      "title": "房间",
+      "notInRoomHint": "去大厅创建或加入一个房间吧",
+      "goLobby": "前往大厅",
+      "tabMembers": "成员",
+      "tabChat": "聊天",
+      "copied": "已复制房间号"
+    },
+    "invites": {
+      "title": "房间邀请"
+    },
+    "vlan": {
+      "phase": {
+        "denied": "未获得 VPN 授权"
+      },
+      "deniedHint": "组建虚拟局域网需要系统的 VPN 授权。点击「重试」会再次弹出授权对话框，请选择「允许」。",
+      "deniedToast": "未获得 VPN 授权，虚拟局域网未启动。可在房间页点击「重试」。",
+      "adminHint": "请在系统设置中允许本应用建立 VPN 连接后再开启虚拟局域网。",
+      "errors": {
+        "vlan_unavailable": "当前版本不支持虚拟局域网（vlan_start 命令不可用）"
+      }
+    }
+  }
+}

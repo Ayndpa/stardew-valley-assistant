@@ -1,0 +1,104 @@
+{
+  "common": {
+    "back": "Back",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "save": "Save",
+    "retry": "Retry",
+    "close": "Close",
+    "loading": "Loading…",
+    "copy": "Copy",
+    "copied": "Copied",
+    "send": "Send",
+    "search": "Search",
+    "language": "Language",
+    "comingSoon": "Coming soon"
+  },
+  "home": {
+    "subtitle": "Stardew Valley Assistant",
+    "onlineSection": "Online",
+    "soonSection": "Coming Soon",
+    "soonHint": "More features are on the way.",
+    "version": "v0.1.0 · Mobile preview",
+    "online": {
+      "lobby": "Lobby",
+      "lobbyDesc": "Create or join a room",
+      "room": "My Room",
+      "roomDesc": "View the current room",
+      "roomIdle": "Not in a room",
+      "friends": "Friends & Chat",
+      "friendsDesc": "Add friends and chat",
+      "friendsUnread": "{{count}} unread"
+    },
+    "features": {
+      "collections": "Collections",
+      "crops": "Crop Profits",
+      "npcs": "Villagers",
+      "calendar": "Calendar",
+      "bundles": "Bundles",
+      "fishing": "Fishing Spots",
+      "mods": "Mod Manager",
+      "launcher": "Quick Launch"
+    }
+  },
+  "social": {
+    "nav": {
+      "home": "Home",
+      "lobby": "Lobby",
+      "room": "Room",
+      "friends": "Friends",
+      "me": "Me"
+    },
+    "account": {
+      "title": "Me",
+      "profile": "Profile",
+      "editName": "Edit username",
+      "namePlaceholder": "New username",
+      "nameSaved": "Username updated",
+      "nameFailed": "Failed to update username",
+      "userId": "User ID",
+      "email": "Email",
+      "connection": "Server connection",
+      "logout": "Sign Out",
+      "logoutConfirmTitle": "Sign Out",
+      "logoutConfirmMessage": "Signing out disconnects friends and rooms. Continue?"
+    },
+    "friends": {
+      "removed": "Removed {{name}}"
+    },
+    "chat": {
+      "placeholder": "Type a message",
+      "notDelivered": "Not delivered"
+    },
+    "lobby": {
+      "title": "Lobby",
+      "tabRooms": "Rooms",
+      "tabChat": "Chat",
+      "joining": "Joining…",
+      "codePlaceholder": "6-character room code",
+      "joinByCode": "Join"
+    },
+    "room": {
+      "title": "Room",
+      "notInRoomHint": "Create or join one from the lobby",
+      "goLobby": "Go to Lobby",
+      "tabMembers": "Members",
+      "tabChat": "Chat",
+      "copied": "Room code copied"
+    },
+    "invites": {
+      "title": "Room Invites"
+    },
+    "vlan": {
+      "phase": {
+        "denied": "VPN permission not granted"
+      },
+      "deniedHint": "Building the virtual LAN needs the system VPN permission. Tap \"Retry\" to show the prompt again and choose \"Allow\".",
+      "deniedToast": "VPN permission was not granted, so the virtual LAN did not start. Use \"Retry\" on the room page.",
+      "adminHint": "Allow this app to create a VPN connection in system settings, then enable the virtual LAN.",
+      "errors": {
+        "vlan_unavailable": "Virtual LAN is not available in this build (vlan_start command missing)"
+      }
+    }
+  }
+}

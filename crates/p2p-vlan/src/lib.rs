@@ -28,7 +28,11 @@ pub use ice::{
     Handshake, IceCloseHandle, IceConfig, IceConn, IceEndpoint, InterfaceFilter, IpFilter, Role,
     DEFAULT_STUN_URL,
 };
-pub use tun::{open_tun, TunConfig, TunIo, PERMISSION_HINT};
+pub use tun::{TunConfig, TunIo, PERMISSION_HINT};
+#[cfg(not(target_os = "android"))]
+pub use tun::open_tun;
+#[cfg(target_os = "android")]
+pub use tun::tun_from_fd;
 
 /// 生产环境推荐的 ICE 配置：默认 STUN，并过滤掉会让 webrtc-ice 提名卡死的本机地址——
 /// 链路本地地址（169.254/16、fe80::/10）、代理软件 fake-IP 常用的 198.18/15、
@@ -56,9 +60,64 @@ pub fn recommended_ice_config(vip: Ipv4Addr, prefix_len: u8, adapter_name: &str)
     }
 }
 
+/// Android 推荐的 ICE 配置。
+///
+/// 与 [`recommended_ice_config`] 的差别有三处，都源于手机环境：
+///
+/// 1. **不按网卡名过滤**。桌面端能给适配器起名并据此排除，`VpnService` 建出来的
+///    接口名由系统决定（通常是 `tun0`），应用管不着。所幸网段过滤已经覆盖了它——
+///    虚拟网卡上的地址必然落在 VLAN 网段里。
+/// 2. **排除回环地址**。桌面端保留 127.0.0.1 是为了同机双开调试，手机上没这个场景，
+///    而多余的回环候选会让"提名最先验证成功的候选对"这条规则误选到一条走不通的路。
+/// 3. **STUN 服务器可传入**。桌面端硬编码的默认 STUN 在部分网络下不可达，
+///    手机换网频繁，这里让调用方按需下发；传空则退回默认。
+pub fn android_ice_config(vip: Ipv4Addr, prefix_len: u8, stun_urls: Vec<String>) -> IceConfig {
+    let base = recommended_ice_config(vip, prefix_len, "");
+    let inner = base.ip_filter.expect("recommended_ice_config 总会给出 ip_filter");
+    IceConfig {
+        ip_filter: Some(Arc::new(move |ip: IpAddr| !ip.is_loopback() && inner(ip))),
+        // 网卡名过滤在 Android 上没有可用的判据，交给网段过滤兜底。
+        interface_filter: None,
+        stun_urls: if stun_urls.is_empty() {
+            vec![DEFAULT_STUN_URL.to_string()]
+        } else {
+            stun_urls
+        },
+        // Windows 防火墙探测在 Android 上没有对应物。
+        firewall_probe: false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn android_filter_drops_loopback_and_own_subnet() {
+        let cfg = android_ice_config(
+            Ipv4Addr::new(10, 77, 0, 3),
+            24,
+            vec!["stun:stun.example.com:3478".to_string()],
+        );
+        let f = cfg.ip_filter.as_ref().expect("filter");
+        // 手机上回环候选没有意义，必须排除。
+        assert!(!f("127.0.0.1".parse().expect("ip")));
+        // 虚拟网卡自己的网段会让数据包绕回自己。
+        assert!(!f("10.77.0.9".parse().expect("ip")));
+        // 真实的局域网与蜂窝地址要保留。
+        assert!(f("192.168.1.3".parse().expect("ip")));
+        assert!(f("10.78.0.9".parse().expect("ip")));
+        // 网卡名过滤在 Android 上不可用，应为 None。
+        assert!(cfg.interface_filter.is_none());
+        assert_eq!(cfg.stun_urls, vec!["stun:stun.example.com:3478"]);
+        assert!(!cfg.firewall_probe);
+    }
+
+    #[test]
+    fn android_config_falls_back_to_default_stun() {
+        let cfg = android_ice_config(Ipv4Addr::new(10, 77, 0, 3), 24, Vec::new());
+        assert_eq!(cfg.stun_urls, vec![DEFAULT_STUN_URL.to_string()]);
+    }
 
     #[test]
     fn recommended_filter_drops_virtual_ranges() {

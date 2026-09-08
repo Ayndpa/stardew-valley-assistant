@@ -55,7 +55,12 @@ struct SignalOutPayload {
 }
 
 /// `vlan_helper_status` 的返回
+///
+/// 字段名统一成 camelCase：仓库里其它命令的返回值都是这个约定，唯独这里漏了，
+/// 结果手机端同名命令返回 `helperRunning`、桌面端返回 `helper_running`，
+/// 两端共用的前端只能同时兼容两种写法。
 #[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct HelperStatus {
     elevated: bool,
     helper_running: bool,

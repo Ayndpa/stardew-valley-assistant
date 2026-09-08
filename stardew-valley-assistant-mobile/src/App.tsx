@@ -1,95 +1,142 @@
-import type { ReactNode } from "react";
-import {
-  Sprout,
-  Users,
-  CalendarDays,
-  PackageOpen,
-  Play,
-  Puzzle,
-  Trophy,
-  Map,
-} from "lucide-react";
-import appIcon from "./assets/app-icon.png";
-import "./index.css";
+import { useState } from "react"
+import { useTranslation } from "react-i18next"
+import { DoorOpen, Home, MessageSquare, User, Users } from "lucide-react"
+import { AccountProvider, useAccount } from "@shared/account/account-provider"
+import { SocialProvider, useSocial } from "@shared/account/social-provider"
+import type { FriendEntry } from "@shared/account/types"
+import { MOBILE_VLAN_CONFIG } from "@shared/account/vlan"
+import { cn } from "./lib/utils"
+import { ToastProvider, useToast } from "./components/Toast"
+import { ChatPage } from "./pages/Chat"
+import { FriendsPage } from "./pages/Friends"
+import { HomePage } from "./pages/Home"
+import { LobbyPage } from "./pages/Lobby"
+import { LoginPage } from "./pages/Login"
+import { MePage } from "./pages/Me"
+import { RoomPage } from "./pages/Room"
+import "./index.css"
 
-const FEATURES: { icon: ReactNode; label: string }[] = [
-  { icon: <Trophy />, label: "收藏图鉴" },
-  { icon: <Sprout />, label: "作物收益" },
-  { icon: <Users />, label: "村民好感" },
-  { icon: <CalendarDays />, label: "日程日历" },
-  { icon: <PackageOpen />, label: "献祭收集" },
-  { icon: <Map />, label: "钓鱼点位" },
-  { icon: <Puzzle />, label: "模组管理" },
-  { icon: <Play />, label: "一键启动" },
-];
+/** 底部标签栏的五个主页面；会话页是从好友页压入的二级页面，不占标签位 */
+export type Tab = "home" | "lobby" | "room" | "friends" | "me"
 
-function App() {
+/** 需要登录才能进入的标签 */
+const NEEDS_LOGIN: Tab[] = ["lobby", "room", "friends", "me"]
+
+const TABS: { key: Tab; icon: typeof Home }[] = [
+  { key: "home", icon: Home },
+  { key: "lobby", icon: DoorOpen },
+  { key: "room", icon: Users },
+  { key: "friends", icon: MessageSquare },
+  { key: "me", icon: User },
+]
+
+function Shell({
+  tab,
+  onTab,
+}: {
+  tab: Tab
+  onTab: (tab: Tab) => void
+}) {
+  const { t } = useTranslation()
+  const { status } = useAccount()
+  const { totalUnread, room } = useSocial()
+  // 会话页：非空表示正在和该好友私聊，压在标签页之上
+  const [chatWith, setChatWith] = useState<FriendEntry | null>(null)
+
+  const needsLogin = NEEDS_LOGIN.includes(tab) && status !== "ready"
+
+  const renderPage = () => {
+    if (chatWith) return <ChatPage friend={chatWith} onBack={() => setChatWith(null)} />
+    if (needsLogin) {
+      // 本地 token 正在校验时先不闪登录表单
+      if (status === "loading") {
+        return (
+          <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-muted-foreground">
+            {t("social.login.checking")}
+          </div>
+        )
+      }
+      return <LoginPage />
+    }
+    switch (tab) {
+      case "lobby":
+        return <LobbyPage onJoined={() => onTab("room")} />
+      case "room":
+        return <RoomPage onGoLobby={() => onTab("lobby")} />
+      case "friends":
+        return (
+          <FriendsPage onOpenChat={setChatWith} onJoinedRoom={() => onTab("room")} />
+        )
+      case "me":
+        return <MePage />
+      default:
+        return <HomePage onGo={onTab} />
+    }
+  }
+
   return (
-    <div className="mobile-shell flex min-h-full flex-col overflow-hidden">
-      <main className="mobile-panel relative flex flex-1 flex-col px-6 pt-16 pb-safe">
-        {/* 顶部品牌区 */}
-        <div className="flex flex-col items-center text-center">
-          <div className="relative">
-            <div className="absolute -inset-4 rounded-full bg-primary/15 blur-2xl" />
-            <img
-              src={appIcon}
-              alt="星露谷物语助手"
-              draggable={false}
-              className="pixelated relative h-24 w-24 rounded-3xl border border-primary/25 object-cover shadow-xl shadow-primary/10"
-            />
-          </div>
-          <h1 className="mt-6 bg-gradient-to-r from-primary to-green-600 bg-clip-text text-3xl font-extrabold tracking-tight text-transparent">
-            星露谷物语助手
-          </h1>
-          <p className="mt-2 text-sm font-medium text-muted-foreground">
-            Stardew Valley Assistant
-          </p>
-        </div>
+    <div className="mobile-shell flex h-full flex-col overflow-hidden">
+      <main className="mobile-panel flex min-h-0 flex-1 flex-col overflow-hidden">{renderPage()}</main>
 
-        {/* 功能预告卡片 */}
-        <div className="mt-10">
-          <div className="flex items-center gap-2 px-1">
-            <span className="h-4 w-1 rounded-full bg-primary" />
-            <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              即将上线
-            </h2>
-          </div>
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            {FEATURES.map((feature) => (
-              <div
-                key={feature.label}
-                className="flex items-center gap-3 rounded-xl border border-border/70 bg-card/70 px-4 py-3.5 transition-colors hover:border-primary/40 hover:bg-accent/50 active:scale-[0.98]"
+      {/* 会话页占满全屏（含自己的返回按钮），此时隐藏标签栏 */}
+      {!chatWith && (
+        <nav className="flex shrink-0 items-stretch border-t border-border/60 bg-card pb-safe">
+          {TABS.map(({ key, icon: Icon }) => {
+            const active = tab === key
+            const badge = key === "friends" ? totalUnread : 0
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => onTab(key)}
+                className={cn(
+                  "flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 pt-1.5 transition-colors",
+                  active ? "text-primary" : "text-muted-foreground",
+                )}
               >
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary [&_svg]:h-5 [&_svg]:w-5">
-                  {feature.icon}
+                <span className="relative">
+                  <Icon className="h-5 w-5" />
+                  {badge > 0 && (
+                    <span className="absolute -right-2 -top-1 min-w-4 rounded-full bg-red-500 px-1 text-center text-[10px] font-bold leading-4 text-white">
+                      {badge > 99 ? "99+" : badge}
+                    </span>
+                  )}
+                  {key === "room" && room && !active && (
+                    <span className="absolute -right-1 -top-0.5 h-2 w-2 rounded-full bg-emerald-500" />
+                  )}
                 </span>
-                <span className="min-w-0 text-sm font-medium text-card-foreground">
-                  {feature.label}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* 占位提示 */}
-        <div className="mt-auto flex flex-col items-center gap-4 pt-10">
-          <p className="text-center text-xs leading-relaxed text-muted-foreground/80">
-            移动端助手正在开发中，敬请期待。
-          </p>
-          <button
-            type="button"
-            disabled
-            className="w-full cursor-not-allowed rounded-2xl bg-primary py-4 text-base font-bold text-primary-foreground opacity-60 shadow-lg shadow-primary/20"
-          >
-            开始使用
-          </button>
-          <span className="text-[10px] font-medium tracking-wider text-muted-foreground/60">
-            v0.1.0 · 移动端预览
-          </span>
-        </div>
-      </main>
+                <span className="text-[10px] font-semibold">{t(`social.nav.${key}`)}</span>
+              </button>
+            )
+          })}
+        </nav>
+      )}
     </div>
-  );
+  )
 }
 
-export default App;
+/** 标签状态提在 SocialProvider 之外：状态机要据此判断是否还需要弹房间 / 邀请提示 */
+function SocialShell() {
+  const { showToast } = useToast()
+  const [tab, setTab] = useState<Tab>("home")
+
+  return (
+    <SocialProvider
+      notify={showToast}
+      socialActive={tab === "lobby" || tab === "room" || tab === "friends"}
+      vlanConfig={MOBILE_VLAN_CONFIG}
+    >
+      <Shell tab={tab} onTab={setTab} />
+    </SocialProvider>
+  )
+}
+
+export default function App() {
+  return (
+    <AccountProvider>
+      <ToastProvider>
+        <SocialShell />
+      </ToastProvider>
+    </AccountProvider>
+  )
+}

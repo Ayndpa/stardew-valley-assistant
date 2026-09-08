@@ -1,8 +1,8 @@
 [package]
 name = "stardew-valley-assistant-mobile"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+description = "星露谷物语助手移动端：从安装包导入游戏资源、查看游戏数据、管理模组与联机"
+authors = ["ayndpa"]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -20,6 +20,47 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# 安装包与模组压缩包都是 ZIP 容器。
+zip = { version = "2", default-features = false, features = ["deflate"] }
+# xnb 资源用 LZX 压缩，解析游戏数据必须。
+lzxd = "0.2.6"
+# 把 xnb 里的贴图转成 PNG 交给前端显示。
+image = { version = "0.25", default-features = false, features = ["png"] }
+base64 = "0.22"
+chrono = { version = "0.4", features = ["serde"] }
+log = "0.4"
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros", "io-util"] }
+# 虚拟局域网引擎：仓库根目录的共享 crate，桌面端 src-tauri 同样引用。
+# 手机端把 Android VpnService 建好的隧道描述符交给它，桌面端走 Wintun。
+p2p-vlan = { path = "../../crates/p2p-vlan" }
+# 游戏数据解析与模组管理：与桌面端共用同一份实现，两端只各包一层命令。
+sdv-game-data = { path = "../../crates/sdv-game-data" }
+sdv-mods = { path = "../../crates/sdv-mods" }
 
+# --- 重新打包与签名 ---
+# APK Signature Scheme v2 用 RSA-2048 + SHA-256。这里刻意全部选纯 Rust 实现：
+# ring/aws-lc 之类带 C 与汇编的库要为 aarch64-linux-android 交叉编译很容易翻车，
+# 而签名不在热路径上，纯 Rust 的性能完全够用。
+rsa = { version = "0.9", features = ["sha2"] }
+sha2 = "0.10"
+# rsa 0.9 要的是 rand_core 0.6 那一代接口，只能用 rand 0.8。
+rand = "0.8"
+# 自签名证书：证书本身也是 DER 结构，交给 RustCrypto 的 x509 构建器。
+x509-cert = { version = "0.2", features = ["builder"] }
+der = "0.7"
+
+[target.'cfg(target_os = "android")'.dependencies]
+# 走 JNI 调用应用自带的 Kotlin 辅助类：内容 URI 取文件描述符、拉起打 Mod 的游戏、
+# 以及把 VpnService 的 tun 描述符交回 Rust。
+jni = "0.21"
+ndk-context = "0.1"
+
+[profile.release]
+# xnb 解包与 LZX 解压是热循环，跨 crate 内联收益明显。
+lto = "thin"
+codegen-units = 1
+strip = true
