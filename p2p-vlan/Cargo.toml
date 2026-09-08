@@ -1,0 +1,35 @@
+[package]
+name = "p2p-vlan"
+version = "0.1.0"
+edition = "2021"
+description = "星露谷助手虚拟局域网：TUN 网卡 + 成员两两 ICE 直连组成的全互联网状网络"
+
+[lib]
+name = "p2p_vlan"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1"
+log = "0.4"
+# 复用 p2p-ice-chat 的 ICE 核心；关掉 cli 特性以免引入 stdin/signal/env_logger
+p2p-ice-chat = { path = "../p2p-ice-chat", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "time", "net", "macros", "io-util"] }
+# 跨平台 TUN；Windows 走 Wintun（wintun.dll 由应用自带，路径经 TunConfig 传入）
+tun-rs = { version = "2.8", features = ["async"] }
+
+# 提权辅助进程：令牌提权检查、runas 拉起、管道 DACL
+[target."cfg(windows)".dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_System_Registry",
+    "Win32_System_Threading",
+    "Win32_UI_Shell",
+] }
+
+[dev-dependencies]
+env_logger = "0.11"
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "net", "macros"] }

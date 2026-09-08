@@ -34,6 +34,7 @@ import {
   Database,
   Heart,
   Notebook,
+  Globe,
 } from "lucide-react"
 
 interface SidebarProps {
@@ -114,6 +115,12 @@ const navGroups: NavGroup[] = [
       { id: "onlineMods", icon: <Download /> },
       { id: "downloads", icon: <ListChecks /> },
       { id: "modData", icon: <Database /> },
+    ],
+  },
+  {
+    id: "online",
+    items: [
+      { id: "social", icon: <Globe /> },
     ],
   },
   {

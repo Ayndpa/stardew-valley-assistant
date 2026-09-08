@@ -22,6 +22,7 @@ import {
   Zap,
   Database,
   Notebook,
+  Globe,
 } from "lucide-react"
 
 interface FeaturesCardProps {
@@ -52,6 +53,7 @@ export function FeaturesCard({
     { id: "onlineMods", icon: Download },
     { id: "downloads", icon: ListChecks },
     { id: "modData", icon: Database },
+    { id: "social", icon: Globe },
   ]
 
   const handleToggle = (id: Page, checked: boolean) => {

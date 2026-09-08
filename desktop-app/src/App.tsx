@@ -12,9 +12,10 @@ import { useSavesList } from "@/hooks/useSavesList"
 import { useGameLauncher } from "@/hooks/useGameLauncher"
 import { useNxmDeepLink } from "@/hooks/useNxmDeepLink"
 import { useGlobalDragAndDrop } from "@/hooks/useGlobalDragAndDrop"
+import { SocialProvider } from "@/lib/account/social-provider"
 import "./index.css"
 
-export type Page = "dashboard" | "collections" | "crops" | "items" | "npcs" | "calendar" | "fishingMap" | "saveEditor" | "saveBackups" | "settings" | "mods" | "onlineMods" | "downloads" | "bundles" | "children" | "animals" | "cheats" | "modData" | "sponsors" | "todo"
+export type Page = "dashboard" | "collections" | "crops" | "items" | "npcs" | "calendar" | "fishingMap" | "saveEditor" | "saveBackups" | "settings" | "mods" | "onlineMods" | "downloads" | "bundles" | "children" | "animals" | "cheats" | "modData" | "sponsors" | "todo" | "social"
 
 export interface SaveSummary {
   id: string
@@ -59,6 +60,7 @@ const Todo = lazy(async () => ({ default: (await import("@/pages/Todo")).Todo })
 const OnlineMods = lazy(async () => ({ default: (await import("@/components/mods/OnlineMods")).OnlineMods }))
 const NPCs = lazy(async () => ({ default: (await import("@/pages/NPCs")).NPCs }))
 const Sponsors = lazy(async () => ({ default: (await import("@/pages/Sponsors")).Sponsors }))
+const Social = lazy(async () => ({ default: (await import("@/pages/Social")).Social }))
 
 function PageFallback({ label }: { label: string }) {
   return (
@@ -141,12 +143,16 @@ function App() {
         if (!parsed.includes("todo")) {
           parsed.push("todo")
         }
+        // 迁移：新增的 social（联机）功能需要补上
+        if (!parsed.includes("social")) {
+          parsed.push("social")
+        }
         return parsed
       } catch (e) {
         // ignore
       }
     }
-    return ["collections", "crops", "items", "npcs", "calendar", "bundles", "animals", "fishingMap", "children", "cheats", "modData", "saveEditor", "saveBackups", "mods", "onlineMods", "downloads", "todo"]
+    return ["collections", "crops", "items", "npcs", "calendar", "bundles", "animals", "fishingMap", "children", "cheats", "modData", "saveEditor", "saveBackups", "mods", "onlineMods", "downloads", "todo", "social"]
   })
 
   const updateEnabledFeatures = useCallback((value: Page[]) => {
@@ -542,12 +548,17 @@ function App() {
         )
       case "sponsors":
         return <Sponsors />
+      case "social":
+        return <Social onShowToast={showGlobalToast} />
       default:
         return <Dashboard selectedSaveId={selectedSaveId} />
     }
   }
 
   return (
+    // SocialProvider 挂在这里而不是 main.tsx：它需要 App 里的 showGlobalToast 与 currentPage，
+    // 以 props 声明式传入即可，无需在 effect 里注册回调。弹窗（好友 / 私聊）各自有独立的 role=popup 实例。
+    <SocialProvider role="main" notify={showGlobalToast} activePage={currentPage}>
     <div ref={containerRef} className="app-shell relative flex h-screen overflow-hidden">
       <div className="app-frame relative flex min-h-0 flex-1 flex-col overflow-hidden">
         <TitleBar currentPage={currentPage} currentSave={currentSave} />
@@ -630,6 +641,7 @@ function App() {
         onClose={() => setShowBetaDialog(false)}
       />
     </div>
+    </SocialProvider>
   )
 }
 

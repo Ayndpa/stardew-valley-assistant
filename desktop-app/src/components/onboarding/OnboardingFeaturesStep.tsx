@@ -16,6 +16,7 @@ import {
   Check,
   ChevronRight,
   Notebook,
+  Globe,
 } from "lucide-react"
 
 interface OnboardingFeaturesStepProps {
@@ -46,6 +47,7 @@ export function OnboardingFeaturesStep({
     { id: "children", icon: Baby, gradient: "from-rose-500/10 to-pink-500/10" },
     { id: "todo", icon: Notebook, gradient: "from-teal-500/10 to-emerald-500/10" },
     { id: "saveEditor", icon: PencilRuler, gradient: "from-yellow-500/10 to-amber-500/10" },
+    { id: "social", icon: Globe, gradient: "from-sky-500/10 to-indigo-500/10" },
   ]
 
   const toggleFeature = (id: string) => {

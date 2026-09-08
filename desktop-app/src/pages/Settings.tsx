@@ -37,6 +37,7 @@ async function getTauriInvoke() {
 import { SaveInfoCard, SaveDetail } from "@/components/settings/SaveInfoCard"
 import { GamePathCard } from "@/components/settings/GamePathCard"
 import { NexusAccountCard } from "@/components/settings/NexusAccountCard"
+import { AccountCard } from "@/components/settings/AccountCard"
 import { AppearanceCard } from "@/components/settings/AppearanceCard"
 import { LanguageCard } from "@/components/settings/LanguageCard"
 import { TranslationSettingsCard } from "@/components/settings/TranslationSettingsCard"
@@ -238,6 +239,8 @@ export function Settings({
           onBrowse={handleBrowse}
           onChangeDir={handleSaveDir}
         />
+
+        <AccountCard />
 
         <NexusAccountCard
           nexusChecking={nexusChecking}

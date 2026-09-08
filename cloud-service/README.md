@@ -103,6 +103,35 @@ bun run . users list
 | PUT  | `/api/admin/users/{id}/settings` | 覆盖云设置 `{settings}` |
 | DELETE| `/api/admin/users/{id}/settings` | 清空云设置 |
 
+## 好友与实时接口
+
+完整协议（帧格式、错误码、限制、Durable Object 内部端点）见 [`REALTIME.md`](./REALTIME.md)，本节只列端点。
+
+好友 HTTP 接口（均需 `Authorization: Bearer <JWT>`，错误响应统一 `{ "error", "code?" }`）：
+
+| 方法 | 路径 | 说明 |
+| ---- | ---- | ---- |
+| GET | `/api/users/lookup?q=` | 按邮箱或用户名精确查找（大小写不敏感，最多 10 条，不含自己，不返回邮箱） |
+| GET | `/api/friends` | 好友列表 `{friends: (UserBrief & {since})[]}` |
+| GET | `/api/friends/requests` | 待处理申请 `{incoming, outgoing}` |
+| POST | `/api/friends/requests` | 发起申请 `{user_id}`；对方已向我申请则直接接受（`accepted: true`） |
+| POST | `/api/friends/requests/{id}/accept` | 接受申请（仅接收方） |
+| POST | `/api/friends/requests/{id}/decline` | 拒绝申请 / 撤回申请 |
+| DELETE | `/api/friends/{userId}` | 删除好友 |
+
+WebSocket 端点（升级请求携带 `?token=<JWT>`，帧均为 JSON 文本）：
+
+| 端点 | Durable Object | 说明 |
+| ---- | -------------- | ---- |
+| `GET /ws/hub?token=` | `UserHub`（每用户一个） | 登录后常驻：好友在线状态、私聊、房间邀请、好友变更推送 |
+| `GET /ws/lobby?token=` | `Lobby`（全局唯一） | 大厅：房间目录、大厅聊天、在线成员、创建房间 |
+| `GET /ws/room/{code}?token=&password=` | `GameRoom`（每房间一个） | 房间：成员列表、房间聊天、成员间 `signal` 转发（P2P 握手） |
+
+好友关系变更（申请 / 接受 / 拒绝 / 删除）与 `PATCH /api/me` 改名后，后端会通过 `UserHub` 内部端点实时推送给相关用户。
+聊天与信令只在内存转发、不落库；新增数据表 `friendships` 见 `backend/schema.sql`。
+
+部署前需在 `wrangler.toml` 中保留 `[durable_objects]` 绑定与 `[[migrations]]`（免费计划要求 SQLite 存储后端）。
+
 ## CLI 管理器
 
 `cli/` 是**非交互式**的远程管理工具（TypeScript + Bun，零运行时依赖），在本地通过 HTTP 控制已部署的后端：

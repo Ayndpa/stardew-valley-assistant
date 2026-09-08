@@ -30,7 +30,16 @@ impl Role {
         }
     }
 
-    fn from_server(s: &str) -> Result<Role> {
+    /// 协议中的角色字符串："offer" / "answer"
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Role::Offer => "offer",
+            Role::Answer => "answer",
+        }
+    }
+
+    /// 解析协议中的角色字符串
+    pub fn from_server(s: &str) -> Result<Role> {
         match s {
             "offer" => Ok(Role::Offer),
             "answer" => Ok(Role::Answer),

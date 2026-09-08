@@ -1,5 +1,8 @@
 name = "ice-signaling"
 main = "src/index.ts"
+
+# 自有域名（workers.dev 在国内被阻断）：wrangler 部署时自动创建 DNS 记录与证书
+routes = [{ pattern = "stardew-ice.unmod.online", custom_domain = true }]
 compatibility_date = "2025-11-01"
 
 # 免费计划可用 SQLite 版 Durable Object

@@ -44,7 +44,34 @@ create trigger user_settings_set_updated_at
     before update on public.user_settings
     for each row execute function public.set_updated_at();
 
+-- 好友关系表：同一对用户任意方向只允许存在一行（应用层创建前检查两个方向）。
+-- status = pending 表示 requester 向 addressee 发起的待处理申请；accepted 表示已是好友。
+create table if not exists public.friendships (
+    id           uuid primary key default gen_random_uuid(),
+    requester_id uuid not null references public.accounts (id) on delete cascade,
+    addressee_id uuid not null references public.accounts (id) on delete cascade,
+    status       text not null check (status in ('pending', 'accepted')),
+    created_at   timestamptz not null default now(),
+    updated_at   timestamptz not null default now(),
+    check (requester_id <> addressee_id),
+    unique (requester_id, addressee_id)
+);
+
+comment on table public.friendships is '好友关系 / 好友申请（pending → accepted）';
+
+create index if not exists friendships_addressee_idx on public.friendships (addressee_id, status);
+create index if not exists friendships_requester_idx on public.friendships (requester_id, status);
+
+drop trigger if exists friendships_set_updated_at on public.friendships;
+create trigger friendships_set_updated_at
+    before update on public.friendships
+    for each row execute function public.set_updated_at();
+
+-- 用户名大小写不敏感查找（/api/users/lookup）
+create index if not exists accounts_username_lower_idx on public.accounts (lower(username));
+
 -- 最佳实践：即使 PostgREST 未暴露这些表，也开启 RLS 兜底。
 -- 后端以数据库 owner 直连会绕过 RLS，不受影响。
 alter table public.accounts enable row level security;
 alter table public.user_settings enable row level security;
+alter table public.friendships enable row level security;

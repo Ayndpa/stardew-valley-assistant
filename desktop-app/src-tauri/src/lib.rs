@@ -4,11 +4,14 @@ mod game;
 mod game_data;
 mod log_persist;
 mod mods;
+mod p2p;
 mod runtime;
 mod saves;
 mod smapi;
+mod social_windows;
 mod updater;
 mod utils;
+mod vlan;
 
 use std::{
     fs,
@@ -39,6 +42,7 @@ use crate::mods::{
     open_nexus_login_window, open_nexus_ranking_scraper, open_scraper_window, rename_local_mod, save_mod_config,
     save_profile, toggle_mod, write_mod_translation,
 };
+use crate::p2p::{p2p_close, p2p_connect, p2p_send, P2pState};
 use crate::runtime::{attach_runtime, cleanup_legacy_mod, runtime_available};
 use crate::saves::{
     create_save_backup, delete_save_backup, get_children_data, get_npc_locations, get_npc_schedule,
@@ -48,8 +52,13 @@ use crate::saves::{
 };
 use crate::log_persist::{clear_log_files, get_log_dir_path, read_log_files, write_log_entries};
 use crate::smapi::{check_smapi_status, install_smapi, uninstall_smapi};
+use crate::social_windows::{open_chat_window, open_friends_window};
 use crate::updater::check_for_updates;
 use crate::utils::{open_in_file_manager, path_exists};
+use crate::vlan::{
+    vlan_helper_status, vlan_signal_in, vlan_start, vlan_status, vlan_stop, vlan_update_members,
+    VlanState,
+};
 
 /// Returns true if this is a beta/test build (set at compile time via tauri.conf.json "beta" field)
 #[tauri::command]
@@ -351,6 +360,8 @@ pub fn run() {
         .manage(DownloadControlState::default())
         .manage(PendingNxmUrls::default())
         .manage(LiveGameState::new())
+        .manage(P2pState::default())
+        .manage(VlanState::default())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             let _ = app.get_webview_window("main").map(|window| {
                 show_main_window_in_front(&window);
@@ -458,7 +469,18 @@ pub fn run() {
             get_mod_export_data,
             export_mod_data_to_file,
             get_app_beta,
-            fetch_afdian_sponsors
+            fetch_afdian_sponsors,
+            p2p_connect,
+            p2p_send,
+            p2p_close,
+            open_friends_window,
+            open_chat_window,
+            vlan_start,
+            vlan_update_members,
+            vlan_signal_in,
+            vlan_stop,
+            vlan_status,
+            vlan_helper_status
         ])
         .setup(|app| {
             // Migrate old app data if exists
@@ -525,6 +547,12 @@ pub fn run() {
 
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|app, event| {
+            // 应用退出时让虚拟局域网辅助进程一起退出（REALTIME.md §7.4）
+            if let tauri::RunEvent::Exit = event {
+                crate::vlan::on_app_exit(app);
+            }
+        });
 }

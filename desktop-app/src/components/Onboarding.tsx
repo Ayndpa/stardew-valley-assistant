@@ -80,6 +80,9 @@ const mapCategoriesToPages = (categories: string[]): Page[] => {
   if (categories.includes("todo")) {
     pages.push("todo")
   }
+  if (categories.includes("social")) {
+    pages.push("social")
+  }
   return pages
 }
 
@@ -120,6 +123,9 @@ const mapPagesToCategories = (pages: Page[]): string[] => {
   }
   if (pages.includes("todo")) {
     categories.push("todo")
+  }
+  if (pages.includes("social")) {
+    categories.push("social")
   }
   return categories
 }

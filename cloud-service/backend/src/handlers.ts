@@ -4,6 +4,7 @@ import type { Context } from "hono";
 import type { Hono } from "hono";
 import { issueToken } from "./auth";
 import { isUniqueViolation } from "./db";
+import { updateHubProfile } from "./realtime/common";
 import type { AppEnv } from "./types";
 import { nullIfEmpty, readJSON } from "./util";
 
@@ -154,7 +155,8 @@ async function handleMe(c: Context<AppEnv>): Promise<Response> {
     | { id: string; email: string; username: string | null; avatar_url: string | null; created_at: Date }
     | undefined;
   if (!acc) {
-    return c.json({ error: "账户不存在" }, 404);
+    // 令牌指向的账户已被删除：视为会话失效，让客户端登出（与 /ws/* 升级阶段一致）
+    return c.json({ error: "账户不存在，请重新登录", code: "unauthorized" }, 401);
   }
   return c.json({
     user: {
@@ -182,15 +184,23 @@ async function handleUpdateMe(c: Context<AppEnv>): Promise<Response> {
       : null;
 
   const sql = c.get("sql");
+  const userID = c.get("userID");
+  let updated: { username: string | null; avatar_url: string | null } | undefined;
   try {
-    await sql`
+    const rows = await sql<{ username: string | null; avatar_url: string | null }[]>`
       UPDATE public.accounts
       SET username = COALESCE(${username}, username),
           avatar_url = COALESCE(${avatarURL}, avatar_url)
-      WHERE id = ${c.get("userID")}`;
+      WHERE id = ${userID}
+      RETURNING username, avatar_url`;
+    updated = rows[0];
   } catch (err) {
     console.error("更新资料失败:", err);
     return c.json({ error: "更新资料失败" }, 500);
+  }
+  // 同步本人 UserHub 缓存的资料（失败只记日志，不影响响应）
+  if (updated) {
+    await updateHubProfile(c.env, userID, updated);
   }
   return c.json({ ok: true });
 }
@@ -213,7 +223,7 @@ async function handlePutSettings(c: Context<AppEnv>): Promise<Response> {
   try {
     await sql`
       INSERT INTO public.user_settings (account_id, settings)
-      VALUES (${c.get("userID")}, ${JSON.stringify(settings)}::jsonb)
+      VALUES (${c.get("userID")}, ${sql.json(settings as never)})
       ON CONFLICT (account_id)
       DO UPDATE SET settings = EXCLUDED.settings`;
   } catch (err) {

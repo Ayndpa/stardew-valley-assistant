@@ -1,12 +1,16 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window",
-  "windows": ["main", "nexus-scraper", "nexus-login", "nexus-login-check", "nexus-apikey-fetch"],
+  "description": "Capability for the main window and the social popup windows (friends / chat-*)",
+  "windows": ["main", "nexus-scraper", "nexus-login", "nexus-login-check", "nexus-apikey-fetch", "friends", "chat-*"],
   "permissions": [
     "core:default",
     "core:window:allow-close",
     "core:window:allow-minimize",
+    "core:window:allow-unminimize",
+    "core:window:allow-show",
+    "core:window:allow-set-focus",
+    "core:window:allow-set-title",
     "core:window:allow-start-dragging",
     "core:window:allow-toggle-maximize",
     "opener:default",

@@ -65,11 +65,11 @@ interface PatchBody {
 }
 
 function invalidBody(c: Context<AppEnv>): Response {
-  return c.json({ error: "ÇëÇóÌå¸ñÊ½´íÎó" }, 400);
+  return c.json({ error: "è¯·æ±‚ä½“æ ¼å¼é”™è¯¯" }, 400);
 }
 
 function invalidID(c: Context<AppEnv>): Response {
-  return c.json({ error: "ÎŞĞ§µÄÕË»§ ID" }, 400);
+  return c.json({ error: "æ— æ•ˆçš„è´¦æˆ· ID" }, 400);
 }
 
 async function accountExists(sql: postgres.Sql, id: string): Promise<boolean> {
@@ -89,7 +89,7 @@ export function registerAdminRoutes(app: Hono<AppEnv>): void {
   app.delete("/api/admin/users/:id/settings", adminDeleteSettings);
 }
 
-// --- ÕË»§ÁĞ±í / ËÑË÷ ---
+// --- è´¦æˆ·åˆ—è¡¨ / æœç´¢ ---
 
 async function adminListUsers(c: Context<AppEnv>): Promise<Response> {
   const email = (c.req.query("email") ?? "").trim().toLowerCase();
@@ -100,7 +100,7 @@ async function adminListUsers(c: Context<AppEnv>): Promise<Response> {
   if (rawLimit) {
     const n = Number.parseInt(rawLimit, 10);
     if (Number.isNaN(n) || n <= 0 || n > 200) {
-      return c.json({ error: "limit ĞèÎª 1-200 µÄÕûÊı" }, 400);
+      return c.json({ error: "limit éœ€ä¸º 1-200 çš„æ•´æ•°" }, 400);
     }
     limit = n;
   }
@@ -109,7 +109,7 @@ async function adminListUsers(c: Context<AppEnv>): Promise<Response> {
   if (rawOffset) {
     const n = Number.parseInt(rawOffset, 10);
     if (Number.isNaN(n) || n < 0) {
-      return c.json({ error: "offset ĞèÎª·Ç¸ºÕûÊı" }, 400);
+      return c.json({ error: "offset éœ€ä¸ºéè´Ÿæ•´æ•°" }, 400);
     }
     offset = n;
   }
@@ -135,8 +135,8 @@ async function adminListUsers(c: Context<AppEnv>): Promise<Response> {
 
     return c.json({ users: rows.map(toView), total, limit, offset });
   } catch (err) {
-    console.error("²éÑ¯ÕË»§Ê§°Ü:", err);
-    return c.json({ error: "²éÑ¯ÕË»§Ê§°Ü" }, 500);
+    console.error("æŸ¥è¯¢è´¦æˆ·å¤±è´¥:", err);
+    return c.json({ error: "æŸ¥è¯¢è´¦æˆ·å¤±è´¥" }, 500);
   }
 }
 
@@ -154,7 +154,7 @@ async function adminGetUser(c: Context<AppEnv>): Promise<Response> {
       WHERE a.id = ${id}`;
     const row = rows[0];
     if (!row) {
-      return c.json({ error: "ÕË»§²»´æÔÚ" }, 404);
+      return c.json({ error: "è´¦æˆ·ä¸å­˜åœ¨" }, 404);
     }
 
     const payload: Record<string, unknown> = { user: toView(row) };
@@ -167,8 +167,8 @@ async function adminGetUser(c: Context<AppEnv>): Promise<Response> {
     }
     return c.json(payload);
   } catch (err) {
-    console.error("²éÑ¯ÕË»§Ê§°Ü:", err);
-    return c.json({ error: "²éÑ¯ÕË»§Ê§°Ü" }, 500);
+    console.error("æŸ¥è¯¢è´¦æˆ·å¤±è´¥:", err);
+    return c.json({ error: "æŸ¥è¯¢è´¦æˆ·å¤±è´¥" }, 500);
   }
 }
 
@@ -180,17 +180,17 @@ async function adminCreateUser(c: Context<AppEnv>): Promise<Response> {
   const username = (body.username ?? "").trim();
   const password = body.password ?? "";
   if (email === "" || !email.includes("@")) {
-    return c.json({ error: "ÓÊÏä¸ñÊ½²»ÕıÈ·" }, 400);
+    return c.json({ error: "é‚®ç®±æ ¼å¼ä¸æ­£ç¡®" }, 400);
   }
   if (password.length < 8) {
-    return c.json({ error: "ÃÜÂëÖÁÉÙ 8 Î»" }, 400);
+    return c.json({ error: "å¯†ç è‡³å°‘ 8 ä½" }, 400);
   }
 
   let hash: string;
   try {
     hash = await bcrypt.hash(password, BCRYPT_COST);
   } catch {
-    return c.json({ error: "ÃÜÂë¼ÓÃÜÊ§°Ü" }, 500);
+    return c.json({ error: "å¯†ç åŠ å¯†å¤±è´¥" }, 500);
   }
 
   const sql = c.get("sql");
@@ -215,10 +215,10 @@ async function adminCreateUser(c: Context<AppEnv>): Promise<Response> {
     );
   } catch (err) {
     if (isUniqueViolation(err)) {
-      return c.json({ error: "¸ÃÓÊÏäÒÑ×¢²á" }, 409);
+      return c.json({ error: "è¯¥é‚®ç®±å·²æ³¨å†Œ" }, 409);
     }
-    console.error("´´½¨ÕË»§Ê§°Ü:", err);
-    return c.json({ error: "´´½¨ÕË»§Ê§°Ü" }, 500);
+    console.error("åˆ›å»ºè´¦æˆ·å¤±è´¥:", err);
+    return c.json({ error: "åˆ›å»ºè´¦æˆ·å¤±è´¥" }, 500);
   }
 }
 
@@ -233,19 +233,19 @@ async function adminPatchUser(c: Context<AppEnv>): Promise<Response> {
   const hasAvatar = body.avatar_url != null && typeof body.avatar_url === "string";
   const hasPassword = body.password != null && typeof body.password === "string";
   if (!hasUsername && !hasAvatar && !hasPassword) {
-    return c.json({ error: "ÎŞ¿É¸üĞÂ×Ö¶Î" }, 400);
+    return c.json({ error: "æ— å¯æ›´æ–°å­—æ®µ" }, 400);
   }
 
   const sql = c.get("sql");
   try {
     if (!(await accountExists(sql, id))) {
-      return c.json({ error: "ÕË»§²»´æÔÚ" }, 404);
+      return c.json({ error: "è´¦æˆ·ä¸å­˜åœ¨" }, 404);
     }
 
     if (hasPassword) {
       const password = body.password as string;
       if (password.length < 8) {
-        return c.json({ error: "ÃÜÂëÖÁÉÙ 8 Î»" }, 400);
+        return c.json({ error: "å¯†ç è‡³å°‘ 8 ä½" }, 400);
       }
       const hash = await bcrypt.hash(password, BCRYPT_COST);
       await sql`UPDATE public.accounts SET password_hash = ${hash} WHERE id = ${id}`;
@@ -260,8 +260,8 @@ async function adminPatchUser(c: Context<AppEnv>): Promise<Response> {
     }
     return c.json({ ok: true });
   } catch (err) {
-    console.error("¸üĞÂÕË»§Ê§°Ü:", err);
-    return c.json({ error: "¸üĞÂÕË»§Ê§°Ü" }, 500);
+    console.error("æ›´æ–°è´¦æˆ·å¤±è´¥:", err);
+    return c.json({ error: "æ›´æ–°è´¦æˆ·å¤±è´¥" }, 500);
   }
 }
 
@@ -273,16 +273,16 @@ async function adminDeleteUser(c: Context<AppEnv>): Promise<Response> {
   try {
     const result = await sql`DELETE FROM public.accounts WHERE id = ${id}`;
     if (result.count === 0) {
-      return c.json({ error: "ÕË»§²»´æÔÚ" }, 404);
+      return c.json({ error: "è´¦æˆ·ä¸å­˜åœ¨" }, 404);
     }
     return c.json({ ok: true, deleted: id });
   } catch (err) {
-    console.error("É¾³ıÕË»§Ê§°Ü:", err);
-    return c.json({ error: "É¾³ıÕË»§Ê§°Ü" }, 500);
+    console.error("åˆ é™¤è´¦æˆ·å¤±è´¥:", err);
+    return c.json({ error: "åˆ é™¤è´¦æˆ·å¤±è´¥" }, 500);
   }
 }
 
-// --- ÔÆÉèÖÃ¹ÜÀí ---
+// --- äº‘è®¾ç½®ç®¡ç† ---
 
 async function adminGetSettings(c: Context<AppEnv>): Promise<Response> {
   const id = c.req.param("id")!;
@@ -294,8 +294,8 @@ async function adminGetSettings(c: Context<AppEnv>): Promise<Response> {
       SELECT settings FROM public.user_settings WHERE account_id = ${id}`;
     return c.json({ settings: rows[0]?.settings ?? {} });
   } catch (err) {
-    console.error("²éÑ¯ÉèÖÃÊ§°Ü:", err);
-    return c.json({ error: "²éÑ¯ÉèÖÃÊ§°Ü" }, 500);
+    console.error("æŸ¥è¯¢è®¾ç½®å¤±è´¥:", err);
+    return c.json({ error: "æŸ¥è¯¢è®¾ç½®å¤±è´¥" }, 500);
   }
 }
 
@@ -310,17 +310,17 @@ async function adminPutSettings(c: Context<AppEnv>): Promise<Response> {
   const sql = c.get("sql");
   try {
     if (!(await accountExists(sql, id))) {
-      return c.json({ error: "ÕË»§²»´æÔÚ" }, 404);
+      return c.json({ error: "è´¦æˆ·ä¸å­˜åœ¨" }, 404);
     }
     await sql`
       INSERT INTO public.user_settings (account_id, settings)
-      VALUES (${id}, ${JSON.stringify(settings)}::jsonb)
+      VALUES (${id}, ${sql.json(settings as never)})
       ON CONFLICT (account_id)
       DO UPDATE SET settings = EXCLUDED.settings`;
     return c.json({ ok: true });
   } catch (err) {
-    console.error("±£´æÉèÖÃÊ§°Ü:", err);
-    return c.json({ error: "±£´æÉèÖÃÊ§°Ü" }, 500);
+    console.error("ä¿å­˜è®¾ç½®å¤±è´¥:", err);
+    return c.json({ error: "ä¿å­˜è®¾ç½®å¤±è´¥" }, 500);
   }
 }
 
@@ -333,7 +333,7 @@ async function adminDeleteSettings(c: Context<AppEnv>): Promise<Response> {
     const result = await sql`DELETE FROM public.user_settings WHERE account_id = ${id}`;
     return c.json({ ok: true, deleted: result.count > 0 });
   } catch (err) {
-    console.error("Çå¿ÕÉèÖÃÊ§°Ü:", err);
-    return c.json({ error: "Çå¿ÕÉèÖÃÊ§°Ü" }, 500);
+    console.error("æ¸…ç©ºè®¾ç½®å¤±è´¥:", err);
+    return c.json({ error: "æ¸…ç©ºè®¾ç½®å¤±è´¥" }, 500);
   }
 }

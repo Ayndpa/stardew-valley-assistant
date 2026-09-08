@@ -1,5 +1,8 @@
 name = "stardew-account-backend"
 main = "src/index.ts"
+
+# 自有域名（workers.dev 在国内被阻断）：wrangler 部署时自动创建 DNS 记录与证书
+routes = [{ pattern = "stardew-api.unmod.online", custom_domain = true }]
 compatibility_date = "2025-11-01"
 # postgres.js / bcryptjs 在 Node 兼容路径上引用了 node:buffer / node:events / node:stream
 compatibility_flags = ["nodejs_compat"]
@@ -9,6 +12,19 @@ compatibility_flags = ["nodejs_compat"]
 #   bunx wrangler secret put JWT_SECRET
 #   bunx wrangler secret put ADMIN_KEY      # 留空（不设置）则禁用 /api/admin/*
 #
+# 实时联机（好友在线 / 私聊 / 大厅 / 房间）使用三种 Durable Object，
+# 协议见 ../REALTIME.md。免费计划要求 SQLite 存储后端（new_sqlite_classes）。
+[durable_objects]
+bindings = [
+  { name = "USER_HUB", class_name = "UserHub" },
+  { name = "LOBBY", class_name = "Lobby" },
+  { name = "GAME_ROOM", class_name = "GameRoom" },
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["UserHub", "Lobby", "GameRoom"]
+
 # 可选：接入 Hyperdrive 连接池（Workers 下访问 Postgres 的推荐方式）
 #   1. bunx wrangler hyperdrive create account-db --connection-string="<DATABASE_URL>"
 #   2. 取消下方绑定注释并填入 id

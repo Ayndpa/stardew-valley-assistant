@@ -3,6 +3,7 @@ import { Minus, Square, SquareStack, X } from "lucide-react"
 import appIcon from "@/assets/app-icon.png"
 import { useTranslation } from "react-i18next"
 import type { Page, SaveSummary } from "@/App"
+import { TitleBarAccount } from "@/components/TitleBarAccount"
 
 type WindowApi = {
   minimize: () => Promise<void>
@@ -180,7 +181,9 @@ export function TitleBar({ currentPage, currentSave }: TitleBarProps) {
         </div>
       </div>
 
-      <div className="flex min-w-0 items-center justify-end">
+      <div className="flex min-w-0 items-center justify-end gap-3">
+        {/* Steam 风格的账号入口：打开好友窗口 */}
+        <TitleBarAccount />
         {isWindows ? <div className="w-20 shrink-0">{controls}</div> : <div className="w-20 shrink-0" />}
       </div>
     </header>

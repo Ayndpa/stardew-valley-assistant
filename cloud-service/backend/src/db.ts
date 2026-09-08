@@ -31,8 +31,28 @@ $$`,
   `CREATE TRIGGER user_settings_set_updated_at
     BEFORE UPDATE ON public.user_settings
     FOR EACH ROW EXECUTE FUNCTION public.set_updated_at()`,
+  // 好友关系：同一对用户任意方向只允许存在一行（应用层保证）
+  `CREATE TABLE IF NOT EXISTS public.friendships (
+    id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    requester_id uuid NOT NULL REFERENCES public.accounts (id) ON DELETE CASCADE,
+    addressee_id uuid NOT NULL REFERENCES public.accounts (id) ON DELETE CASCADE,
+    status       text NOT NULL CHECK (status IN ('pending', 'accepted')),
+    created_at   timestamptz NOT NULL DEFAULT now(),
+    updated_at   timestamptz NOT NULL DEFAULT now(),
+    CHECK (requester_id <> addressee_id),
+    UNIQUE (requester_id, addressee_id)
+)`,
+  `CREATE INDEX IF NOT EXISTS friendships_addressee_idx ON public.friendships (addressee_id, status)`,
+  `CREATE INDEX IF NOT EXISTS friendships_requester_idx ON public.friendships (requester_id, status)`,
+  `DROP TRIGGER IF EXISTS friendships_set_updated_at ON public.friendships`,
+  `CREATE TRIGGER friendships_set_updated_at
+    BEFORE UPDATE ON public.friendships
+    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at()`,
+  // 用户名大小写不敏感查找（/api/users/lookup）
+  `CREATE INDEX IF NOT EXISTS accounts_username_lower_idx ON public.accounts (lower(username))`,
   `ALTER TABLE public.accounts ENABLE ROW LEVEL SECURITY`,
   `ALTER TABLE public.user_settings ENABLE ROW LEVEL SECURITY`,
+  `ALTER TABLE public.friendships ENABLE ROW LEVEL SECURITY`,
 ];
 
 // 建表在单个 Worker 隔离实例内只做一次。
