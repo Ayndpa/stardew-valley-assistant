@@ -3,9 +3,6 @@
 // 使用自有域名：workers.dev 在国内网络下被阻断
 const DEFAULT_ACCOUNT_BASE_URL = "https://stardew-api.unmod.online"
 
-/** ICE 信令服务器（p2p-ice-chat），见 REALTIME.md §6 */
-export const SIGNALING_WS_URL = "wss://stardew-ice.unmod.online/ws"
-
 /** 允许通过 localStorage `accountBaseUrl` 覆盖，便于本地调试 */
 export function getAccountBaseUrl(): string {
   try {

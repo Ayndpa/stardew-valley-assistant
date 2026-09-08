@@ -5,7 +5,6 @@ import { useAccount } from "./account-provider"
 import * as api from "./api"
 import { wsUrl } from "./config"
 import { RealtimeSocket } from "./realtime"
-import { usePeerSession, type PeerSession } from "./p2p"
 import type {
   ChatMessage,
   FriendEntry,
@@ -16,10 +15,9 @@ import type {
   RoomMember,
   RoomRef,
   RoomServerFrame,
-  UserBrief,
 } from "./types"
-import { isP2POfferSignal, isVlanSignal } from "./types"
-import { displayName, newCid, newLocalId, normalizeChatText, randomCode } from "./utils"
+import { isVlanSignal } from "./types"
+import { displayName, newCid, newLocalId, normalizeChatText } from "./utils"
 import { useVlan, type VlanController, type VlanErrorKind } from "./vlan"
 import { readOpenChats, writeCurrentRoom } from "./window-signals"
 
@@ -41,13 +39,6 @@ export interface RoomState {
   members: RoomMember[]
   chat: ChatMessage[]
   you: string
-}
-
-export interface P2POffer {
-  from: string
-  fromUser: UserBrief | null
-  code: string
-  ts: number
 }
 
 export type SignalHandler = (from: string, data: unknown) => void
@@ -83,13 +74,8 @@ interface SocialState {
   sendSignal: (to: string, data: unknown) => boolean
   kick: (userId: string) => boolean
   closeRoom: () => boolean
+  /** 订阅非 vlan-* 的自定义 room.signal（vlan-* 信令由 VLAN 桥接消费，不会派发到这里） */
   onSignal: (handler: SignalHandler) => () => void
-
-  peer: PeerSession
-  p2pOffer: P2POffer | null
-  startP2P: (to: string) => Promise<void>
-  acceptP2POffer: () => Promise<void>
-  declineP2POffer: () => void
 
   /** 虚拟局域网（仅主窗口有效，弹窗里 available=false 且永远未开启） */
   vlan: VlanController
@@ -118,7 +104,6 @@ const noopNotify: Notifier = () => {}
 export function SocialProvider({ children, role, notify = noopNotify, activePage }: SocialProviderProps) {
   const { t } = useTranslation()
   const { user, token, withToken, refreshMe } = useAccount()
-  const peer = usePeerSession()
 
   const [hubStatus, setHubStatus] = useState<HubStatus>("offline")
   const [friends, setFriends] = useState<FriendEntry[]>([])
@@ -128,7 +113,6 @@ export function SocialProvider({ children, role, notify = noopNotify, activePage
   const [invites, setInvites] = useState<Invite[]>([])
   const [room, setRoom] = useState<RoomState | null>(null)
   const [roomStatus, setRoomStatus] = useState<RoomStatus>("idle")
-  const [p2pOffer, setP2pOffer] = useState<P2POffer | null>(null)
 
   const hubRef = useRef<RealtimeSocket | null>(null)
   const roomRef = useRef<RealtimeSocket | null>(null)
@@ -145,7 +129,6 @@ export function SocialProvider({ children, role, notify = noopNotify, activePage
   const notifyRef = useRef<Notifier>(notify)
   const tRef = useRef(t)
   const userRef = useRef(user)
-  const peerRef = useRef(peer)
   // 本窗口发出、尚未收到 invite.ack 的邀请（只在发出邀请的窗口提示结果）
   const pendingInvitesRef = useRef<Set<string>>(new Set())
   // 虚拟局域网控制器（在下方 useVlan 处赋值；room.signal 处理器通过 ref 访问）
@@ -155,7 +138,6 @@ export function SocialProvider({ children, role, notify = noopNotify, activePage
   notifyRef.current = notify
   tRef.current = t
   userRef.current = user
-  peerRef.current = peer
   roomStateRef.current = room
 
   const isMain = role === "main"
@@ -401,9 +383,7 @@ export function SocialProvider({ children, role, notify = noopNotify, activePage
       setRoom(null)
       roomStateRef.current = null
       setRoomStatus("idle")
-      setP2pOffer(null)
       settleJoin(new RoomJoinError())
-      void peerRef.current.close()
     },
     [settleJoin],
   )
@@ -456,17 +436,10 @@ export function SocialProvider({ children, role, notify = noopNotify, activePage
           break
         }
         case "room.signal": {
-          // vlan-* 信令（握手 / bye）直接交给 Rust 侧的虚拟局域网，不走 P2P 与自定义订阅
+          // vlan-* 信令（握手 / bye）直接交给 Rust 侧的虚拟局域网；其余信令派发给自定义订阅者
           if (isVlanSignal(frame.data)) {
             vlanRef.current?.signalIn(frame.from, frame.data)
             break
-          }
-          if (isP2POfferSignal(frame.data)) {
-            const fromUser = roomStateRef.current?.members.find((m) => m.id === frame.from) ?? null
-            setP2pOffer({ from: frame.from, fromUser, code: frame.data.code, ts: Date.now() })
-            if (!onSocialPage()) {
-              toast("social.notify.p2pOffer", "info", { name: fromUser ? displayName(fromUser) : frame.from.slice(0, 8) })
-            }
           }
           signalHandlersRef.current.forEach((handler) => {
             try {
@@ -621,31 +594,6 @@ export function SocialProvider({ children, role, notify = noopNotify, activePage
     writeCurrentRoom(roomCode && roomName !== null ? { code: roomCode, name: roomName } : null)
   }, [isMain, roomCode, roomName])
 
-  // ---------- P2P ----------
-
-  const startP2P = useCallback(
-    async (to: string) => {
-      const code = randomCode(8)
-      if (!sendSignal(to, { kind: "p2p-offer", code })) {
-        throw new Error("room_not_connected")
-      }
-      setP2pOffer(null)
-      await peerRef.current.connect(code, displayName(userRef.current))
-    },
-    [sendSignal],
-  )
-
-  const acceptP2POffer = useCallback(async () => {
-    const offer = p2pOffer
-    if (!offer) return
-    setP2pOffer(null)
-    await peerRef.current.connect(offer.code, displayName(userRef.current))
-  }, [p2pOffer])
-
-  const declineP2POffer = useCallback(() => {
-    setP2pOffer(null)
-  }, [])
-
   const totalUnread = useMemo(() => Object.values(unread).reduce((sum, n) => sum + n, 0), [unread])
 
   const value = useMemo<SocialState>(
@@ -672,11 +620,6 @@ export function SocialProvider({ children, role, notify = noopNotify, activePage
       kick,
       closeRoom,
       onSignal,
-      peer,
-      p2pOffer,
-      startP2P,
-      acceptP2POffer,
-      declineP2POffer,
       vlan,
     }),
     [
@@ -702,11 +645,6 @@ export function SocialProvider({ children, role, notify = noopNotify, activePage
       kick,
       closeRoom,
       onSignal,
-      peer,
-      p2pOffer,
-      startP2P,
-      acceptP2POffer,
-      declineP2POffer,
       vlan,
     ],
   )

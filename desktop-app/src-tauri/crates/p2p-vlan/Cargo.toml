@@ -11,13 +11,14 @@ path = "src/lib.rs"
 [dependencies]
 anyhow = "1"
 log = "0.4"
-# 复用 p2p-ice-chat 的 ICE 核心；关掉 cli 特性以免引入 stdin/signal/env_logger
-p2p-ice-chat = { path = "../p2p-ice-chat", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "time", "net", "macros", "io-util"] }
 # 跨平台 TUN；Windows 走 Wintun（wintun.dll 由应用自带，路径经 TunConfig 传入）
 tun-rs = { version = "2.8", features = ["async"] }
+# ICE 打洞核心
+webrtc-ice = "0.17"
+webrtc-util = "0.17"
 
 # 提权辅助进程：令牌提权检查、runas 拉起、管道 DACL
 [target."cfg(windows)".dependencies]

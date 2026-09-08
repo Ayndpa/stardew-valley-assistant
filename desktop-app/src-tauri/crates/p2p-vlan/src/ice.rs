@@ -1,7 +1,7 @@
-//! 与信令方式无关的 ICE 核心。
+//! 与信令方式无关的 ICE 核心（基于 webrtc-ice）。
 //!
 //! 流程：[`IceEndpoint::gather`] 收集本机候选并生成 [`Handshake`] →
-//! 调用方经任意信道（WebSocket 信令服务器、房间 `room.signal`…）与对端交换握手 →
+//! 调用方经任意信道（房间 `room.signal`…）与对端交换握手 →
 //! [`IceEndpoint::connect`] 按角色 dial / accept，得到可直接收发数据报的 [`IceConn`]。
 //!
 //! webrtc-ice 的 `Agent` 没有 `Drop` 清理，所以这里保证每条路径（成功、失败、主动关闭）
@@ -28,7 +28,40 @@ use webrtc_ice::url::Url;
 use webrtc_ice::Error as IceError;
 use webrtc_util::conn::Conn;
 
-use crate::signaling::Role;
+/// 与 ICE 拨号方式对应的角色
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Role {
+    /// controlling，调用 dial
+    Offer,
+    /// controlled，调用 accept
+    Answer,
+}
+
+impl Role {
+    pub fn label(self) -> &'static str {
+        match self {
+            Role::Offer => "offer（发起方 / controlling）",
+            Role::Answer => "answer（应答方 / controlled）",
+        }
+    }
+
+    /// 协议中的角色字符串："offer" / "answer"
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Role::Offer => "offer",
+            Role::Answer => "answer",
+        }
+    }
+
+    /// 解析协议中的角色字符串
+    pub fn from_server(s: &str) -> Result<Role> {
+        match s {
+            "offer" => Ok(Role::Offer),
+            "answer" => Ok(Role::Answer),
+            other => Err(anyhow!("未知角色: {other}")),
+        }
+    }
+}
 
 /// 候选地址收集上限
 pub const GATHER_TIMEOUT: Duration = Duration::from_secs(20);
@@ -371,7 +404,7 @@ impl IceEndpoint {
                             "打洞失败（ICE 状态 {s}）：所有候选对都无法连通。\n\
                             常见原因：\n  \
                             ① Windows 防火墙拦截入站 UDP —— 两台机器都要放行本程序（管理员运行）：\n     \
-                            netsh advfirewall firewall add rule name=\"p2p-ice-chat\" dir=in action=allow program=\"<本程序exe绝对路径>\"\n  \
+                            netsh advfirewall firewall add rule name=\"stardew-valley-assistant\" dir=in action=allow program=\"<本程序exe绝对路径>\"\n  \
                             ② 双方不在同一局域网，且任一方是对称 NAT —— UDP 打洞只能穿透锥形 NAT，\n     \
                             对称型/运营商级 NAT 无中继服务器时无法连通，请改在同一局域网内联机"
                         ));

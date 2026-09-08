@@ -4,7 +4,6 @@ mod game;
 mod game_data;
 mod log_persist;
 mod mods;
-mod p2p;
 mod runtime;
 mod saves;
 mod smapi;
@@ -42,7 +41,6 @@ use crate::mods::{
     open_nexus_login_window, open_nexus_ranking_scraper, open_scraper_window, rename_local_mod, save_mod_config,
     save_profile, toggle_mod, write_mod_translation,
 };
-use crate::p2p::{p2p_close, p2p_connect, p2p_send, P2pState};
 use crate::runtime::{attach_runtime, cleanup_legacy_mod, runtime_available};
 use crate::saves::{
     create_save_backup, delete_save_backup, get_children_data, get_npc_locations, get_npc_schedule,
@@ -360,7 +358,6 @@ pub fn run() {
         .manage(DownloadControlState::default())
         .manage(PendingNxmUrls::default())
         .manage(LiveGameState::new())
-        .manage(P2pState::default())
         .manage(VlanState::default())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             let _ = app.get_webview_window("main").map(|window| {
@@ -470,9 +467,6 @@ pub fn run() {
             export_mod_data_to_file,
             get_app_beta,
             fetch_afdian_sponsors,
-            p2p_connect,
-            p2p_send,
-            p2p_close,
             open_friends_window,
             open_chat_window,
             vlan_start,

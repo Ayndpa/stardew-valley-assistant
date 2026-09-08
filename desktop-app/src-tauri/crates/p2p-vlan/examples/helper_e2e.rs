@@ -1,9 +1,9 @@
 //! 真实提权辅助进程端到端：拉起已构建的桌面应用 exe（辅助模式，未提权时会弹一次 UAC），
 //! 经管道执行 start / status / stop / shutdown，其间引擎在辅助进程里打开真实 Wintun 网卡。
 //!
-//! 用法：`cargo run --example helper_e2e [-- <exe 路径> [<wintun.dll 路径>]]`
-//! 默认 exe：../desktop-app/src-tauri/target/debug/stardew-valley-assistant.exe，
-//! 默认 dll：../desktop-app/src-tauri/resources/wintun.dll。
+//! 用法（在 src-tauri 下）：`cargo run -p p2p-vlan --example helper_e2e [-- <exe 路径> [<wintun.dll 路径>]]`
+//! 默认 exe：src-tauri/target/debug/stardew-valley-assistant.exe（先 `cargo build`），
+//! 默认 dll：src-tauri/resources/wintun.dll。
 
 #[cfg(windows)]
 fn main() -> anyhow::Result<()> {
@@ -20,11 +20,11 @@ fn main() -> anyhow::Result<()> {
     let exe = args
         .next()
         .map(PathBuf::from)
-        .unwrap_or_else(|| root.join("../desktop-app/src-tauri/target/debug/stardew-valley-assistant.exe"));
+        .unwrap_or_else(|| root.join("../../target/debug/stardew-valley-assistant.exe"));
     let dll = args
         .next()
         .map(PathBuf::from)
-        .unwrap_or_else(|| root.join("../desktop-app/src-tauri/resources/wintun.dll"));
+        .unwrap_or_else(|| root.join("../../resources/wintun.dll"));
     anyhow::ensure!(exe.is_file(), "找不到应用 exe: {}", exe.display());
     anyhow::ensure!(dll.is_file(), "找不到 wintun.dll: {}", dll.display());
     let exe = exe.canonicalize()?;

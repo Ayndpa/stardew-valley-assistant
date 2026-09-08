@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Cable, Check, Copy, Crown, DoorOpen, Lock, Power, UserX } from "lucide-react"
+import { Check, Copy, Crown, DoorOpen, Lock, Power, UserX } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -9,7 +9,6 @@ import { useSocial } from "@/lib/account/social-provider"
 import { displayName } from "@/lib/account/utils"
 import { ChatBox } from "./ChatBox"
 import { InviteFriendsMenu } from "./InviteFriendsMenu"
-import { P2PPanel } from "./P2PPanel"
 import { UserAvatar } from "./UserAvatar"
 import { VlanPanel } from "./VlanPanel"
 
@@ -19,7 +18,7 @@ interface RoomPanelProps {
 
 export function RoomPanel({ onShowToast }: RoomPanelProps) {
   const { t } = useTranslation()
-  const { room, leaveRoom, sendRoomChat, kick, closeRoom, startP2P, peer } = useSocial()
+  const { room, leaveRoom, sendRoomChat, kick, closeRoom } = useSocial()
   const { confirm, ConfirmDialogElement } = useConfirm()
   const [copied, setCopied] = useState(false)
 
@@ -70,14 +69,6 @@ export function RoomPanel({ onShowToast }: RoomPanelProps) {
       variant: "destructive",
     })
     if (ok && !kick(userId)) onShowToast(t("social.chat.notConnected"), "warning")
-  }
-
-  const handleP2P = async (userId: string) => {
-    try {
-      await startP2P(userId)
-    } catch (err) {
-      onShowToast(t("social.p2p.startFailed", { error: err instanceof Error ? err.message : String(err) }), "warning")
-    }
   }
 
   return (
@@ -159,19 +150,6 @@ export function RoomPanel({ onShowToast }: RoomPanelProps) {
                         </p>
                       )}
                     </div>
-                    {!me && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 gap-1 px-2 text-[11px]"
-                        title={t("social.room.p2pButton")}
-                        disabled={peer.status === "connecting"}
-                        onClick={() => void handleP2P(m.id)}
-                      >
-                        <Cable className="h-3 w-3" />
-                        {t("social.room.p2pButton")}
-                      </Button>
-                    )}
                     {isHost && !me && (
                       <Button
                         size="sm"
@@ -189,7 +167,6 @@ export function RoomPanel({ onShowToast }: RoomPanelProps) {
             </div>
           </div>
           <VlanPanel onShowToast={onShowToast} />
-          <P2PPanel onShowToast={onShowToast} />
         </div>
 
         {/* 房间聊天 */}

@@ -213,7 +213,7 @@ Lobby storage 键：`rooms`（`Record<code, RoomSummary>`）。attachment 保存
 { ...UserBrief, "joined_at": 1700000000000, "vip": "10.77.0.3" }
 ```
 
-`vip` 为服务端分配的虚拟局域网 IP（见 §7）：房间内唯一，取 `10.77.0.1 ~ 10.77.0.254` 中最小的空闲值，
+`vip` 为服务端分配的虚拟局域网 IP（见 §6）：房间内唯一，取 `10.77.0.1 ~ 10.77.0.254` 中最小的空闲值，
 成员离开后回收，同一用户重连保持不变。
 
 | 方向 | type | 字段 |
@@ -237,8 +237,7 @@ Lobby storage 键：`rooms`（`Record<code, RoomSummary>`）。attachment 保存
 - 最后一人离开 → 通知 Lobby `room-remove`，`storage.deleteAll()`。
 - 成员数变化 → 通知 Lobby `room-update`。
 - 非房主发 `room.kick` / `room.close` → `error code=forbidden`。
-- `room.signal` 的 `data` 由客户端自定义，服务端不解析。桌面端约定：
-  `{ "kind": "p2p-offer", "code": "<ICE 信令房间号>" }` 用于发起 P2P 直连（见 §6）。
+- `room.signal` 的 `data` 由客户端自定义，服务端不解析。桌面端约定：`kind` 以 `vlan-` 开头的信令用于虚拟局域网 ICE 握手（见 §6）。
 
 GameRoom storage 键：`meta`（`{ code, name, max, password, host_id, created_at }`）、`members`（`Record<uuid, RoomMember>`）。
 attachment 保存 `{ userId }`。
@@ -253,40 +252,14 @@ attachment 保存 `{ userId }`。
 - 私聊记录只保存在内存（`Map<friendId, Message[]>`，每人最多 200 条），重启即清空，与"服务端不记录"的语义一致。
 - 新消息且用户不在联机页面 → 通过现有 `onShowToast` 提示，并在侧边栏图标显示未读数。
 
-## 6. P2P 直连（p2p-ice-chat 集成）
-
-将 `p2p-ice-chat` 拆成 lib + bin：lib 暴露与 stdin/stdout 无关的会话 API；
-`desktop-app/src-tauri` 以 path 依赖引入，提供 Tauri 命令：
-
-| 命令 | 参数 | 返回 / 事件 |
-| --- | --- | --- |
-| `p2p_connect` | `{ server: string, room: string, name: string }` | 返回 `sessionId: string`；随后通过事件 `p2p-event` 推送进度 |
-| `p2p_send` | `{ session: string, text: string }` | `Promise<void>`，未连接时报错 |
-| `p2p_close` | `{ session: string }` | `Promise<void>` |
-
-事件 `p2p-event` payload：
-
-```jsonc
-{ "session": "id",
-  "kind": "status" | "log" | "connected" | "message" | "closed" | "error",
-  "text": "…",            // log / message / error 的正文
-  "role": "offer"|"answer", // status(welcome) / connected 时携带
-  "room": "ABC234",        // status(welcome) 时携带
-  "peer": "对端显示名" }    // connected / message 时携带
-```
-
-信令服务器地址常量：`wss://stardew-ice.unmod.online/ws`（Worker `ice-signaling` 的自有域名）。
-房间内发起直连：A 生成 ICE 房间号（复用 §0.3 字母表，8 位），通过 `room.signal` 发 `{ kind: "p2p-offer", code }` 给 B，
-然后 A 立即 `p2p_connect`；B 收到后弹出提示，同意则 `p2p_connect` 同一 code。
-
-## 7. 虚拟局域网（VLAN，crate `p2p-vlan`）
+## 6. 虚拟局域网（VLAN，crate `desktop-app/src-tauri/crates/p2p-vlan`）
 
 房间内所有开启了虚拟局域网的成员组成同一网段 `10.77.0.0/24` 的虚拟局域网：
 每人一块 TUN 虚拟网卡（Windows 用 Wintun，dll 随应用打包在 resources 目录），IP 为服务端分配的 `vip`，MTU 1280。
-成员两两之间用 ICE 打洞建立 UDP 直连（复用 `p2p-ice-chat` 的 ICE 核心，STUN 默认 Google），
-构成全互联网状网络；服务端只转发握手信令，不经手任何数据包。
+成员两两之间用 ICE 打洞建立 UDP 直连（`p2p-vlan` 内置的 ICE 核心 `ice.rs`，基于 webrtc-ice，STUN 默认 Google），
+构成全互联网状网络；握手信令经后端 `room.signal` 定向转发，服务端不经手任何数据包。
 
-### 7.1 角色与握手
+### 6.1 角色与握手
 
 - 每一对成员中，用户 ID 字典序较小者为 `offer`（ICE controlling，调用 dial），较大者为 `answer`（accept）。
 - 每个节点在 `vlan_start` 时生成随机 `session` 串（16 位十六进制）。
@@ -298,7 +271,7 @@ attachment 保存 `{ userId }`。
 - `room.members` 变化时前端调用 `vlan_update_members`：新成员 → 发起协商；离开的成员 → 断开并释放。
 - 未开启 VLAN 的成员不会发送握手，对端状态停留在 `connecting`，不影响其他连接。
 
-### 7.2 数据面
+### 6.2 数据面
 
 - TUN 读到的 IPv4 包按目的地址查对端（`vip → 连接`），找到则作为一个 UDP 数据报原样发送（一包一报，无额外封装）。
 - 目的地址为 `10.77.0.255` 或 `255.255.255.255` 时发给所有已连接对端（用于游戏局域网发现广播）。
@@ -306,7 +279,7 @@ attachment 保存 `{ userId }`。
 - 从对端收到的数据报必须是 IPv4 且源地址等于该对端的 `vip`，否则丢弃（防伪造）；通过后写入 TUN。
 - 无加密（与 P2P 聊天一致），后续可加。
 
-### 7.3 Tauri 命令与事件
+### 6.3 Tauri 命令与事件
 
 | 命令 | 参数 | 返回 |
 | --- | --- | --- |
@@ -335,7 +308,7 @@ attachment 保存 `{ userId }`。
 房间面板仍提供「退出 / 重新加入虚拟局域网」按钮与「进房自动加入」开关。
 界面展示本机 vip、各成员 vip 与连接状态，并提示「在游戏中选择局域网加入并输入房主的虚拟 IP」。
 
-### 7.4 权限：提权辅助进程
+### 6.4 权限：提权辅助进程
 
 创建 Wintun 网卡需要管理员权限，但应用本身以普通权限运行。因此 VLAN 引擎**始终运行在一个辅助进程**里：
 
@@ -345,10 +318,10 @@ attachment 保存 `{ userId }`。
 - 辅助进程在应用运行期间常驻（首次进房时拉起），避免每次进房重复弹 UAC；应用退出时随管道断开而退出。
 - 管道：应用创建命名管道服务端 `\\.\pipe\stardew-vlan-<随机串>`（单实例、仅当前用户可访问），辅助进程作为客户端连接，
   首帧必须是 `{"op":"hello","token":"<随机串>"}`，token 不匹配立即断开。
-- 协议：UTF-8 JSON 行。应用→辅助：`{ "id": n, "op": "start" | "update_members" | "signal_in" | "stop" | "status" | "shutdown", ...参数同 §7.3 }`；
+- 协议：UTF-8 JSON 行。应用→辅助：`{ "id": n, "op": "start" | "update_members" | "signal_in" | "stop" | "status" | "shutdown", ...参数同 §6.3 }`；
   辅助→应用：`{ "reply": n, "ok": true, "result": ... }` 或 `{ "reply": n, "ok": false, "error": "..." }`，以及异步 `{ "event": VlanEvent }`
   （`VlanEvent` 形状同 `vlan-event` payload；`vlan-signal-out` 以 `{ "event": { "kind": "signal_out", "to", "data" } }` 表示）。
-- Tauri 命令接口（§7.3）保持不变；`vlan_start` 在辅助进程未运行时先拉起它。
+- Tauri 命令接口（§6.3）保持不变；`vlan_start` 在辅助进程未运行时先拉起它。
   新增命令 `vlan_helper_status()` → `{ "elevated": bool, "helper_running": bool }`。
 - 用户在 UAC 中拒绝 → `vlan_start` 返回以 `未获得管理员权限` 开头的错误；前端显示带「重试」按钮的提示。
   拉起过程中通过 `vlan-event` 推送 `{ "kind": "log", "text": "正在申请管理员权限…" }`。

@@ -1968,7 +1968,7 @@
         "saveEditorTitle": "Save Editor & Backups",
         "saveEditorDesc": "Edit gold, skills, and attributes, with auto-backup protection",
         "socialTitle": "Online & Friends",
-        "socialDesc": "Add friends and chat, create or join rooms in the lobby, and start P2P direct connections"
+        "socialDesc": "Add friends and chat, create or join rooms in the lobby, and play together over the virtual LAN"
       }
     },
     "appearance": {
@@ -2071,7 +2071,7 @@
   },
   "social": {
     "title": "Online",
-    "description": "Create or join rooms in the lobby and start P2P direct connections inside a room. Friends and chats live in the account window at the top right.",
+    "description": "Create or join rooms in the lobby; room members automatically form a virtual LAN so you can use the game's \"Join LAN Game\". Friends and chats live in the account window at the top right.",
     "status": {
       "online": "Connected",
       "connecting": "Connecting",
@@ -2212,7 +2212,6 @@
       "joinDialogPassword": "Room password",
       "joinDialogSubmit": "Join",
       "joinDialogCancel": "Cancel",
-      "p2pButton": "P2P Connect",
       "inviteFriends": "Invite Friends",
       "noOnlineFriends": "No friends online"
     },
@@ -2259,35 +2258,6 @@
         "vlan_no_room": "Not in a room or no virtual IP assigned yet"
       }
     },
-    "p2p": {
-      "title": "P2P Direct Connection",
-      "description": "Click \"P2P Connect\" next to a member to start a direct connection. Once accepted, you communicate without going through the server.",
-      "offerFrom": "{{name}} wants to start a P2P connection with you",
-      "accept": "Accept",
-      "decline": "Decline",
-      "disconnect": "Disconnect",
-      "status": {
-        "idle": "Not connected",
-        "connecting": "Connecting",
-        "connected": "Connected",
-        "closed": "Disconnected",
-        "error": "Error"
-      },
-      "role": {
-        "offer": "Initiator",
-        "answer": "Responder"
-      },
-      "roleLabel": "Role",
-      "code": "Signaling room",
-      "peer": "Peer",
-      "log": "Log",
-      "chatPlaceholder": "Send a message over the direct connection",
-      "chatEmpty": "Direct connection established. Send your first message!",
-      "notConnected": "Direct connection not established yet",
-      "unavailable": "P2P is not available in this build (p2p_connect command missing)",
-      "sendFailed": "Send failed: {{error}}",
-      "startFailed": "Failed to start P2P connection: {{error}}"
-    },
     "invites": {
       "text": "{{name}} invited you to room \"{{room}}\"",
       "join": "Join",
@@ -2303,7 +2273,6 @@
       "kicked": "You were removed from the room by the host",
       "replaced": "This room was opened from another device/window; this connection was closed",
       "roomDisconnected": "Disconnected from the room",
-      "p2pOffer": "{{name}} wants to start a P2P connection with you",
       "roomClosed": {
         "host_closed": "The host closed the room",
         "empty": "The room was disbanded",

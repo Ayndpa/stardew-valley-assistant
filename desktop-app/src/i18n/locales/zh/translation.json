@@ -1838,7 +1838,7 @@
           "saveEditorTitle": "存档编辑与备份",
           "saveEditorDesc": "修改金钱、属性等存档数据，支持自动备份",
           "socialTitle": "联机与好友",
-          "socialDesc": "添加好友私聊、进入大厅创建或加入房间、发起 P2P 直连"
+          "socialDesc": "添加好友私聊、进入大厅创建或加入房间、通过虚拟局域网联机"
         }
       },
       "appearance": {
@@ -1941,7 +1941,7 @@
   },
   "social": {
     "title": "联机",
-    "description": "进入大厅创建或加入房间，并可在房间内发起 P2P 直连；好友与私聊在标题栏右侧的账号窗口里。",
+    "description": "进入大厅创建或加入房间，房间成员自动组成虚拟局域网即可用游戏内「局域网加入」联机；好友与私聊在标题栏右侧的账号窗口里。",
     "status": {
       "online": "已连接",
       "connecting": "连接中",
@@ -2082,7 +2082,6 @@
       "joinDialogPassword": "房间密码",
       "joinDialogSubmit": "加入",
       "joinDialogCancel": "取消",
-      "p2pButton": "P2P 直连",
       "inviteFriends": "邀请好友",
       "noOnlineFriends": "没有在线的好友"
     },
@@ -2129,35 +2128,6 @@
         "vlan_no_room": "尚未加入房间或未分配虚拟 IP"
       }
     },
-    "p2p": {
-      "title": "P2P 直连",
-      "description": "点击成员旁的「P2P 直连」向对方发起直连；对方同意后即可绕过服务器直接通信。",
-      "offerFrom": "{{name}} 请求与你建立 P2P 直连",
-      "accept": "同意",
-      "decline": "拒绝",
-      "disconnect": "断开",
-      "status": {
-        "idle": "未连接",
-        "connecting": "连接中",
-        "connected": "已连接",
-        "closed": "已断开",
-        "error": "出错"
-      },
-      "role": {
-        "offer": "发起方",
-        "answer": "应答方"
-      },
-      "roleLabel": "角色",
-      "code": "信令房间",
-      "peer": "对端",
-      "log": "日志",
-      "chatPlaceholder": "通过直连发送消息",
-      "chatEmpty": "直连已建立，发送第一条消息吧",
-      "notConnected": "直连尚未建立",
-      "unavailable": "当前版本不支持 P2P 直连（p2p_connect 命令不可用）",
-      "sendFailed": "发送失败：{{error}}",
-      "startFailed": "发起直连失败：{{error}}"
-    },
     "invites": {
       "text": "{{name}} 邀请你加入房间「{{room}}」",
       "join": "加入",
@@ -2173,7 +2143,6 @@
       "kicked": "你已被房主移出房间",
       "replaced": "该房间已在其他设备/窗口连接，当前连接已断开",
       "roomDisconnected": "与房间的连接已断开",
-      "p2pOffer": "{{name}} 请求与你建立 P2P 直连",
       "roomClosed": {
         "host_closed": "房主已关闭房间",
         "empty": "房间已解散",

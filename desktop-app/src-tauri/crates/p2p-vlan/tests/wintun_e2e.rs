@@ -8,7 +8,7 @@
 //! 3. 反向：构造 10.77.0.3:24642 → 10.77.0.2:<步骤 2 的源端口> 的包注入 B 的内存网卡 →
 //!    A 的本机套接字收到载荷（证明写入 TUN 的包进入了 Windows 协议栈）；
 //! 4. 停止两端，网卡被移除。
-//! wintun.dll 依次取：环境变量 `WINTUN_DLL`、desktop-app/src-tauri/resources/wintun.dll、系统默认搜索路径。
+//! wintun.dll 依次取：环境变量 `WINTUN_DLL`、src-tauri/resources/wintun.dll、系统默认搜索路径。
 
 #![cfg(windows)]
 
@@ -39,8 +39,7 @@ fn wintun_dll() -> Option<PathBuf> {
     if let Ok(p) = std::env::var("WINTUN_DLL") {
         return Some(PathBuf::from(p));
     }
-    let bundled = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../desktop-app/src-tauri/resources/wintun.dll");
+    let bundled = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../resources/wintun.dll");
     bundled.is_file().then_some(bundled)
 }
 

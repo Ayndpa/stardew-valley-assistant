@@ -1,9 +1,11 @@
 //! p2p-vlan：星露谷助手的虚拟局域网引擎（REALTIME.md §7）。
 //!
+//! - [`ice`]：与信令无关的 ICE 核心（收集候选 → 交换 [`Handshake`] → dial/accept）；
 //! - [`tun`]：TUN 网卡抽象（[`TunIo`]）与真实设备创建（[`open_tun`]，Windows 用 Wintun）；
 //! - [`mem`]：通道模拟的内存网卡，供测试；
 //! - [`packet`]：IPv4 解析与 §7.2 的转发/丢弃规则；
-//! - [`engine`]：[`VlanEngine`]——按成员列表两两 ICE 直连，TUN ↔ 对端之间搬运 IP 包。
+//! - [`engine`]：[`VlanEngine`]——按成员列表两两 ICE 直连，TUN ↔ 对端之间搬运 IP 包；
+//! - [`helper`] / [`elevation`]（Windows）：§7.4 的提权辅助进程协议与 UAC 拉起。
 //!
 //! 信令不经本 crate：引擎通过 [`VlanEvent::SignalOut`] 交出要发给某成员的 JSON，
 //! 调用方经房间 `room.signal` 转发；对端信令由调用方喂给 [`VlanEngine::signal_in`]。
@@ -13,6 +15,7 @@ pub mod elevation;
 pub mod engine;
 #[cfg(windows)]
 pub mod helper;
+pub mod ice;
 pub mod mem;
 pub mod packet;
 pub mod tun;
@@ -21,7 +24,10 @@ use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
 
 pub use engine::{MemberInfo, PeerState, PeerStatus, VlanEngine, VlanEvent, VlanStatus, SUBNET};
-pub use p2p_ice_chat::{Handshake, IceConfig};
+pub use ice::{
+    Handshake, IceCloseHandle, IceConfig, IceConn, IceEndpoint, InterfaceFilter, IpFilter, Role,
+    DEFAULT_STUN_URL,
+};
 pub use tun::{open_tun, TunConfig, TunIo, PERMISSION_HINT};
 
 /// 生产环境推荐的 ICE 配置：默认 STUN，并过滤掉会让 webrtc-ice 提名卡死的本机地址——

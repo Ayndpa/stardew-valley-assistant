@@ -280,21 +280,6 @@ export type RoomClientFrame =
   | { type: "room.close" }
   | { type: "room.leave" }
 
-/** 桌面端约定的 P2P 直连信令（REALTIME.md §4.2 / §6） */
-export interface P2POfferSignal {
-  kind: "p2p-offer"
-  code: string
-}
-
-export function isP2POfferSignal(data: unknown): data is P2POfferSignal {
-  return (
-    typeof data === "object" &&
-    data !== null &&
-    (data as { kind?: unknown }).kind === "p2p-offer" &&
-    typeof (data as { code?: unknown }).code === "string"
-  )
-}
-
 // ---------- 虚拟局域网（REALTIME.md §7.3） ----------
 
 export type VlanPeerState = "connecting" | "connected" | "failed" | "disconnected"

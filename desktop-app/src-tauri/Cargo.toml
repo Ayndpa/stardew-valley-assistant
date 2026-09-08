@@ -5,6 +5,9 @@ description = "Tauri + React desktop assistant for Stardew Valley: mod managemen
 authors = ["ayndpa"]
 edition = "2021"
 
+[workspace]
+members = ["crates/p2p-vlan"]
+
 [features]
 default = ["devtools"]
 devtools = ["tauri/devtools"]
@@ -40,10 +43,8 @@ lzxd = "0.2.6"
 zip = "2"
 chrono = { version = "0.4", features = ["serde"] }
 sysinfo = "0.34"
-# P2P 直连（ICE 打洞）库；关掉 cli 特性以免引入 stdin/signal/env_logger
-p2p-ice-chat = { path = "../../p2p-ice-chat", default-features = false }
-# 虚拟局域网（Wintun + ICE 网状直连）
-p2p-vlan = { path = "../../p2p-vlan" }
+# 虚拟局域网（Wintun + ICE 网状直连 + 提权辅助进程），工作区成员
+p2p-vlan = { path = "crates/p2p-vlan" }
 
 [target."cfg(any(target_os = \"macos\", windows, target_os = \"linux\"))".dependencies]
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }

@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard, Weak};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use p2p_ice_chat::{Handshake, IceConfig, IceConn, IceEndpoint, Role};
+use crate::ice::{Handshake, IceConfig, IceConn, IceEndpoint, Role};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio::sync::{mpsc, watch};
