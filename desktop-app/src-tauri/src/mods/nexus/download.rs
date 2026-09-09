@@ -1,6 +1,5 @@
 use log::{error, info, warn};
 use std::fs;
-use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -180,7 +179,7 @@ pub async fn install_nexus_mod(
         "[NexusInstall] Starting install_nexus_mod: game_dir={}, input_url={}",
         game_dir, download_url
     );
-    let game_path = PathBuf::from(&game_dir);
+    let game_path = crate::game::resolve_game_dir(&game_dir);
     if !game_path.exists() {
         error!(
             "[NexusInstall] Game directory does not exist: {}",

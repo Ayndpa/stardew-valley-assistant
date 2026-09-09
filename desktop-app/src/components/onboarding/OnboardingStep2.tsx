@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { detectPlatform, type DesktopPlatform } from "@/lib/platform"
 import { useTranslation } from "react-i18next"
 import {
   FolderOpen,
@@ -11,7 +12,12 @@ import {
   ArrowRight,
 } from "lucide-react"
 
-const PRESET_PATHS = [
+const PRESET_PATHS: {
+  key: string
+  defaultName: string
+  path: string
+  platform: DesktopPlatform
+}[] = [
   {
     key: "onboarding.directory.presetSteamDefault",
     defaultName: "Steam (默认位置)",
@@ -36,7 +42,23 @@ const PRESET_PATHS = [
     path: "~/Library/Application Support/Steam/steamapps/common/Stardew Valley",
     platform: "macos",
   },
+  {
+    key: "onboarding.directory.presetMacosApp",
+    defaultName: "macOS 应用程序",
+    path: "/Applications/Stardew Valley.app",
+    platform: "macos",
+  },
+  {
+    key: "onboarding.directory.presetLinux",
+    defaultName: "Linux Steam (默认位置)",
+    path: "~/.steam/steam/steamapps/common/Stardew Valley",
+    platform: "linux",
+  },
 ]
+
+// 只展示当前系统上可能存在的路径；别的平台的示例只会误导用户。
+const currentPlatform = detectPlatform()
+const VISIBLE_PRESETS = PRESET_PATHS.filter((preset) => preset.platform === currentPlatform)
 
 interface OnboardingStep2Props {
   directory: string
@@ -144,7 +166,7 @@ export function OnboardingStep2({
         </button>
         {showPresets && (
           <div className="px-4 pb-4 border-t border-border/50 pt-3 grid grid-cols-1 gap-2">
-            {PRESET_PATHS.map((preset) => (
+            {VISIBLE_PRESETS.map((preset) => (
               <button
                 type="button"
                 key={preset.key}

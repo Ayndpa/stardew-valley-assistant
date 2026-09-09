@@ -1,14 +1,13 @@
 use serde::{Deserialize, Serialize};
-use std::future::Future;
-use std::pin::Pin;
 use std::sync::Arc;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::net::windows::named_pipe::{NamedPipeServer, ServerOptions};
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::sync::{mpsc, Mutex};
 
 use super::live_state::{LiveGameState, NpcLocationsPayload};
 
-const PIPE_NAME: &str = r"\\.\pipe\stardew-valley-assistant";
+/// 管道名。游戏内运行时用的是 `NamedPipeClientStream(".", PIPE_BASE_NAME)`
+/// （见 runtime-src/Assistant.Runtime/PipeClient.cs），两端必须一致。
+const PIPE_BASE_NAME: &str = "stardew-valley-assistant";
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type")]
@@ -96,75 +95,152 @@ impl PipeWriterHandle {
     }
 }
 
-pub async fn start_pipe_server(state: LiveGameState, writer_handle: PipeWriterHandle) {
-    run_pipe_server(state, writer_handle).await;
+/// 承载管道的具体传输层。
+///
+/// Windows 用命名管道；macOS / Linux 上 .NET 的 `NamedPipeClientStream` 实际是
+/// 一个 Unix 域套接字，路径为 `<临时目录>/CoreFxPipe_<管道名>`，所以这里在同一
+/// 位置监听，游戏内运行时那边不用改一行代码。
+#[cfg(windows)]
+mod transport {
+    use super::PIPE_BASE_NAME;
+    use tokio::net::windows::named_pipe::{NamedPipeServer, ServerOptions};
+
+    pub type Stream = NamedPipeServer;
+
+    /// 命名管道没有「监听套接字」这一层：每接受一个客户端都要新建一个实例。
+    pub struct Listener {
+        name: String,
+    }
+
+    impl Listener {
+        pub fn bind() -> Result<Self, String> {
+            Ok(Self {
+                name: format!(r"\\.\pipe\{PIPE_BASE_NAME}"),
+            })
+        }
+
+        pub fn endpoint(&self) -> String {
+            self.name.clone()
+        }
+
+        pub async fn accept(&self) -> Result<Stream, String> {
+            let server = ServerOptions::new()
+                .create(&self.name)
+                .map_err(|e| format!("创建命名管道失败: {e}"))?;
+            server
+                .connect()
+                .await
+                .map_err(|e| format!("等待连接失败: {e}"))?;
+            Ok(server)
+        }
+    }
 }
 
-/// 管道服务器主状态机 — 纯事件驱动，通过 Box::pin 递归实现状态转换
-fn run_pipe_server(
-    state: LiveGameState,
-    writer_handle: PipeWriterHandle,
-) -> Pin<Box<dyn Future<Output = ()> + Send>> {
-    Box::pin(async move {
-        // 状态 1：创建管道实例
-        let server = match ServerOptions::new().create(PIPE_NAME) {
-            Ok(s) => s,
+#[cfg(unix)]
+mod transport {
+    use super::PIPE_BASE_NAME;
+    use std::path::PathBuf;
+    use tokio::net::{UnixListener, UnixStream};
+
+    pub type Stream = UnixStream;
+
+    /// 与 .NET 的 `PipeStream.GetPipePath` 保持一致：`Path.GetTempPath()` 即
+    /// `$TMPDIR`（缺省 `/tmp`），前缀固定是 `CoreFxPipe_`。
+    fn socket_path() -> PathBuf {
+        std::env::temp_dir().join(format!("CoreFxPipe_{PIPE_BASE_NAME}"))
+    }
+
+    pub struct Listener {
+        inner: UnixListener,
+        path: PathBuf,
+    }
+
+    impl Listener {
+        pub fn bind() -> Result<Self, String> {
+            let path = socket_path();
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)
+                    .map_err(|e| format!("创建套接字目录 {} 失败: {e}", parent.display()))?;
+            }
+            // 上次非正常退出会把套接字文件留在盘上，bind 会因「地址已被占用」失败。
+            let _ = std::fs::remove_file(&path);
+            let inner = UnixListener::bind(&path)
+                .map_err(|e| format!("监听 {} 失败: {e}", path.display()))?;
+            Ok(Self { inner, path })
+        }
+
+        pub fn endpoint(&self) -> String {
+            self.path.display().to_string()
+        }
+
+        pub async fn accept(&self) -> Result<Stream, String> {
+            self.inner
+                .accept()
+                .await
+                .map(|(stream, _)| stream)
+                .map_err(|e| format!("等待连接失败: {e}"))
+        }
+    }
+
+    impl Drop for Listener {
+        fn drop(&mut self) {
+            // 套接字文件不会随进程退出自动消失，留下来会让下次 bind 失败。
+            let _ = std::fs::remove_file(&self.path);
+        }
+    }
+}
+
+pub async fn start_pipe_server(state: LiveGameState, writer_handle: PipeWriterHandle) {
+    loop {
+        let listener = match transport::Listener::bind() {
+            Ok(listener) => listener,
             Err(e) => {
-                eprintln!("[管道] 创建命名管道失败: {}", e);
+                eprintln!("[管道] {}", e);
                 tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-                return run_pipe_server(state, writer_handle).await;
+                continue;
             }
         };
 
-        // 状态 2：等待客户端连接
-        println!("[管道] 等待 Mod 连接...");
-        on_connect(server, state, writer_handle).await;
-    })
-}
-
-/// 状态 2：客户端握手
-fn on_connect(
-    server: NamedPipeServer,
-    state: LiveGameState,
-    writer_handle: PipeWriterHandle,
-) -> Pin<Box<dyn Future<Output = ()> + Send>> {
-    Box::pin(async move {
-        if let Err(e) = server.connect().await {
-            eprintln!("[管道] 等待连接失败: {}", e);
-            return run_pipe_server(state, writer_handle).await;
+        // 同时只服务一个客户端：助手的实时数据只有一份，两个客户端会互相抢。
+        loop {
+            println!("[管道] 等待 Mod 连接（{}）...", listener.endpoint());
+            match listener.accept().await {
+                Ok(stream) => serve(stream, &state, &writer_handle).await,
+                Err(e) => {
+                    eprintln!("[管道] {}", e);
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                    // 传输层可能已经失效（管道实例被删、套接字文件被删），重新绑定
+                    break;
+                }
+            }
         }
-
-        println!("[管道] Mod 已连接");
-        state.set_pipe_connected(true).await;
-
-        let (tx, rx) = mpsc::channel::<TauriMessage>(32);
-        writer_handle.set(tx).await;
-
-        let (reader, writer) = tokio::io::split(server);
-        let reader = BufReader::new(reader);
-
-        // 状态 3：事件循环
-        on_event(state, writer_handle, reader, writer, rx, String::new()).await;
-    })
+    }
 }
 
-/// 状态 3：事件驱动 I/O — 每次 select 处理一个事件，然后递归等待下一个
-fn on_event(
-    state: LiveGameState,
-    writer_handle: PipeWriterHandle,
-    mut reader: BufReader<tokio::io::ReadHalf<NamedPipeServer>>,
-    mut writer: tokio::io::WriteHalf<NamedPipeServer>,
-    mut rx: mpsc::Receiver<TauriMessage>,
-    mut line_buf: String,
-) -> Pin<Box<dyn Future<Output = ()> + Send>> {
-    Box::pin(async move {
+/// 单个连接的事件循环：一边把 Mod 发来的行解析成 [`ModMessage`]，
+/// 一边把 Tauri 命令排队的 [`TauriMessage`] 写回去。任一方向出错即断开。
+async fn serve<S>(stream: S, state: &LiveGameState, writer_handle: &PipeWriterHandle)
+where
+    S: AsyncRead + AsyncWrite,
+{
+    println!("[管道] Mod 已连接");
+    state.set_pipe_connected(true).await;
+
+    let (tx, mut rx) = mpsc::channel::<TauriMessage>(32);
+    writer_handle.set(tx).await;
+
+    let (reader, mut writer) = tokio::io::split(stream);
+    let mut reader = BufReader::new(reader);
+    let mut line_buf = String::new();
+
+    loop {
         tokio::select! {
             // 事件：从 Mod 收到一行数据
             result = reader.read_line(&mut line_buf) => {
                 match result {
                     Ok(0) => {
                         println!("[管道←] 连接关闭 (EOF)");
-                        on_disconnect(state, writer_handle).await;
+                        break;
                     }
                     Ok(n) => {
                         let trimmed = line_buf.trim().to_owned();
@@ -176,16 +252,14 @@ fn on_event(
                                 if trimmed.len() > 120 { format!("{}...", &trimmed[..120]) } else { trimmed.clone() }
                             );
                             match serde_json::from_str::<ModMessage>(&trimmed) {
-                                Ok(msg) => handle_mod_message(msg, &state).await,
+                                Ok(msg) => handle_mod_message(msg, state).await,
                                 Err(e) => eprintln!("[管道←] 解析失败: {}", e),
                             }
                         }
-                        // 继续等待下一个事件
-                        on_event(state, writer_handle, reader, writer, rx, line_buf).await;
                     }
                     Err(e) => {
                         eprintln!("[管道←] 读取失败: {}", e);
-                        on_disconnect(state, writer_handle).await;
+                        break;
                     }
                 }
             }
@@ -202,34 +276,20 @@ fn on_event(
                             bytes.push(b'\n');
                             if writer.write_all(&bytes).await.is_err() {
                                 eprintln!("[管道→] 写入失败");
-                                on_disconnect(state, writer_handle).await;
-                                return;
+                                break;
                             }
                         }
-                        // 继续等待下一个事件
-                        on_event(state, writer_handle, reader, writer, rx, line_buf).await;
                     }
-                    None => {
-                        // 发送端已关闭
-                        on_disconnect(state, writer_handle).await;
-                    }
+                    // 发送端已关闭
+                    None => break,
                 }
             }
         }
-    })
-}
+    }
 
-/// 状态转换：断开 → 清理 → 回到等待连接
-fn on_disconnect(
-    state: LiveGameState,
-    writer_handle: PipeWriterHandle,
-) -> Pin<Box<dyn Future<Output = ()> + Send>> {
-    Box::pin(async move {
-        writer_handle.clear().await;
-        state.set_pipe_connected(false).await;
-        println!("[管道] Mod 断开连接，等待重新连接...");
-        run_pipe_server(state, writer_handle).await;
-    })
+    writer_handle.clear().await;
+    state.set_pipe_connected(false).await;
+    println!("[管道] Mod 断开连接，等待重新连接...");
 }
 
 async fn handle_mod_message(msg: ModMessage, state: &LiveGameState) {

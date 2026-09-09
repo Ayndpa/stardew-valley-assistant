@@ -36,6 +36,26 @@
 - **🌐 宣传网站**：[ayndpa.github.io/stardew-valley-assistant-pages](https://ayndpa.github.io/stardew-valley-assistant-pages/)（[源码仓库](https://github.com/Ayndpa/stardew-valley-assistant-pages)）
 - **反馈建议**：请在 GitHub Issues 中提出
 
+## 💻 平台支持
+
+桌面端在 Windows 与 macOS 上都能构建运行，两者的能力差异全部来自系统本身：
+
+| 能力 | Windows | macOS |
+| --- | --- | --- |
+| 模组管理 / 存档编辑 / 数据查询 | ✅ | ✅ |
+| 从助手启动游戏并挂载实时数据（`DOTNET_STARTUP_HOOKS`） | ✅ | ✅ |
+| 对已在运行的游戏「附加」实时数据 | ✅（远程线程注入） | ❌ SIP 禁止进程注入，只能从助手启动游戏 |
+| 虚拟局域网联机 | ✅ 弹 UAC 拉起提权辅助进程 | ⚠️ 需以 `sudo` 启动助手（创建 utun 要 root） |
+
+macOS 上的游戏目录是个 `.app` 包，`Content`、`Mods` 与 SMAPI 都在
+`Contents/MacOS` 里；助手会自动往里走一层，用户选中包目录或包内目录都行。
+游戏与助手共用的数据目录同样对齐 .NET 的 `SpecialFolder.ApplicationData`，
+即 `$XDG_CONFIG_HOME`（缺省 `~/.config`）下的 `StardewValley/`。
+
+游戏内运行时与助手之间的那条管道，在 Windows 上是命名管道，在 macOS / Linux 上
+是 .NET 同名机制底下的 Unix 域套接字（`$TMPDIR/CoreFxPipe_<管道名>`）——
+C# 那侧一行都不用改。
+
 ## 📱 移动端
 
 除桌面端外，仓库还包含一个 Android 助手 `stardew-valley-assistant-mobile/`。

@@ -143,6 +143,9 @@ fn first_content_candidate(root: &Path) -> Option<PathBuf> {
     let candidates = [
         root.join("Content"),
         root.join("StardewValleyGame").join("Content"),
+        // macOS：游戏目录是个 .app 包，内容在 Contents/MacOS/Content 里；
+        // 用户在设置里填的可能是包的外层目录。
+        root.join("Contents").join("MacOS").join("Content"),
         root.to_path_buf(),
     ];
     candidates.into_iter().find(|path| is_content_dir(path))

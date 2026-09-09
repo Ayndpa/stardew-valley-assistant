@@ -652,25 +652,5 @@ fn is_xnb_file(path: &Path) -> bool {
 }
 
 fn realtime_snapshot_path() -> Option<PathBuf> {
-    #[cfg(target_os = "windows")]
-    {
-        let appdata = std::env::var("APPDATA").ok()?;
-        Some(
-            PathBuf::from(appdata)
-                .join("StardewValley")
-                .join("StardewValleyAssistant")
-                .join("npc-locations.json"),
-        )
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let home = std::env::var("HOME").ok()?;
-        Some(
-            PathBuf::from(home)
-                .join(".config")
-                .join("StardewValley")
-                .join("StardewValleyAssistant")
-                .join("npc-locations.json"),
-        )
-    }
+    Some(crate::utils::assistant_data_dir()?.join("npc-locations.json"))
 }

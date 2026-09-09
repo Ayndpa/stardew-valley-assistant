@@ -1,7 +1,7 @@
 use crate::download_control::{emit_download_progress, wait_if_paused};
 use std::fs;
 use std::io::{self, Read, Seek, SeekFrom, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use log::{error, info, warn};
 use tauri::AppHandle;
@@ -18,9 +18,34 @@ pub fn run_without_window(command: &mut std::process::Command) -> &mut std::proc
     command.creation_flags(CREATE_NO_WINDOW)
 }
 
+/// 非 Windows 没有「控制台窗口」这回事；保留同名函数只为让调用点不必到处写 cfg。
 #[cfg(not(target_os = "windows"))]
+#[allow(dead_code)]
 pub fn run_without_window(command: &mut std::process::Command) -> &mut std::process::Command {
     command
+}
+
+/// 游戏写存档、我们注入的托管运行时写导出数据，用的都是同一个「应用数据」根目录。
+///
+/// 那边是 .NET 的 `Environment.SpecialFolder.ApplicationData`：Windows 为 `%APPDATA%`，
+/// 类 Unix 为 `$XDG_CONFIG_HOME`（未设置时是 `$HOME/.config`）。这里必须逐字对齐，
+/// 否则助手读的和游戏写的不是同一份文件。
+pub fn stardew_app_data_dir() -> Option<PathBuf> {
+    #[cfg(target_os = "windows")]
+    let root = PathBuf::from(std::env::var("APPDATA").ok()?);
+
+    #[cfg(not(target_os = "windows"))]
+    let root = match std::env::var("XDG_CONFIG_HOME") {
+        Ok(dir) if !dir.is_empty() => PathBuf::from(dir),
+        _ => PathBuf::from(std::env::var("HOME").ok()?).join(".config"),
+    };
+
+    Some(root.join("StardewValley"))
+}
+
+/// 助手运行时导出数据的目录（见 runtime-src/Assistant.Runtime/Paths.cs 的 `ExportDir`）。
+pub fn assistant_data_dir() -> Option<PathBuf> {
+    Some(stardew_app_data_dir()?.join("StardewValleyAssistant"))
 }
 
 #[tauri::command(async)]

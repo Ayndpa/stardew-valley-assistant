@@ -1,7 +1,6 @@
 use super::{ModProfile, ModStateEntry};
 use std::fs::{self, File};
 use std::io::Write;
-use std::path::Path;
 
 fn get_profiles_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
     use tauri::Manager;
@@ -101,7 +100,7 @@ pub fn apply_profile(
     game_dir: String,
     mod_states: Vec<ModStateEntry>,
 ) -> Result<Vec<(String, String)>, String> {
-    let mods_dir = Path::new(&game_dir).join("Mods");
+    let mods_dir = crate::game::resolve_game_dir(&game_dir).join("Mods");
     if !mods_dir.exists() {
         return Err("Mods folder does not exist".to_string());
     }

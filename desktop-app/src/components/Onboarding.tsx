@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { useTheme } from "@/lib/theme-provider"
+import { defaultGameBrowseDir } from "@/lib/platform"
 import { useTranslation } from "react-i18next"
 import { Info } from "lucide-react"
 import { OnboardingLanguageStep } from "./onboarding/OnboardingLanguageStep"
@@ -175,7 +176,7 @@ export function Onboarding({ onComplete, initialReason, enabledFeatures }: Onboa
           directory: true,
           multiple: false,
           title: t("settings.gamePath.dialogTitle") || "选择星露谷物语 (Stardew Valley) 安装目录",
-          defaultPath: directory || "C:\\Program Files (x86)\\Steam\\steamapps\\common",
+          defaultPath: await defaultGameBrowseDir(directory),
         })
 
         if (selected) {

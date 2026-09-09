@@ -19,21 +19,7 @@ pub use npc_locations::{get_npc_locations, get_npc_schedule, check_game_running,
 pub use parser::{get_save_detail, list_save_files};
 
 pub fn get_saves_dir() -> Option<PathBuf> {
-    #[cfg(target_os = "windows")]
-    {
-        let appdata = std::env::var("APPDATA").ok()?;
-        Some(PathBuf::from(appdata).join("StardewValley").join("Saves"))
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let home = std::env::var("HOME").ok()?;
-        Some(
-            PathBuf::from(home)
-                .join(".config")
-                .join("StardewValley")
-                .join("Saves"),
-        )
-    }
+    Some(crate::utils::stardew_app_data_dir()?.join("Saves"))
 }
 
 #[cfg(test)]

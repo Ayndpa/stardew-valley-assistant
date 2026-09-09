@@ -42,9 +42,7 @@
     "active": true,
     "targets": "all",
     "resources": [
-      "runtime-dist/*",
-      "resources/wintun.dll",
-      "resources/wintun-LICENSE.txt"
+      "runtime-dist/*"
     ],
     "icon": [
       "icons/32x32.png",

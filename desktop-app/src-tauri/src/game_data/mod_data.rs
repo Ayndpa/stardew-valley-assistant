@@ -62,27 +62,7 @@ pub struct ModExportVillagerEntry {
 }
 
 fn mod_data_path() -> Option<PathBuf> {
-    #[cfg(target_os = "windows")]
-    {
-        let appdata = std::env::var("APPDATA").ok()?;
-        Some(
-            PathBuf::from(appdata)
-                .join("StardewValley")
-                .join("StardewValleyAssistant")
-                .join("mod-data.json"),
-        )
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let home = std::env::var("HOME").ok()?;
-        Some(
-            PathBuf::from(home)
-                .join(".config")
-                .join("StardewValley")
-                .join("StardewValleyAssistant")
-                .join("mod-data.json"),
-        )
-    }
+    Some(crate::utils::assistant_data_dir()?.join("mod-data.json"))
 }
 
 /// 获取模组导出数据

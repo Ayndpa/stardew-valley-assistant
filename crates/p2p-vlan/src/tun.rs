@@ -121,9 +121,13 @@ pub fn open_tun(cfg: &TunConfig) -> Result<impl TunIo> {
     }
 
     let builder = tun_rs::DeviceBuilder::new()
-        .name(cfg.name.clone())
         .ipv4(cfg.vip, cfg.prefix_len, None)
         .mtu(cfg.mtu);
+    // macOS 的 utun 设备名由内核分配、且只接受 `utunN`，传自定义名字会被直接拒绝
+    // （tun-rs: "device name must start with utun"）。这条平台上没有网卡名可指定，
+    // ICE 的网卡名过滤也就无从谈起，改由网段过滤兜底（见 recommended_ice_config）。
+    #[cfg(not(target_os = "macos"))]
+    let builder = builder.name(cfg.name.clone());
     #[cfg(windows)]
     let builder = {
         let mut b = builder.description("Stardew Valley Assistant VLAN");

@@ -4265,6 +4265,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "image",
+ "libc",
  "log",
  "lzxd",
  "md5",

@@ -153,52 +153,12 @@ pub fn build_item_map_from_export() -> Option<HashMap<String, GameDataItemEntry>
 }
 
 fn game_data_export_path() -> Option<PathBuf> {
-    #[cfg(target_os = "windows")]
-    {
-        let appdata = std::env::var("APPDATA").ok()?;
-        Some(
-            PathBuf::from(appdata)
-                .join("StardewValley")
-                .join("StardewValleyAssistant")
-                .join("game-data.json"),
-        )
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let home = std::env::var("HOME").ok()?;
-        Some(
-            PathBuf::from(home)
-                .join(".config")
-                .join("StardewValley")
-                .join("StardewValleyAssistant")
-                .join("game-data.json"),
-        )
-    }
+    Some(crate::utils::assistant_data_dir()?.join("game-data.json"))
 }
 
 /// 获取导出图标目录路径。
 fn icons_dir_path() -> Option<PathBuf> {
-    #[cfg(target_os = "windows")]
-    {
-        let appdata = std::env::var("APPDATA").ok()?;
-        Some(
-            PathBuf::from(appdata)
-                .join("StardewValley")
-                .join("StardewValleyAssistant")
-                .join("icons"),
-        )
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let home = std::env::var("HOME").ok()?;
-        Some(
-            PathBuf::from(home)
-                .join(".config")
-                .join("StardewValley")
-                .join("StardewValleyAssistant")
-                .join("icons"),
-        )
-    }
+    Some(crate::utils::assistant_data_dir()?.join("icons"))
 }
 
 /// 从 icons/ 目录读取指定 ID 的图标，返回 base64 data URL。

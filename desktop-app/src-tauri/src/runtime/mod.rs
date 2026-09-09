@@ -12,20 +12,27 @@
 //!
 //! 2. **运行时注入（兜底）**：玩家从 Steam / 桌面快捷方式直接启动时钩子来不及挂，
 //!    此时把原生垫片注入到已运行的游戏进程里，再由它经 hostfxr 载入托管部分。
+//!    这条路只有 Windows 有：注入垫片是个 DLL，且 macOS 的 SIP 会直接挡掉进程注入。
+//!    其它平台只剩启动钩子，也就是「必须从助手启动游戏」。
 
+#[cfg(windows)]
 mod inject;
 
 use std::path::{Path, PathBuf};
 
-use serde_json::{json, Value};
+#[cfg(windows)]
+use serde_json::json;
+use serde_json::Value;
 use tauri::path::BaseDirectory;
 use tauri::{AppHandle, Manager};
 
+#[cfg(windows)]
 use crate::game::find_game_pids;
 
 /// 与 tauri.conf.json 中 `bundle.resources` 的相对路径一致。
 const RESOURCE_DIR: &str = "runtime-dist";
 const RUNTIME_DLL: &str = "Assistant.Runtime.dll";
+#[cfg(windows)]
 const INJECTOR_DLL: &str = "assistant_inject.dll";
 
 /// 旧版伴侣模组的目录名与 UniqueID。
@@ -101,15 +108,29 @@ pub fn startup_hook_path(app: &AppHandle) -> Result<PathBuf, String> {
 }
 
 /// 运行时组件是否可用（构建时可能因缺少 .NET SDK 而被跳过）。
+///
+/// 非 Windows 平台不打包注入垫片，只要托管程序集在就算可用——启动钩子本身
+/// 是 .NET 运行时的跨平台机制。
 #[tauri::command]
 pub fn runtime_available(app: AppHandle) -> bool {
-    component(&app, RUNTIME_DLL).is_ok() && component(&app, INJECTOR_DLL).is_ok()
+    if component(&app, RUNTIME_DLL).is_err() {
+        return false;
+    }
+    #[cfg(windows)]
+    {
+        component(&app, INJECTOR_DLL).is_ok()
+    }
+    #[cfg(not(windows))]
+    {
+        true
+    }
 }
 
 /// 向所有正在运行的游戏进程注入助手运行时。
 ///
 /// 幂等：若目标进程已经通过启动钩子加载过运行时，注入进去的初始化调用会被
 /// 运行时自身的幂等保护挡掉，不会重复挂载。
+#[cfg(windows)]
 #[tauri::command(async)]
 pub fn attach_runtime(app: AppHandle) -> Result<Value, String> {
     let injector = component(&app, INJECTOR_DLL)?;
@@ -139,6 +160,16 @@ pub fn attach_runtime(app: AppHandle) -> Result<Value, String> {
         "attached": attached,
         "failures": failures,
     }))
+}
+
+/// 非 Windows 平台没有注入兜底：macOS 的 SIP 不允许往别的进程里塞代码，
+/// Linux 也没有对应的托管加载垫片。如实告诉用户改用「从助手启动游戏」。
+#[cfg(not(windows))]
+#[tauri::command(async)]
+pub fn attach_runtime(app: AppHandle) -> Result<Value, String> {
+    // 仍然校验组件存在，好让「组件缺失」和「平台不支持」是两条不同的提示。
+    component(&app, RUNTIME_DLL)?;
+    Err("当前平台不支持向已运行的游戏注入助手运行时，请改从助手启动游戏。".to_string())
 }
 
 #[cfg(test)]

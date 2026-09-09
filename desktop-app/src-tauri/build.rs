@@ -27,19 +27,24 @@ fn main() {
 ///
 /// 需要本机具备 .NET SDK 且能定位到游戏目录（编译期引用 Stardew Valley.dll）。
 /// 设置 `SKIP_ASSISTANT_RUNTIME_BUILD=1` 可跳过——但产物中将不含实时功能。
+///
+/// 托管程序集（启动钩子）是跨平台的，所有目标都要构建；原生注入垫片是个
+/// Windows DLL，只在目标为 Windows 时构建。
 fn stage_runtime() {
     println!("cargo:rerun-if-env-changed=SKIP_ASSISTANT_RUNTIME_BUILD");
     println!("cargo:rerun-if-changed=runtime-src");
     println!("cargo:rerun-if-changed=injector/src");
     println!("cargo:rerun-if-changed=injector/Cargo.toml");
 
-    if std::env::var("SKIP_ASSISTANT_RUNTIME_BUILD").is_ok() {
-        println!("cargo:warning=已跳过助手运行时构建，游戏内实时数据与作弊功能将不可用。");
-        return;
-    }
-
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let dist = root.join("runtime-dist");
+
+    if std::env::var("SKIP_ASSISTANT_RUNTIME_BUILD").is_ok() {
+        println!("cargo:warning=已跳过助手运行时构建，游戏内实时数据与作弊功能将不可用。");
+        // 目录本身仍要存在：tauri.conf.json 把 runtime-dist/* 列为打包资源。
+        let _ = std::fs::create_dir_all(&dist);
+        return;
+    }
 
     if let Err(message) = build_and_stage(&root, &dist) {
         panic!(
@@ -72,7 +77,13 @@ fn build_and_stage(root: &Path, dist: &Path) -> Result<(), String> {
         copy_matching(&out, dist, &["dll", "json"])?;
     }
 
-    // 2. 原生注入垫片。这是一次嵌套 cargo 调用：必须清掉外层 cargo 注入的
+    // 2. 原生注入垫片。仅 Windows：它是一个被注入到游戏进程的 DLL，
+    //    macOS 的 SIP 也不允许这类注入，那边只保留启动钩子这一条路。
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
+        return Ok(());
+    }
+
+    //    这是一次嵌套 cargo 调用：必须清掉外层 cargo 注入的
     //    环境变量，否则子构建会继承外层的目标目录与 RUSTFLAGS 而互相干扰。
     let injector = root.join("injector");
     let mut command = Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".into()));

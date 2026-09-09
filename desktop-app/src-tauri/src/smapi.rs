@@ -15,16 +15,17 @@ pub struct SmapiStatus {
 
 #[tauri::command(async)]
 pub fn check_smapi_status(game_dir: String) -> SmapiStatus {
-    let game_path = Path::new(&game_dir);
-    if !game_path.exists() {
+    if !Path::new(&game_dir).exists() {
         return SmapiStatus {
             installed: false,
             version: None,
             path: None,
         };
     }
+    // macOS 上 SMAPI 装在 .app 包内部的 Contents/MacOS 里
+    let game_path = crate::game::resolve_game_dir(&game_dir);
 
-    let api_exe = find_smapi_launcher(game_path);
+    let api_exe = find_smapi_launcher(&game_path);
     let deps_json = game_path.join("StardewModdingAPI.deps.json");
     let installed = api_exe.is_some() || deps_json.exists();
 
@@ -209,27 +210,11 @@ fn read_version_from_deps_json(path: &Path) -> Option<String> {
 }
 
 pub fn get_smapi_log_path() -> Option<PathBuf> {
-    #[cfg(target_os = "windows")]
-    {
-        let appdata = std::env::var("APPDATA").ok()?;
-        Some(
-            PathBuf::from(appdata)
-                .join("StardewValley")
-                .join("ErrorLogs")
-                .join("SMAPI-latest.txt"),
-        )
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let home = std::env::var("HOME").ok()?;
-        Some(
-            PathBuf::from(home)
-                .join(".config")
-                .join("StardewValley")
-                .join("ErrorLogs")
-                .join("SMAPI-latest.txt"),
-        )
-    }
+    Some(
+        crate::utils::stardew_app_data_dir()?
+            .join("ErrorLogs")
+            .join("SMAPI-latest.txt"),
+    )
 }
 
 fn find_smapi_launcher(game_path: &Path) -> Option<PathBuf> {
@@ -337,10 +322,11 @@ pub async fn install_smapi(
     task_id: Option<String>,
 ) -> Result<(), String> {
     let task_id = task_id.unwrap_or_else(|| "smapi-install".to_string());
-    let game_path = Path::new(&game_dir);
-    if !game_path.exists() {
+    if !Path::new(&game_dir).exists() {
         return Err("游戏安装目录不存在。".to_string());
     }
+    let game_path = crate::game::resolve_game_dir(&game_dir);
+    let game_path = game_path.as_path();
 
     let temp_dir = game_path.join(".smapi_temp");
     if temp_dir.exists() {
@@ -502,10 +488,11 @@ pub async fn install_smapi(
 
 #[tauri::command]
 pub fn uninstall_smapi(game_dir: String) -> Result<(), String> {
-    let game_path = Path::new(&game_dir);
-    if !game_path.exists() {
+    if !Path::new(&game_dir).exists() {
         return Err("游戏安装目录不存在。".to_string());
     }
+    let game_path = crate::game::resolve_game_dir(&game_dir);
+    let game_path = game_path.as_path();
 
     #[cfg(target_os = "windows")]
     let files_to_delete = vec![

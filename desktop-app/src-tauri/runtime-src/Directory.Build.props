@@ -30,6 +30,14 @@
     <SdvGamePath Condition="'$(SdvGamePath)' == '' And Exists('C:\Program Files (x86)\Steam\steamapps\common\Stardew Valley\Stardew Valley.dll')">C:\Program Files (x86)\Steam\steamapps\common\Stardew Valley</SdvGamePath>
     <SdvGamePath Condition="'$(SdvGamePath)' == '' And Exists('C:\Program Files\Steam\steamapps\common\Stardew Valley\Stardew Valley.dll')">C:\Program Files\Steam\steamapps\common\Stardew Valley</SdvGamePath>
     <SdvGamePath Condition="'$(SdvGamePath)' == '' And Exists('C:\GOG Games\Stardew Valley\Stardew Valley.dll')">C:\GOG Games\Stardew Valley</SdvGamePath>
+    <!--
+      macOS：游戏目录是个 .app 包，程序集都在 Contents/MacOS 里。
+      Linux：Steam 的两种常见布局。
+    -->
+    <SdvGamePath Condition="'$(SdvGamePath)' == '' And Exists('$(HOME)/Library/Application Support/Steam/steamapps/common/Stardew Valley/Contents/MacOS/Stardew Valley.dll')">$(HOME)/Library/Application Support/Steam/steamapps/common/Stardew Valley/Contents/MacOS</SdvGamePath>
+    <SdvGamePath Condition="'$(SdvGamePath)' == '' And Exists('/Applications/Stardew Valley.app/Contents/MacOS/Stardew Valley.dll')">/Applications/Stardew Valley.app/Contents/MacOS</SdvGamePath>
+    <SdvGamePath Condition="'$(SdvGamePath)' == '' And Exists('$(HOME)/.steam/steam/steamapps/common/Stardew Valley/Stardew Valley.dll')">$(HOME)/.steam/steam/steamapps/common/Stardew Valley</SdvGamePath>
+    <SdvGamePath Condition="'$(SdvGamePath)' == '' And Exists('$(HOME)/.local/share/Steam/steamapps/common/Stardew Valley/Stardew Valley.dll')">$(HOME)/.local/share/Steam/steamapps/common/Stardew Valley</SdvGamePath>
   </PropertyGroup>
 
 </Project>

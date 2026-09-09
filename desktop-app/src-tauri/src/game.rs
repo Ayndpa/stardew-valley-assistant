@@ -6,10 +6,9 @@ use std::sync::{LazyLock, Mutex};
 use sysinfo::System;
 use tauri::{AppHandle, Emitter};
 
-use crate::utils::run_without_window;
-
 #[cfg(target_os = "windows")]
 fn get_steam_path_from_registry() -> Option<String> {
+    use crate::utils::run_without_window;
     use std::process::Command;
     let mut command = Command::new("reg");
     let output = run_without_window(command.args(&[
@@ -74,13 +73,46 @@ fn get_library_folders(steam_path: &str) -> Vec<PathBuf> {
     folders
 }
 
+/// macOS 上「Stardew Valley」这个目录其实是个 .app 包：游戏本体、`Content`、
+/// `Mods` 以及 SMAPI 都住在 `Contents/MacOS` 里。用户（和 Steam 库扫描）给到的
+/// 往往是包的外层目录，这里统一往里走一层，好让后续逻辑与 Windows 完全一致。
+///
+/// 其它平台原样返回。
+pub(crate) fn resolve_game_dir<P: AsRef<Path>>(game_dir: P) -> PathBuf {
+    let path = game_dir.as_ref();
+
+    #[cfg(target_os = "macos")]
+    {
+        // 传进来的可能是 `…/Stardew Valley`（Steam 库里的包目录）
+        let inner = path.join("Contents").join("MacOS");
+        if inner.is_dir() {
+            return inner;
+        }
+        // 也可能是包所在的父目录（如 /Applications）
+        let bundled = path
+            .join("Stardew Valley.app")
+            .join("Contents")
+            .join("MacOS");
+        if bundled.is_dir() {
+            return bundled;
+        }
+    }
+
+    path.to_path_buf()
+}
+
+/// [`resolve_game_dir`] 的字符串版本，供只接受 `&str` 的共享 crate 使用。
+pub(crate) fn resolve_game_dir_str(game_dir: &str) -> String {
+    resolve_game_dir(game_dir).to_string_lossy().into_owned()
+}
+
 pub(crate) fn find_stardew_valley() -> Option<String> {
     if let Some(steam_path) = get_steam_path_from_registry() {
         let folders = get_library_folders(&steam_path);
         for folder in folders {
             let stardew_path = folder.join("common").join("Stardew Valley");
             if stardew_path.exists() {
-                return Some(stardew_path.to_string_lossy().to_string());
+                return Some(resolve_game_dir(stardew_path).to_string_lossy().to_string());
             }
         }
     }
@@ -94,7 +126,11 @@ pub(crate) fn find_stardew_valley() -> Option<String> {
         );
         paths_to_check.push(home_path.join(".steam/steam/steamapps/common/Stardew Valley"));
         paths_to_check.push(home_path.join(".local/share/Steam/steamapps/common/Stardew Valley"));
+        // GOG / 手动安装通常放在应用程序目录
+        paths_to_check.push(home_path.join("Applications/Stardew Valley.app"));
     }
+
+    paths_to_check.push(PathBuf::from("/Applications/Stardew Valley.app"));
 
     paths_to_check.push(PathBuf::from(
         "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Stardew Valley",
@@ -108,7 +144,7 @@ pub(crate) fn find_stardew_valley() -> Option<String> {
 
     for path in paths_to_check {
         if path.exists() {
-            return Some(path.to_string_lossy().to_string());
+            return Some(resolve_game_dir(path).to_string_lossy().to_string());
         }
     }
 
@@ -121,7 +157,7 @@ pub fn auto_detect_game_dir() -> Option<String> {
 }
 
 pub fn get_stardew_valley_version(game_dir: &str) -> Option<String> {
-    let game_path = Path::new(game_dir);
+    let game_path = resolve_game_dir(game_dir);
     let mut deps_path = game_path.join("Stardew Valley.deps.json");
     if !deps_path.exists() {
         deps_path = game_path.join("StardewValley.deps.json");
@@ -229,12 +265,13 @@ pub fn launch_game(
     game_dir: String,
     launch_mode: Option<String>,
 ) -> Result<u32, String> {
-    let game_path = Path::new(&game_dir);
-    if !game_path.exists() {
+    if !Path::new(&game_dir).exists() {
         return Err("游戏目录不存在，请先设置正确的目录。".to_string());
     }
+    // macOS 上设置里存的可能是 .app 包的外层目录，可执行文件在 Contents/MacOS 里
+    let game_path = resolve_game_dir(&game_dir);
 
-    let exe_path = pick_executable(game_path, launch_mode.as_deref()).ok_or_else(|| {
+    let exe_path = pick_executable(&game_path, launch_mode.as_deref()).ok_or_else(|| {
         "未找到可执行文件（StardewModdingAPI.exe / Stardew Valley.exe）。".to_string()
     })?;
 
@@ -245,14 +282,14 @@ pub fn launch_game(
     }
 
     // 旧版伴侣模组会和新运行时抢同一条命名管道，启动前先清掉残留。
-    match crate::runtime::remove_legacy_mod(&game_dir) {
+    match crate::runtime::remove_legacy_mod(&game_path.to_string_lossy()) {
         Ok(true) => println!("[启动] 已移除残留的旧版伴侣模组"),
         Ok(false) => {}
         Err(message) => eprintln!("[启动] 清理旧版伴侣模组失败: {}", message),
     }
 
     let mut command = Command::new(&exe_path);
-    command.current_dir(game_path);
+    command.current_dir(&game_path);
 
     // 通过 .NET 官方的启动钩子机制把助手运行时载入游戏进程：运行时会在游戏
     // Main 之前加载该程序集。组件位于助手安装目录，游戏目录不落任何文件。
@@ -321,7 +358,8 @@ pub fn check_game_process_running() -> bool {
 /// PIDs of all running Stardew Valley / SMAPI processes.
 ///
 /// 供运行时注入使用：SMAPI 启动时游戏本体就跑在 StardewModdingAPI.exe 这个进程里，
-/// 因此两种进程名都是合法的注入目标。
+/// 因此两种进程名都是合法的注入目标。注入只有 Windows 有，其它平台没有调用方。
+#[cfg(windows)]
 pub fn find_game_pids() -> Vec<u32> {
     let mut sys = System::new();
     sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);

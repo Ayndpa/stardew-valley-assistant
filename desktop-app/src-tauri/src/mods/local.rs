@@ -16,21 +16,26 @@ pub use sdv_mods::local::{
     write_json_pretty,
 };
 
+use crate::game::resolve_game_dir_str;
 use crate::mods::Mod;
+
+// 前端传来的 game_dir 一律先过 `resolve_game_dir_str`：macOS 上用户选中的
+// 往往是 .app 包的外层目录，而 Mods 目录在 Contents/MacOS 里面。
+// 其它平台该函数是恒等变换。
 
 #[tauri::command(async)]
 pub fn list_installed_mods(game_dir: String) -> Result<Vec<Mod>, String> {
-    sdv_mods::local::list_installed_mods(&game_dir)
+    sdv_mods::local::list_installed_mods(&resolve_game_dir_str(&game_dir))
 }
 
 #[tauri::command]
 pub fn toggle_mod(game_dir: String, folder_name: String, enable: bool) -> Result<String, String> {
-    sdv_mods::local::toggle_mod(&game_dir, &folder_name, enable)
+    sdv_mods::local::toggle_mod(&resolve_game_dir_str(&game_dir), &folder_name, enable)
 }
 
 #[tauri::command]
 pub fn delete_mod(game_dir: String, folder_name: String) -> Result<(), String> {
-    sdv_mods::local::delete_mod(&game_dir, &folder_name)
+    sdv_mods::local::delete_mod(&resolve_game_dir_str(&game_dir), &folder_name)
 }
 
 #[tauri::command]
@@ -39,7 +44,7 @@ pub fn save_mod_config(
     folder_name: String,
     config: serde_json::Value,
 ) -> Result<(), String> {
-    sdv_mods::local::save_mod_config(&game_dir, &folder_name, &config)
+    sdv_mods::local::save_mod_config(&resolve_game_dir_str(&game_dir), &folder_name, &config)
 }
 
 #[tauri::command]
@@ -52,7 +57,7 @@ pub fn write_mod_translation(
     translated_description: String,
 ) -> Result<(), String> {
     sdv_mods::local::write_mod_translation(
-        &game_dir,
+        &resolve_game_dir_str(&game_dir),
         &folder_name,
         original_name,
         original_description,
@@ -67,7 +72,7 @@ pub fn rename_local_mod(
     folder_name: String,
     new_name: String,
 ) -> Result<(), String> {
-    sdv_mods::local::rename_local_mod(&game_dir, &folder_name, new_name)
+    sdv_mods::local::rename_local_mod(&resolve_game_dir_str(&game_dir), &folder_name, new_name)
 }
 
 fn copy_with_retry(source: &Path, target: &Path) -> Result<u64, String> {
@@ -88,10 +93,10 @@ fn copy_with_retry(source: &Path, target: &Path) -> Result<u64, String> {
 
 #[tauri::command]
 pub fn install_mod_from_zip_sync(game_dir: String, zip_path: String) -> Result<Value, String> {
-    let game_path = Path::new(&game_dir);
-    if !game_path.exists() {
+    if !Path::new(&game_dir).exists() {
         return Err("游戏安装目录不存在".to_string());
     }
+    let game_path = crate::game::resolve_game_dir(&game_dir);
 
     let source_zip = Path::new(&zip_path);
     if !source_zip.exists() {

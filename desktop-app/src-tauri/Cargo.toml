@@ -50,6 +50,10 @@ sdv-mods = { path = "../../crates/sdv-mods" }
 [target."cfg(any(target_os = \"macos\", windows, target_os = \"linux\"))".dependencies]
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 
+# macOS / Linux 上判断助手自身是否以 root 运行（创建 TUN 网卡的前提）。
+[target."cfg(unix)".dependencies]
+libc = "0.2"
+
 # 运行时注入兜底路径需要直接调用 Win32：远程线程 + LoadLibraryW。
 [target."cfg(windows)".dependencies]
 windows-sys = { version = "0.59", features = [

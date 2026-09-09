@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { useTheme } from "@/lib/theme-provider"
 import { useNexus } from "@/lib/nexus-provider"
+import { defaultGameBrowseDir } from "@/lib/platform"
 import { useTranslation } from "react-i18next"
 import {
   Database,
@@ -167,7 +168,7 @@ export function Settings({
           directory: true,
           multiple: false,
           title: t("settings.gamePath.dialogTitle"),
-          defaultPath: gameDir || "C:\\Program Files (x86)\\Steam\\steamapps\\common",
+          defaultPath: await defaultGameBrowseDir(gameDir),
         })
         if (selected) {
           const path = Array.isArray(selected) ? selected[0] : selected

@@ -27,10 +27,11 @@
     因此类型标识一致（这正是能直接操作 Game1 的前提）。
   -->
   <ItemGroup>
-    <Reference Include="Stardew Valley" HintPath="$(SdvGamePath)\Stardew Valley.dll" Private="False" />
-    <Reference Include="StardewValley.GameData" HintPath="$(SdvGamePath)\StardewValley.GameData.dll" Private="False" />
-    <Reference Include="MonoGame.Framework" HintPath="$(SdvGamePath)\MonoGame.Framework.dll" Private="False" />
-    <Reference Include="xTile" HintPath="$(SdvGamePath)\xTile.dll" Private="False" />
+    <!-- 用正斜杠：Windows 与 macOS / Linux 都认，反斜杠在类 Unix 上不是路径分隔符。 -->
+    <Reference Include="Stardew Valley" HintPath="$(SdvGamePath)/Stardew Valley.dll" Private="False" />
+    <Reference Include="StardewValley.GameData" HintPath="$(SdvGamePath)/StardewValley.GameData.dll" Private="False" />
+    <Reference Include="MonoGame.Framework" HintPath="$(SdvGamePath)/MonoGame.Framework.dll" Private="False" />
+    <Reference Include="xTile" HintPath="$(SdvGamePath)/xTile.dll" Private="False" />
   </ItemGroup>
 
   <Target Name="VerifyGamePath" BeforeTargets="BeforeBuild" Condition="'$(SdvGamePath)' == ''">
