@@ -16,6 +16,7 @@ pub mod map_names;
 pub mod npc;
 pub mod secret_notes;
 pub mod tbin;
+pub mod volcano;
 pub mod xnb;
 
 use std::fs;

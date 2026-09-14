@@ -32,8 +32,8 @@ use crate::game_data::{
     export_mod_data_to_file, get_animal_game_data, get_bundle_game_data, get_calendar_game_data,
     get_cheat_states, get_crop_game_data, get_fishing_map_data, get_fishing_map_detail,
     get_item_game_data, get_item_game_data_overview, get_mod_export_data,
-    get_npc_game_data, get_secret_notes_game_data, live_state::LiveGameState,
-    pipe_server::{self, PipeWriterHandle}, query_item_game_data,
+    get_npc_game_data, get_secret_notes_game_data, get_volcano_layout_data,
+    live_state::LiveGameState, pipe_server::{self, PipeWriterHandle}, query_item_game_data,
 };
 use crate::mods::{
     apply_profile, check_mod_updates, check_nexus_login_status,
@@ -401,6 +401,7 @@ pub fn run() {
             get_fishing_map_detail,
             get_npc_game_data,
             get_secret_notes_game_data,
+            get_volcano_layout_data,
             launch_game,
             check_game_process_running,
             force_kill_game,

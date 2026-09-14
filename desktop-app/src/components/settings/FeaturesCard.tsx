@@ -23,6 +23,7 @@ import {
   Database,
   Notebook,
   Globe,
+  Flame,
 } from "lucide-react"
 
 interface FeaturesCardProps {
@@ -45,6 +46,7 @@ export function FeaturesCard({
     { id: "npcs", icon: Users },
     { id: "calendar", icon: CalendarDays },
     { id: "fishingMap", icon: Fish },
+    { id: "volcano", icon: Flame },
     { id: "todo", icon: Notebook },
     { id: "cheats", icon: Zap },
     { id: "saveEditor", icon: PencilRuler },

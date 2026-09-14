@@ -35,6 +35,7 @@ import {
   Heart,
   Notebook,
   Globe,
+  Flame,
 } from "lucide-react"
 
 interface SidebarProps {
@@ -98,6 +99,7 @@ const navGroups: NavGroup[] = [
       { id: "items", icon: <Package /> },
       { id: "calendar", icon: <CalendarDays /> },
       { id: "fishingMap", icon: <Map /> },
+      { id: "volcano", icon: <Flame /> },
     ],
   },
   {

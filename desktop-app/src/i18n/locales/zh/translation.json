@@ -16,6 +16,7 @@
     "npcs": "村民关系",
     "calendar": "节日日历",
     "fishingMap": "游戏地图",
+    "volcano": "火山地牢",
     "children": "孩子管理",
     "saveEditor": "存档编辑",
     "cheats": "游戏作弊",
@@ -1020,6 +1021,31 @@
       "sun": "周日"
     }
   },
+  "volcano": {
+    "title": "火山地牢预测",
+    "dataFromGame": "数据来自游戏文件",
+    "loadingData": "正在解析游戏文件...",
+    "seed": "存档种子",
+    "daysPlayed": "游玩天数",
+    "maxLuckLevel": "幸运等级",
+    "nextDay": "下一天",
+    "post164": "1.6.4 及以上",
+    "hasCaldera": "已抵达火山口",
+    "crackedCoconut": "已砸开金椰子",
+    "specialCharm": "特殊护符",
+    "legacyRng": "1.5 及更早的随机数",
+    "floor": "第 {{level}} 层",
+    "mushroomFloor": "蘑菇层",
+    "monsterFloor": "怪物层",
+    "noLoot": "无掉落",
+    "dragonTooth": "龙牙",
+    "commonChest": "普通宝箱",
+    "rareChest": "稀有宝箱",
+    "map": "地图预览",
+    "selectLayout": "点击上方布局编号查看地图",
+    "retry": "重试",
+    "gameDirHint": "未读到游戏文件，可在「设置 → 游戏目录」中指定游戏安装目录后重试。"
+  },
   "fishingMap": {
     "title": "游戏地图",
     "loadingMaps": "正在解析地图...",
@@ -1827,6 +1853,8 @@
           "calendarDesc": "同步星露谷游戏日历，重要节日提前提醒",
           "fishingMapTitle": "游戏地图与探索",
           "fishingMapDesc": "在地图上追踪资源位置及鱼类分布",
+          "volcanoTitle": "火山地牢预测",
+          "volcanoDesc": "按种子推算姜岛火山各层布局、宝箱与龙牙掉落",
           "collectionsTitle": "收集进度追踪",
           "collectionsDesc": "追踪物品收集、成就完成进度，一览全收集目标",
           "bundlesTitle": "收集包管理",
@@ -1938,7 +1966,7 @@
     "selectSeason": "选择季节",
     "selectDay": "选择天数",
     "saveRequired": "由于未检测到当前游戏存档，任务数据已保存在全局空间。"
-  },
+  },
   "dataSource": {
     "xnbWarningTitle": "当前正从游戏原始文件解析数据",
     "xnbWarningDesc": "由于未检测到游戏运行时的数据，展示的价格和周期可能无法适配您的模组修改（如微调售价和周期）。用助手启动游戏并加载一次存档即可自动同步。"

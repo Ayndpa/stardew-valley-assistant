@@ -15,7 +15,7 @@ import { useGlobalDragAndDrop } from "@/hooks/useGlobalDragAndDrop"
 import { SocialProvider } from "@/lib/account/social-provider"
 import "./index.css"
 
-export type Page = "dashboard" | "collections" | "crops" | "items" | "npcs" | "calendar" | "fishingMap" | "saveEditor" | "saveBackups" | "settings" | "mods" | "onlineMods" | "downloads" | "bundles" | "children" | "animals" | "cheats" | "modData" | "sponsors" | "todo" | "social"
+export type Page = "dashboard" | "collections" | "crops" | "items" | "npcs" | "calendar" | "fishingMap" | "volcano" | "saveEditor" | "saveBackups" | "settings" | "mods" | "onlineMods" | "downloads" | "bundles" | "children" | "animals" | "cheats" | "modData" | "sponsors" | "todo" | "social"
 
 export interface SaveSummary {
   id: string
@@ -47,6 +47,7 @@ const Items = lazy(async () => ({ default: (await import("@/pages/Items")).Items
 const Bundles = lazy(async () => ({ default: (await import("@/pages/Bundles")).Bundles }))
 const Calendar = lazy(async () => ({ default: (await import("@/pages/Calendar")).Calendar }))
 const GameMap = lazy(async () => ({ default: (await import("@/pages/GameMap")).GameMap }))
+const VolcanoPredictor = lazy(async () => ({ default: (await import("@/pages/VolcanoPredictor")).VolcanoPredictor }))
 const SaveEditor = lazy(async () => ({ default: (await import("@/pages/SaveEditor")).SaveEditor }))
 const SaveBackups = lazy(async () => ({ default: (await import("@/pages/SaveBackups")).SaveBackups }))
 const Children = lazy(async () => ({ default: (await import("@/pages/Children")).Children }))
@@ -147,12 +148,16 @@ function App() {
         if (!parsed.includes("social")) {
           parsed.push("social")
         }
+        // 迁移：新增的 volcano（火山地牢预测）功能需要补上
+        if (!parsed.includes("volcano")) {
+          parsed.push("volcano")
+        }
         return parsed
       } catch (e) {
         // ignore
       }
     }
-    return ["collections", "crops", "items", "npcs", "calendar", "bundles", "animals", "fishingMap", "children", "cheats", "modData", "saveEditor", "saveBackups", "mods", "onlineMods", "downloads", "todo", "social"]
+    return ["collections", "crops", "items", "npcs", "calendar", "bundles", "animals", "fishingMap", "volcano", "children", "cheats", "modData", "saveEditor", "saveBackups", "mods", "onlineMods", "downloads", "todo", "social"]
   })
 
   const updateEnabledFeatures = useCallback((value: Page[]) => {
@@ -449,6 +454,8 @@ function App() {
         )
       case "fishingMap":
         return <GameMap selectedSaveId={selectedSaveId} />
+      case "volcano":
+        return <VolcanoPredictor />
       case "settings":
         return (
         <Settings

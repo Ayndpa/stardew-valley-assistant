@@ -106,7 +106,49 @@ pub(crate) fn resolve_game_dir_str(game_dir: &str) -> String {
     resolve_game_dir(game_dir).to_string_lossy().into_owned()
 }
 
+/// 各盘符下常见的 Steam 库根目录（相对盘符）。
+///
+/// Steam 允许把库放在任意路径，但绝大多数用户用的是这几个默认位置。
+/// 逐个 stat 的成本很低（每个盘符 6 次），比遍历整块磁盘安全得多。
+#[cfg(target_os = "windows")]
+const COMMON_STEAM_LIBRARY_DIRS: &[&str] = &[
+    "SteamLibrary",
+    "Steam",
+    "Games\\SteamLibrary",
+    "Games\\Steam",
+    "Program Files (x86)\\Steam",
+    "Program Files\\Steam",
+];
+
+/// 扫描所有盘符下的常见 Steam 库位置，找 `steamapps\common\Stardew Valley`。
+///
+/// 为什么需要这一层：Steam 主目录里可能根本没有 `steamapps`——游戏全部装在
+/// 第二个库里，此时注册表 → `libraryfolders.vdf` 那条路枚举不到任何库
+/// （vdf 本身就不存在），而库的真实位置又只记在 Steam 自己的配置里。
+/// 只按约定路径兜底是唯一不依赖 Steam 内部格式的办法。
+#[cfg(target_os = "windows")]
+fn probe_common_steam_libraries() -> Option<String> {
+    for letter in b'A'..=b'Z' {
+        let drive = format!("{}:\\", letter as char);
+        if !Path::new(&drive).exists() {
+            continue;
+        }
+        for relative in COMMON_STEAM_LIBRARY_DIRS {
+            let game_dir = Path::new(&drive)
+                .join(relative)
+                .join("steamapps")
+                .join("common")
+                .join("Stardew Valley");
+            if game_dir.exists() {
+                return Some(resolve_game_dir(game_dir).to_string_lossy().into_owned());
+            }
+        }
+    }
+    None
+}
+
 pub(crate) fn find_stardew_valley() -> Option<String> {
+    // 1. 注册表 → Steam 库配置，最准确
     if let Some(steam_path) = get_steam_path_from_registry() {
         let folders = get_library_folders(&steam_path);
         for folder in folders {
@@ -115,6 +157,12 @@ pub(crate) fn find_stardew_valley() -> Option<String> {
                 return Some(resolve_game_dir(stardew_path).to_string_lossy().to_string());
             }
         }
+    }
+
+    // 2. 各盘符下的常见 Steam 库位置（覆盖上面枚举不到的情况）
+    #[cfg(target_os = "windows")]
+    if let Some(hit) = probe_common_steam_libraries() {
+        return Some(hit);
     }
 
     let mut paths_to_check = Vec::new();
@@ -131,16 +179,6 @@ pub(crate) fn find_stardew_valley() -> Option<String> {
     }
 
     paths_to_check.push(PathBuf::from("/Applications/Stardew Valley.app"));
-
-    paths_to_check.push(PathBuf::from(
-        "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Stardew Valley",
-    ));
-    paths_to_check.push(PathBuf::from(
-        "C:\\Program Files\\Steam\\steamapps\\common\\Stardew Valley",
-    ));
-    paths_to_check.push(PathBuf::from(
-        "D:\\SteamLibrary\\steamapps\\common\\Stardew Valley",
-    ));
 
     for path in paths_to_check {
         if path.exists() {

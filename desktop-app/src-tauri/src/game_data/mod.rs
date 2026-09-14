@@ -11,6 +11,7 @@ pub mod mod_data;
 pub mod npc;
 pub mod pipe_server;
 pub mod secret_notes;
+pub mod volcano;
 
 // 平台无关的解析实现全部住在共享 crate 里，桌面端只做转发，手机端引用同一份代码。
 pub use sdv_game_data::{collect_xnb_files, image_utils, map_names, tbin, xnb};
@@ -34,6 +35,7 @@ pub use items::{get_item_game_data, get_item_game_data_overview, query_item_game
 pub use mod_data::{get_mod_export_data, export_mod_data_to_file};
 pub use npc::get_npc_game_data;
 pub use secret_notes::get_secret_notes_game_data;
+pub use volcano::get_volcano_layout_data;
 
 /// 游戏数据快照缓存的通用取用逻辑。
 ///

@@ -16,6 +16,7 @@
     "npcs": "NPC Relationships",
     "calendar": "Calendar",
     "fishingMap": "Game Map",
+    "volcano": "Volcano Dungeon",
     "children": "Children",
     "saveEditor": "Save Editor",
     "cheats": "Game Cheats",
@@ -1020,6 +1021,31 @@
       "sun": "Sun"
     }
   },
+  "volcano": {
+    "title": "Volcano Dungeon Predictor",
+    "dataFromGame": "Parsed from game files",
+    "loadingData": "Parsing game files...",
+    "seed": "Save seed",
+    "daysPlayed": "Days played",
+    "maxLuckLevel": "Luck level",
+    "nextDay": "Next day",
+    "post164": "1.6.4 or newer",
+    "hasCaldera": "Caldera reached",
+    "crackedCoconut": "Golden coconut cracked",
+    "specialCharm": "Special Charm",
+    "legacyRng": "Pre-1.6 RNG",
+    "floor": "Floor {{level}}",
+    "mushroomFloor": "Mushroom floor",
+    "monsterFloor": "Monster floor",
+    "noLoot": "No loot",
+    "dragonTooth": "Dragon Tooth",
+    "commonChest": "Common Chest",
+    "rareChest": "Rare Chest",
+    "map": "Map preview",
+    "selectLayout": "Click a layout number above to preview the map",
+    "retry": "Retry",
+    "gameDirHint": "Game files not found. Set the install folder under Settings → Game directory, then retry."
+  },
   "fishingMap": {
     "title": "Game Map",
     "loadingMaps": "Parsing maps...",
@@ -1957,6 +1983,8 @@
         "calendarDesc": "Sync with in-game calendar, and get festival/birthday alerts",
         "fishingMapTitle": "Game Map & Exploration",
         "fishingMapDesc": "Track resource positions and fish distribution on map",
+        "volcanoTitle": "Volcano Dungeon Predictor",
+        "volcanoDesc": "Predict Ginger Island volcano layouts, chests and dragon teeth from your save seed",
         "collectionsTitle": "Collections Tracker",
         "collectionsDesc": "Track item collections and achievement progress at a glance",
         "bundlesTitle": "Bundle Management",
@@ -2068,7 +2096,7 @@
     "selectSeason": "Select Season",
     "selectDay": "Select Day",
     "saveRequired": "No active save file detected, tasks are saved in the global space."
-  },
+  },
   "dataSource": {
     "xnbWarningTitle": "Currently parsing data from original game files",
     "xnbWarningDesc": "No live game data detected, so the prices and cycles shown may not reflect your mod modifications (such as custom sell prices or regrow cycles). Launch the game from the assistant and load a save once to sync automatically."
